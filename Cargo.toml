@@ -5,7 +5,7 @@ edition = "2021"
 description = "A high-performance compiler for the Eä programming language with built-in SIMD support"
 authors = ["Peter Lukka <peter.lukka@gmail.com>"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/petlukk/ea-compiler"
+repository = "https://github.com/petlukk/ea-compiler-private"
 documentation = "https://docs.rs/ea-compiler"
 readme = "README.md"
 
