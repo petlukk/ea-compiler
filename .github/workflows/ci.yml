@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install LLVM 14
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y llvm-14-dev libllvm14 llvm-14
+        
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+        
+    - name: Cache Cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+      
+    - name: Run Clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+      
+    - name: Run tests (without LLVM)
+      run: cargo test --verbose
+      
+    - name: Run tests (with LLVM)
+      run: cargo test --verbose --features=llvm
+      
+    - name: Run benchmarks
+      run: cargo bench --no-run
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install LLVM 14
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y llvm-14-dev libllvm14 llvm-14
+        
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Build (debug)
+      run: cargo build --verbose
+      
+    - name: Build (release)
+      run: cargo build --verbose --release
+      
+    - name: Build with LLVM
+      run: cargo build --verbose --features=llvm
+
+  cross-platform:
+    name: Cross Platform Build
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      
+    # Skip LLVM on Windows/macOS for now due to complex setup
+    - name: Build (basic features only)
+      run: cargo build --verbose
+      if: matrix.os != 'ubuntu-latest'
+      
+    - name: Test (basic features only)
+      run: cargo test --verbose
+      if: matrix.os != 'ubuntu-latest'

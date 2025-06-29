@@ -1,0 +1,54 @@
+[package]
+name = "ea-compiler"
+version = "0.1.0"
+edition = "2021"
+description = "A compiler for the Eä programming language"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+repository = ""
+documentation = ""
+readme = "README.md"
+
+[dependencies]
+# Lexer dependencies
+logos = { version = "0.13.0", features = ["export_derive", "std"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging (made optional for the debug feature)
+log = { version = "0.4", optional = true }
+simplelog = { version = "0.12", optional = true }
+
+# Utilities
+lazy_static = "1.4"
+regex = "1.10"
+
+# LLVM integration
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm16-0"], optional = true }
+
+[dev-dependencies]
+# Testing
+rstest = "0.18"
+assert_matches = "1.5"
+pretty_assertions = "1.4"
+
+[lib]
+name = "ea_compiler"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ea"
+path = "src/main.rs"
+
+[features]
+default = ["cli"]
+cli = []
+debug-lexer = ["log", "simplelog"]
+llvm = ["inkwell"]  # Enable LLVM code generation
+
+[workspace]
+members = [
+    # Add workspace members here if needed
+]

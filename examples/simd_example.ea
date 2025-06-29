@@ -1,0 +1,200 @@
+// examples/simd_example.ea
+// Example SIMD program demonstrating Eä's SIMD capabilities
+
+// Import SIMD types and functions
+use eä::simd::{f32x8, i32x16, u8x32, mask8};
+use eä::target::{avx2, sse4};
+
+// Hardware-adaptive SIMD function
+@target_feature(avx2)
+func vector_dot_product(a: []f32, b: []f32) -> f32 {
+    let mut sum = f32x8::splat(0.0);
+    
+    vectorize with simd_width(256) {
+        // Process 8 elements at a time using AVX2
+        for chunk in a.chunks_exact(8).zip(b.chunks_exact(8)) {
+            let vec_a = f32x8::from_slice(chunk.0);
+            let vec_b = f32x8::from_slice(chunk.1);
+            sum = sum .+ (vec_a .* vec_b);  // SIMD multiply-add
+        }
+    }
+    
+    return sum.horizontal_sum();
+}
+
+// Fallback for older hardware
+@target_feature(sse4)
+func vector_dot_product_sse(a: []f32, b: []f32) -> f32 {
+    let mut sum = f32x4::splat(0.0);
+    
+    vectorize with simd_width(128) {
+        // Process 4 elements at a time using SSE4
+        for chunk in a.chunks_exact(4).zip(b.chunks_exact(4)) {
+            let vec_a = f32x4::from_slice(chunk.0);
+            let vec_b = f32x4::from_slice(chunk.1);
+            sum = sum .+ (vec_a .* vec_b);
+        }
+    }
+    
+    return sum.horizontal_sum();
+}
+
+// Auto-vectorized function with hardware detection
+func adaptive_vector_multiply(input: []f32, scalar: f32) -> []f32 {
+    let mut result: []f32 = Array::with_capacity(input.len());
+    
+    // Compiler chooses optimal SIMD width based on target
+    vectorize with simd_width(auto) {
+        parallel_map(input) { |value| =>
+            value * scalar  // Auto-vectorized scalar multiplication
+        }
+    }
+}
+
+// Image processing with 8-bit SIMD
+func brighten_image(pixels: []u8, brightness: u8) -> []u8 {
+    let mut result: []u8 = Array::with_capacity(pixels.len());
+    let brightness_vec = u8x32::splat(brightness);
+    
+    vectorize with simd_width(auto) {
+        for chunk in pixels.chunks_exact(32) {
+            let pixel_vec = u8x32::from_slice(chunk);
+            
+            // Saturating addition to prevent overflow
+            let brightened = pixel_vec .+ brightness_vec;
+            result.extend_from_slice(&brightened.to_array());
+        }
+    }
+    
+    return result;
+}
+
+// Complex SIMD operations with masks
+func conditional_processing(data: []f32, threshold: f32) -> []f32 {
+    let mut result: []f32 = Array::with_capacity(data.len());
+    let threshold_vec = f32x8::splat(threshold);
+    let replacement = f32x8::splat(0.0);
+    
+    vectorize {
+        for chunk in data.chunks_exact(8) {
+            let data_vec = f32x8::from_slice(chunk);
+            
+            // Create mask for values above threshold
+            let mask = data_vec .> threshold_vec;
+            
+            // Conditionally replace values using mask
+            let processed = mask.select(replacement, data_vec);
+            result.extend_from_slice(&processed.to_array());
+        }
+    }
+    
+    return result;
+}
+
+// Matrix multiplication with SIMD
+func matrix_multiply_simd(
+    a: [][]f32, 
+    b: [][]f32, 
+    rows: usize, 
+    cols: usize, 
+    inner: usize
+) -> [][]f32 {
+    let mut result = Array2D::zeros(rows, cols);
+    
+    vectorize with simd_width(auto) {
+        parallel for i in 0..rows {
+            for j in (0..cols).step_by(8) {  // Process 8 columns at once
+                let mut sum_vec = f32x8::splat(0.0);
+                
+                for k in 0..inner {
+                    let a_scalar = f32x8::splat(a[i][k]);
+                    let b_vec = f32x8::from_slice(&b[k][j..j+8]);
+                    sum_vec = sum_vec .+ (a_scalar .* b_vec);
+                }
+                
+                result[i][j..j+8].copy_from_slice(&sum_vec.to_array());
+            }
+        }
+    }
+    
+    return result;
+}
+
+// Advanced SIMD with shuffle operations
+func interleave_vectors(a: f32x8, b: f32x8) -> (f32x8, f32x8) {
+    // Interleave elements from two vectors
+    let indices_low = [0, 8, 1, 9, 2, 10, 3, 11];
+    let indices_high = [4, 12, 5, 13, 6, 14, 7, 15];
+    
+    let low = a.shuffle::<f32x8>(b, indices_low);
+    let high = a.shuffle::<f32x8>(b, indices_high);
+    
+    return (low, high);
+}
+
+// Horizontal reductions and aggregations  
+func vector_statistics(data: []f32) -> (f32, f32, f32, f32) {
+    let mut sum_vec = f32x8::splat(0.0);
+    let mut min_vec = f32x8::splat(f32::INFINITY);
+    let mut max_vec = f32x8::splat(f32::NEG_INFINITY);
+    let mut count = 0;
+    
+    vectorize {
+        for chunk in data.chunks_exact(8) {
+            let data_vec = f32x8::from_slice(chunk);
+            
+            sum_vec = sum_vec .+ data_vec;
+            min_vec = min_vec.min(data_vec);
+            max_vec = max_vec.max(data_vec);
+            count += 8;
+        }
+    }
+    
+    let total_sum = sum_vec.horizontal_sum();
+    let min_val = min_vec.horizontal_min();
+    let max_val = max_vec.horizontal_max();
+    let mean = total_sum / (count as f32);
+    
+    return (total_sum, min_val, max_val, mean);
+}
+
+// Main function demonstrating all SIMD features
+func main() -> () {
+    // Test vector operations
+    let vec_a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+    let vec_b = [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+    
+    let dot_product = vector_dot_product(&vec_a, &vec_b);
+    print("Dot product:", dot_product);
+    
+    // Test adaptive vectorization
+    let multiplied = adaptive_vector_multiply(&vec_a, 2.0);
+    print("Multiplied vector:", multiplied);
+    
+    // Test image processing
+    let pixels = [100, 120, 80, 200, 50, 75, 125, 175];
+    let brightened = brighten_image(&pixels, 25);
+    print("Brightened pixels:", brightened);
+    
+    // Test conditional processing
+    let filtered = conditional_processing(&vec_a, 4.0);
+    print("Filtered values:", filtered);
+    
+    // Test statistics
+    let large_dataset = generate_test_data(1000);
+    let (sum, min, max, mean) = vector_statistics(&large_dataset);
+    print("Statistics - Sum: {}, Min: {}, Max: {}, Mean: {}", sum, min, max, mean);
+    
+    return;
+}
+
+// Helper function to generate test data
+func generate_test_data(size: usize) -> []f32 {
+    let mut data: []f32 = Array::with_capacity(size);
+    
+    for i in 0..size {
+        data.push((i as f32) * 0.1);
+    }
+    
+    return data;
+}

@@ -1,0 +1,59 @@
+# Rust build artifacts
+/target/
+/tests/target/
+Cargo.lock
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# LLVM IR output files
+*.ll
+*.bc
+
+# Compiled binaries
+/ea
+/ea.exe
+
+# Test artifacts
+/test_output/
+*.test
+
+# Documentation build
+/book/
+/target/doc/
+
+# Benchmark results
+/target/criterion/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Log files
+*.log
+
+# Local configuration
+.env
+.env.local
+
+# Coverage reports
+tarpaulin-report.html
+cobertura.xml
+lcov.info
+
+# Profiling data
+*.profraw
+*.profdata
