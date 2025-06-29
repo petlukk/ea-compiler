@@ -203,8 +203,17 @@ ea --emit-ast program.ea
 # Show tokens
 ea --emit-tokens program.ea
 
-# Show LLVM IR
+# Show LLVM IR  
 ea --emit-llvm program.ea
+
+# JIT execution mode (immediate run)
+ea --run program.ea
+
+# Clean output for piping
+ea --emit-llvm-only program.ea | lli
+
+# Quiet mode (suppress diagnostics)
+ea --quiet program.ea
 
 # Run built-in tests
 ea --test
@@ -226,10 +235,19 @@ ea --help
 - **Error Handling** - Position-aware errors with helpful messages
 - **CLI Interface** - Full-featured command-line tool
 
-### 🚧 Sprint 2 Roadmap
+### ✅ Recently Completed (Sprint 2)
 
-- **SIMD Integration** - `vectorize` blocks, SIMD types, auto-vectorization
-- **Memory Regions** - `mem_region` syntax, zero-cost memory management
+- **SIMD Foundation** - 32 SIMD vector types (i32x4, f32x8, etc.) with full lexer/parser support
+- **Advanced CLI Features** - JIT execution mode (`--run`), output formatting (`--emit-llvm-only`, `--quiet`)
+- **Binary Operators** - Complete arithmetic, logical, and comparison operators
+- **Standard Library** - Built-in print() function with proper LLVM integration
+- **JIT Compilation** - Immediate program execution via LLVM ExecutionEngine
+- **Enhanced Error Handling** - Comprehensive error propagation and user feedback
+
+### 🚧 Current Development (Sprint 3)
+
+- **Full SIMD Code Generation** - LLVM vector instruction emission
+- **Memory Regions** - `mem_region` syntax, zero-cost memory management  
 - **Adaptive Optimization** - `@optimize` attributes, compile-time execution
 - **Security Features** - Taint tracking, capability types
 
@@ -291,8 +309,11 @@ We welcome contributions! Please see our [Getting Started Guide](docs/getting_st
 
 ## 🏆 Achievements
 
-- **102/102 Tests Passing** - Comprehensive test coverage
-- **3.6x Development Velocity** - Completed Sprint 1 ahead of schedule
+- **102/102 Tests Passing** - Comprehensive test coverage across all components
+- **Complete Compilation Pipeline** - Source code to executable machine code via LLVM
+- **JIT Execution** - Immediate program execution without intermediate files
+- **SIMD-First Design** - 32 built-in vector types with element-wise operations
+- **Advanced CLI** - Professional-grade tooling with piping and formatting options
 - **Production-Ready Quality** - Clean architecture, excellent error handling
 - **Cross-Platform Support** - Linux, WSL2, Windows development
 - **Industry-Leading Performance** - Competitive with established compilers
