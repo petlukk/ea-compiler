@@ -1095,6 +1095,72 @@ fn generate_binary_expression(
                             ))?;
                         Ok(result.into())
                     },
+                    BinaryOp::And => {
+                        // Convert to boolean (i1) if needed, then perform logical AND
+                        let left_bool = if left_int.get_type().get_bit_width() == 1 {
+                            left_int
+                        } else {
+                            // Convert non-zero to true, zero to false
+                            let zero = self.context.i32_type().const_int(0, false);
+                            self.builder.build_int_compare(IntPredicate::NE, left_int, zero, "to_bool")
+                                .map_err(|e| CompileError::codegen_error(
+                                    format!("Failed to convert to bool: {:?}", e),
+                                    None
+                                ))?
+                        };
+                        
+                        let right_bool = if right_int.get_type().get_bit_width() == 1 {
+                            right_int
+                        } else {
+                            // Convert non-zero to true, zero to false
+                            let zero = self.context.i32_type().const_int(0, false);
+                            self.builder.build_int_compare(IntPredicate::NE, right_int, zero, "to_bool")
+                                .map_err(|e| CompileError::codegen_error(
+                                    format!("Failed to convert to bool: {:?}", e),
+                                    None
+                                ))?
+                        };
+                        
+                        let result = self.builder.build_and(left_bool, right_bool, "and")
+                            .map_err(|e| CompileError::codegen_error(
+                                format!("Failed to build logical AND: {:?}", e),
+                                None
+                            ))?;
+                        Ok(result.into())
+                    },
+                    BinaryOp::Or => {
+                        // Convert to boolean (i1) if needed, then perform logical OR
+                        let left_bool = if left_int.get_type().get_bit_width() == 1 {
+                            left_int
+                        } else {
+                            // Convert non-zero to true, zero to false
+                            let zero = self.context.i32_type().const_int(0, false);
+                            self.builder.build_int_compare(IntPredicate::NE, left_int, zero, "to_bool")
+                                .map_err(|e| CompileError::codegen_error(
+                                    format!("Failed to convert to bool: {:?}", e),
+                                    None
+                                ))?
+                        };
+                        
+                        let right_bool = if right_int.get_type().get_bit_width() == 1 {
+                            right_int
+                        } else {
+                            // Convert non-zero to true, zero to false
+                            let zero = self.context.i32_type().const_int(0, false);
+                            self.builder.build_int_compare(IntPredicate::NE, right_int, zero, "to_bool")
+                                .map_err(|e| CompileError::codegen_error(
+                                    format!("Failed to convert to bool: {:?}", e),
+                                    None
+                                ))?
+                        };
+                        
+                        let result = self.builder.build_or(left_bool, right_bool, "or")
+                            .map_err(|e| CompileError::codegen_error(
+                                format!("Failed to build logical OR: {:?}", e),
+                                None
+                            ))?;
+                        Ok(result.into())
+                    },
                     // For other operations, we'll return an error for now
                     _ => Err(CompileError::codegen_error(
                         format!("Binary operation {:?} not yet implemented for integers", op),
@@ -1179,6 +1245,48 @@ fn generate_binary_expression(
                         let result = self.builder.build_float_compare(FloatPredicate::ONE, left_float, right_float, "fcmp_ne")
                             .map_err(|e| CompileError::codegen_error(
                                 format!("Failed to build float comparison: {:?}", e),
+                                None
+                            ))?;
+                        Ok(result.into())
+                    },
+                    BinaryOp::And => {
+                        // Convert floats to boolean: non-zero is true, zero/NaN is false
+                        let zero = self.context.f64_type().const_float(0.0);
+                        let left_bool = self.builder.build_float_compare(FloatPredicate::ONE, left_float, zero, "float_to_bool")
+                            .map_err(|e| CompileError::codegen_error(
+                                format!("Failed to convert float to bool: {:?}", e),
+                                None
+                            ))?;
+                        let right_bool = self.builder.build_float_compare(FloatPredicate::ONE, right_float, zero, "float_to_bool")
+                            .map_err(|e| CompileError::codegen_error(
+                                format!("Failed to convert float to bool: {:?}", e),
+                                None
+                            ))?;
+                        
+                        let result = self.builder.build_and(left_bool, right_bool, "float_and")
+                            .map_err(|e| CompileError::codegen_error(
+                                format!("Failed to build logical AND for floats: {:?}", e),
+                                None
+                            ))?;
+                        Ok(result.into())
+                    },
+                    BinaryOp::Or => {
+                        // Convert floats to boolean: non-zero is true, zero/NaN is false
+                        let zero = self.context.f64_type().const_float(0.0);
+                        let left_bool = self.builder.build_float_compare(FloatPredicate::ONE, left_float, zero, "float_to_bool")
+                            .map_err(|e| CompileError::codegen_error(
+                                format!("Failed to convert float to bool: {:?}", e),
+                                None
+                            ))?;
+                        let right_bool = self.builder.build_float_compare(FloatPredicate::ONE, right_float, zero, "float_to_bool")
+                            .map_err(|e| CompileError::codegen_error(
+                                format!("Failed to convert float to bool: {:?}", e),
+                                None
+                            ))?;
+                        
+                        let result = self.builder.build_or(left_bool, right_bool, "float_or")
+                            .map_err(|e| CompileError::codegen_error(
+                                format!("Failed to build logical OR for floats: {:?}", e),
                                 None
                             ))?;
                         Ok(result.into())

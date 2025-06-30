@@ -349,7 +349,7 @@ impl Parser {
 
     /// Parses an assignment expression.
     fn assignment(&mut self) -> Result<Expr> {
-        let expr = self.simd_or()?;
+        let expr = self.logical_or()?;
 
         if self.match_tokens(&[
             TokenKind::Assign,
@@ -407,10 +407,10 @@ impl Parser {
 
     /// Parses a logical AND expression.
     fn logical_and(&mut self) -> Result<Expr> {
-        let mut expr = self.equality()?;
+        let mut expr = self.simd_or()?;
 
         while self.match_tokens(&[TokenKind::And]) {
-            let right = self.equality()?;
+            let right = self.simd_or()?;
             expr = Expr::Binary(
                 Box::new(expr),
                 BinaryOp::And,
