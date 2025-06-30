@@ -1,0 +1,346 @@
+# AutoGen Configuration for Eä Language Development
+# Version: 1.0.0
+
+project:
+  name: "Eä Programming Language"
+  version: "0.1.0"
+  repository: "https://github.com/your-username/ea-compiler"
+  
+coordination:
+  head_agent: "architect"
+  daily_standup_time: "09:00"
+  evening_review_time: "18:00"
+  max_parallel_tasks: 3
+
+agents:
+  - name: "architect"
+    role: "Head Agent - Project Orchestration"
+    system_message: "Lead the Eä compiler development, make architectural decisions, coordinate all agents, and interface with human co-creator"
+    capabilities:
+      - task_assignment
+      - conflict_resolution
+      - code_review
+      - human_interface
+    
+  - name: "lexington"
+    role: "Parser Agent - Lexical Analysis & Parsing"
+    system_message: "Expert in lexical analysis, parsing, AST design, and language frontends for Eä compiler"
+    capabilities:
+      - lexer_implementation
+      - parser_development
+      - ast_design
+      - grammar_definition
+    
+  - name: "tycho"
+    role: "Type System Agent - Type Checking & Ownership"
+    system_message: "Expert in type systems, ownership analysis, SIMD type checking, and static analysis for Eä"
+    capabilities:
+      - type_checking
+      - ownership_analysis
+      - type_inference
+      - simd_types
+    
+  - name: "codex"
+    role: "Code Generation Agent - LLVM & Optimization"
+    system_message: "Expert in LLVM IR generation, code optimization, SIMD code generation, and backend development"
+    capabilities:
+      - llvm_codegen
+      - optimization
+      - simd_codegen
+      - backend_development
+    
+  - name: "qa"
+    role: "Testing Agent - Quality Assurance"
+    system_message: "Expert in testing, validation, benchmarking, and quality assurance for compiler development"
+    capabilities:
+      - unit_testing
+      - integration_testing
+      - benchmarking
+      - validation
+    
+  - name: "docbot"
+    role: "Documentation Agent - Developer Experience"
+    system_message: "Expert in documentation, examples, tutorials, and developer experience for Eä language"
+    capabilities:
+      - documentation
+      - examples
+      - tutorials
+      - developer_experience
+
+# Sprint 1 Tasks (2 weeks)
+tasks:
+  # Parser Agent Tasks
+  - id: "LEX-001"
+    title: "Basic Lexer Implementation"
+    agent: "lexington"
+    priority: "critical"
+    status: "pending"
+    estimated_effort: "3 days"
+    description: "Create lexical analyzer for core Eä tokens"
+    deliverables:
+      - "Token definitions for keywords, operators, literals"
+      - "Lexer implementation in Rust using logos crate"
+      - "Comprehensive unit tests"
+      - "Error handling with line/column information"
+    acceptance_criteria:
+      - "Tokenizes all example programs from language spec"
+      - "Error recovery for invalid tokens"
+      - "Performance: >1MB/sec tokenization rate"
+      - "Zero memory leaks in stress tests"
+    dependencies: []
+    files:
+      - "src/lexer/mod.rs"
+      - "src/lexer/tokens.rs"
+      - "tests/lexer_tests.rs"
+    
+  - id: "PAR-002"
+    title: "Expression Parser"
+    agent: "lexington"
+    priority: "critical"
+    status: "pending"
+    estimated_effort: "4 days"
+    description: "Implement recursive descent parser for expressions"
+    deliverables:
+      - "AST node definitions for expressions"
+      - "Recursive descent parser with proper precedence"
+      - "Comprehensive expression parsing tests"
+      - "Clear parse error messages"
+    acceptance_criteria:
+      - "Correctly parses nested expressions: (a + b) * (c - d)"
+      - "Proper operator precedence: a + b * c = a + (b * c)"
+      - "Clear error messages for malformed expressions"
+      - "AST accurately represents parse structure"
+    dependencies: ["LEX-001"]
+    files:
+      - "src/parser/mod.rs"
+      - "src/parser/expressions.rs"
+      - "src/ast/mod.rs"
+      - "tests/parser_tests.rs"
+    
+  - id: "PAR-003"
+    title: "Statement Parser"
+    agent: "lexington"
+    priority: "high"
+    status: "pending"
+    estimated_effort: "5 days"
+    description: "Parse basic statements and function declarations"
+    deliverables:
+      - "AST nodes for statements and declarations"
+      - "Function declaration parsing"
+      - "Variable declaration parsing"
+      - "Control flow statement parsing"
+    acceptance_criteria:
+      - "Parses complete function definitions"
+      - "Handles parameter lists with types"
+      - "Supports both typed and inferred variable declarations"
+      - "Proper error recovery and reporting"
+    dependencies: ["PAR-002"]
+    files:
+      - "src/parser/statements.rs"
+      - "src/ast/statements.rs"
+      - "tests/statement_tests.rs"
+
+  # Type System Agent Tasks
+  - id: "TYPE-001"
+    title: "Basic Type System"
+    agent: "tycho"
+    priority: "critical"
+    status: "pending"
+    estimated_effort: "4 days"
+    description: "Implement fundamental type checking infrastructure"
+    deliverables:
+      - "Type representation structures"
+      - "Basic type compatibility checking"
+      - "Type inference for simple cases"
+      - "Type error reporting system"
+    acceptance_criteria:
+      - "Correctly types arithmetic expressions"
+      - "Detects type mismatches in assignments"
+      - "Infers types for simple let bindings"
+      - "Clear, helpful error messages"
+    dependencies: ["PAR-002"]
+    files:
+      - "src/type_system/mod.rs"
+      - "src/type_system/types.rs"
+      - "tests/type_tests.rs"
+    
+  - id: "TYPE-002"
+    title: "Function Type Checking"
+    agent: "tycho"
+    priority: "high"
+    status: "pending"
+    estimated_effort: "4 days"
+    description: "Implement type checking for function calls and declarations"
+    deliverables:
+      - "Function signature representation"
+      - "Parameter type checking"
+      - "Return type validation"
+      - "Function call type checking"
+    acceptance_criteria:
+      - "Correctly types function calls"
+      - "Validates argument count and types"
+      - "Checks return statement types against signature"
+      - "Reports clear errors for mismatches"
+    dependencies: ["TYPE-001", "PAR-003"]
+    files:
+      - "src/type_system/functions.rs"
+      - "tests/function_type_tests.rs"
+
+  # Code Generation Agent Tasks
+  - id: "CODEGEN-001"
+    title: "LLVM Infrastructure"
+    agent: "codex"
+    priority: "high"
+    status: "pending"
+    estimated_effort: "5 days"
+    description: "Set up LLVM code generation infrastructure"
+    deliverables:
+      - "LLVM context and module setup"
+      - "Basic IR generation for expressions"
+      - "Simple optimization pipeline"
+      - "Executable output generation"
+    acceptance_criteria:
+      - "Generates valid LLVM IR for simple programs"
+      - "Compiles to executable binaries"
+      - "Basic optimizations working (constant folding, DCE)"
+      - "Integration with type-checked AST"
+    dependencies: ["TYPE-001"]
+    files:
+      - "src/codegen/mod.rs"
+      - "src/codegen/llvm_context.rs"
+      - "tests/codegen_tests.rs"
+    
+  - id: "CODEGEN-002"
+    title: "Basic Code Generation"
+    agent: "codex"
+    priority: "high"
+    status: "pending"
+    estimated_effort: "4 days"
+    description: "Generate LLVM IR for fundamental language constructs"
+    deliverables:
+      - "Expression code generation"
+      - "Function definition generation"
+      - "Variable allocation and access"
+      - "Control flow generation"
+    acceptance_criteria:
+      - "Hello World program compiles and runs"
+      - "Simple arithmetic programs work correctly"
+      - "Function calls with parameters work"
+      - "Local variables are properly allocated"
+    dependencies: ["CODEGEN-001", "TYPE-002"]
+    files:
+      - "src/codegen/expressions.rs"
+      - "src/codegen/functions.rs"
+      - "tests/integration_tests.rs"
+
+  # Testing Agent Tasks
+  - id: "TEST-001"
+    title: "Test Infrastructure"
+    agent: "qa"
+    priority: "medium"
+    status: "pending"
+    estimated_effort: "3 days"
+    description: "Create comprehensive testing framework"
+    deliverables:
+      - "Unit testing framework for each component"
+      - "Integration testing setup"
+      - "Benchmark testing infrastructure"
+      - "Continuous integration configuration"
+    acceptance_criteria:
+      - "All components have >90% test coverage"
+      - "CI pipeline runs all tests automatically"
+      - "Performance benchmarks established"
+      - "Test failures are clearly diagnosed"
+    dependencies: ["LEX-001"]
+    files:
+      - ".github/workflows/ci.yml"
+      - "tests/test_helpers.rs"
+      - "benches/benchmarks.rs"
+    
+  - id: "TEST-002"
+    title: "End-to-End Testing"
+    agent: "qa"
+    priority: "medium"
+    status: "pending"
+    estimated_effort: "3 days"
+    description: "Create end-to-end compiler testing suite"
+    deliverables:
+      - "Complete program compilation tests"
+      - "Runtime behavior validation"
+      - "Error message quality tests"
+      - "Performance benchmarking"
+    acceptance_criteria:
+      - "End-to-end compilation works for test suite"
+      - "Runtime behavior matches expectations"
+      - "Error messages are helpful and accurate"
+      - "Performance baseline established"
+    dependencies: ["CODEGEN-002"]
+    files:
+      - "tests/e2e_tests.rs"
+      - "examples/test_programs/"
+
+  # Documentation Agent Tasks
+  - id: "DOC-001"
+    title: "Core Documentation"
+    agent: "docbot"
+    priority: "medium"
+    status: "pending"
+    estimated_effort: "3 days"
+    description: "Create essential developer documentation"
+    deliverables:
+      - "README with setup instructions"
+      - "Contributing guidelines"
+      - "Code architecture documentation"
+      - "API documentation for internal components"
+    acceptance_criteria:
+      - "New developers can follow setup instructions"
+      - "Code architecture is clearly explained"
+      - "All public APIs are documented"
+      - "Examples are working and tested"
+    dependencies: []
+    files:
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "docs/architecture.md"
+    
+  - id: "DOC-002"
+    title: "Language Tutorial"
+    agent: "docbot"
+    priority: "low"
+    status: "pending"
+    estimated_effort: "2 days"
+    description: "Create beginner tutorial for Eä language"
+    deliverables:
+      - "Getting started tutorial"
+      - "Language feature examples"
+      - "Common patterns documentation"
+      - "Troubleshooting guide"
+    acceptance_criteria:
+      - "Tutorial is beginner-friendly"
+      - "All examples compile and run"
+      - "Progressive complexity in examples"
+      - "Clear explanations of concepts"
+    dependencies: ["CODEGEN-002", "TEST-002"]
+    files:
+      - "docs/tutorial.md"
+      - "examples/tutorial/"
+
+# Success Metrics for Sprint 1
+success_metrics:
+  functional_goals:
+    - "Compile and run 'Hello, World!' program"
+    - "Parse and type-check simple arithmetic expressions"
+    - "Generate working executables for basic programs"
+    - "Comprehensive test suite with >90% coverage"
+  
+  quality_goals:
+    - "Clear, helpful error messages for common mistakes"
+    - "Fast compilation times (<1 second for small programs)"
+    - "Clean, maintainable codebase architecture"
+    - "Complete documentation for contributors"
+  
+  learning_goals:
+    - "Validate language design assumptions"
+    - "Identify performance bottlenecks early"
+    - "Establish development velocity baseline"
+    - "Refine agent coordination process"
