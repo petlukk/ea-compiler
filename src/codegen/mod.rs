@@ -1703,13 +1703,22 @@ fn generate_binary_expression(
         
         // Generate the appropriate LLVM instruction based on operator
         let result = match operator {
+            // Arithmetic operations
             SIMDOperator::DotAdd => {
-                // Check if we're dealing with float or integer vectors
                 if left_vec.get_type().get_element_type().is_float_type() {
                     self.builder.build_float_add(left_vec, right_vec, "simd_fadd")
                         .map(|v| v.into())
                 } else {
                     self.builder.build_int_add(left_vec, right_vec, "simd_add")
+                        .map(|v| v.into())
+                }
+            }
+            SIMDOperator::DotSubtract => {
+                if left_vec.get_type().get_element_type().is_float_type() {
+                    self.builder.build_float_sub(left_vec, right_vec, "simd_fsub")
+                        .map(|v| v.into())
+                } else {
+                    self.builder.build_int_sub(left_vec, right_vec, "simd_sub")
                         .map(|v| v.into())
                 }
             }
@@ -1727,11 +1736,12 @@ fn generate_binary_expression(
                     self.builder.build_float_div(left_vec, right_vec, "simd_fdiv")
                         .map(|v| v.into())
                 } else {
-                    // For integer division, use signed division
                     self.builder.build_int_signed_div(left_vec, right_vec, "simd_sdiv")
                         .map(|v| v.into())
                 }
             }
+            
+            // Bitwise operations
             SIMDOperator::DotAnd => {
                 self.builder.build_and(left_vec, right_vec, "simd_and")
                     .map(|v| v.into())
@@ -1743,6 +1753,62 @@ fn generate_binary_expression(
             SIMDOperator::DotXor => {
                 self.builder.build_xor(left_vec, right_vec, "simd_xor")
                     .map(|v| v.into())
+            }
+            
+            // Comparison operations
+            SIMDOperator::DotEqual => {
+                if left_vec.get_type().get_element_type().is_float_type() {
+                    self.builder.build_float_compare(FloatPredicate::OEQ, left_vec, right_vec, "simd_fcmp_eq")
+                        .map(|v| v.into())
+                } else {
+                    self.builder.build_int_compare(IntPredicate::EQ, left_vec, right_vec, "simd_icmp_eq")
+                        .map(|v| v.into())
+                }
+            }
+            SIMDOperator::DotNotEqual => {
+                if left_vec.get_type().get_element_type().is_float_type() {
+                    self.builder.build_float_compare(FloatPredicate::ONE, left_vec, right_vec, "simd_fcmp_ne")
+                        .map(|v| v.into())
+                } else {
+                    self.builder.build_int_compare(IntPredicate::NE, left_vec, right_vec, "simd_icmp_ne")
+                        .map(|v| v.into())
+                }
+            }
+            SIMDOperator::DotLess => {
+                if left_vec.get_type().get_element_type().is_float_type() {
+                    self.builder.build_float_compare(FloatPredicate::OLT, left_vec, right_vec, "simd_fcmp_lt")
+                        .map(|v| v.into())
+                } else {
+                    self.builder.build_int_compare(IntPredicate::SLT, left_vec, right_vec, "simd_icmp_slt")
+                        .map(|v| v.into())
+                }
+            }
+            SIMDOperator::DotGreater => {
+                if left_vec.get_type().get_element_type().is_float_type() {
+                    self.builder.build_float_compare(FloatPredicate::OGT, left_vec, right_vec, "simd_fcmp_gt")
+                        .map(|v| v.into())
+                } else {
+                    self.builder.build_int_compare(IntPredicate::SGT, left_vec, right_vec, "simd_icmp_sgt")
+                        .map(|v| v.into())
+                }
+            }
+            SIMDOperator::DotLessEqual => {
+                if left_vec.get_type().get_element_type().is_float_type() {
+                    self.builder.build_float_compare(FloatPredicate::OLE, left_vec, right_vec, "simd_fcmp_le")
+                        .map(|v| v.into())
+                } else {
+                    self.builder.build_int_compare(IntPredicate::SLE, left_vec, right_vec, "simd_icmp_sle")
+                        .map(|v| v.into())
+                }
+            }
+            SIMDOperator::DotGreaterEqual => {
+                if left_vec.get_type().get_element_type().is_float_type() {
+                    self.builder.build_float_compare(FloatPredicate::OGE, left_vec, right_vec, "simd_fcmp_ge")
+                        .map(|v| v.into())
+                } else {
+                    self.builder.build_int_compare(IntPredicate::SGE, left_vec, right_vec, "simd_icmp_sge")
+                        .map(|v| v.into())
+                }
             }
         };
         
@@ -1868,6 +1934,60 @@ fn generate_binary_expression(
                                     }
                                 }
                             }
+                            crate::ast::ReductionOp::Min => {
+                                if vector_type.get_element_type().is_float_type() {
+                                    if let (BasicValueEnum::FloatValue(acc), BasicValueEnum::FloatValue(elem)) = (accumulator, element) {
+                                        // Use fcmp + select for min
+                                        let cmp = self.builder.build_float_compare(
+                                            inkwell::FloatPredicate::OLT, acc, elem, "min_cmp"
+                                        ).map_err(|_| CompileError::codegen_error("Failed to build float compare".to_string(), None))?;
+                                        self.builder.build_select(cmp, acc, elem, "reduce_min")
+                                            .map(|v| v.into())
+                                            .map_err(|_| CompileError::codegen_error("Failed to build select".to_string(), None))?
+                                    } else {
+                                        return Err(CompileError::codegen_error("Type mismatch in reduction".to_string(), None));
+                                    }
+                                } else {
+                                    if let (BasicValueEnum::IntValue(acc), BasicValueEnum::IntValue(elem)) = (accumulator, element) {
+                                        // Use icmp + select for min
+                                        let cmp = self.builder.build_int_compare(
+                                            inkwell::IntPredicate::SLT, acc, elem, "min_cmp"
+                                        ).map_err(|_| CompileError::codegen_error("Failed to build int compare".to_string(), None))?;
+                                        self.builder.build_select(cmp, acc, elem, "reduce_min")
+                                            .map(|v| v.into())
+                                            .map_err(|_| CompileError::codegen_error("Failed to build select".to_string(), None))?
+                                    } else {
+                                        return Err(CompileError::codegen_error("Type mismatch in reduction".to_string(), None));
+                                    }
+                                }
+                            }
+                            crate::ast::ReductionOp::Max => {
+                                if vector_type.get_element_type().is_float_type() {
+                                    if let (BasicValueEnum::FloatValue(acc), BasicValueEnum::FloatValue(elem)) = (accumulator, element) {
+                                        // Use fcmp + select for max
+                                        let cmp = self.builder.build_float_compare(
+                                            inkwell::FloatPredicate::OGT, acc, elem, "max_cmp"
+                                        ).map_err(|_| CompileError::codegen_error("Failed to build float compare".to_string(), None))?;
+                                        self.builder.build_select(cmp, acc, elem, "reduce_max")
+                                            .map(|v| v.into())
+                                            .map_err(|_| CompileError::codegen_error("Failed to build select".to_string(), None))?
+                                    } else {
+                                        return Err(CompileError::codegen_error("Type mismatch in reduction".to_string(), None));
+                                    }
+                                } else {
+                                    if let (BasicValueEnum::IntValue(acc), BasicValueEnum::IntValue(elem)) = (accumulator, element) {
+                                        // Use icmp + select for max
+                                        let cmp = self.builder.build_int_compare(
+                                            inkwell::IntPredicate::SGT, acc, elem, "max_cmp"
+                                        ).map_err(|_| CompileError::codegen_error("Failed to build int compare".to_string(), None))?;
+                                        self.builder.build_select(cmp, acc, elem, "reduce_max")
+                                            .map(|v| v.into())
+                                            .map_err(|_| CompileError::codegen_error("Failed to build select".to_string(), None))?
+                                    } else {
+                                        return Err(CompileError::codegen_error("Type mismatch in reduction".to_string(), None));
+                                    }
+                                }
+                            }
                             _ => {
                                 return Err(CompileError::codegen_error(
                                     format!("Reduction operation {:?} not yet implemented", operation),
@@ -1881,6 +2001,168 @@ fn generate_binary_expression(
                 } else {
                     Err(CompileError::codegen_error(
                         "Reduction requires vector operand".to_string(),
+                        None
+                    ))
+                }
+            }
+            SIMDExpr::DotProduct { left, right, .. } => {
+                // Generate dot product: sum of element-wise multiplication
+                let left_val = self.generate_expression(left)?;
+                let right_val = self.generate_expression(right)?;
+                
+                if let (BasicValueEnum::VectorValue(left_vec), BasicValueEnum::VectorValue(right_vec)) = (left_val, right_val) {
+                    // First, do element-wise multiplication
+                    let product = if left_vec.get_type().get_element_type().is_float_type() {
+                        self.builder.build_float_mul(left_vec, right_vec, "dot_mul")
+                            .map_err(|_| CompileError::codegen_error("Failed to build vector multiply".to_string(), None))?
+                    } else {
+                        self.builder.build_int_mul(left_vec, right_vec, "dot_mul")
+                            .map_err(|_| CompileError::codegen_error("Failed to build vector multiply".to_string(), None))?
+                    };
+                    
+                    // Then reduce with sum
+                    let vector_type = product.get_type();
+                    let element_count = vector_type.get_size();
+                    
+                    if element_count == 0 {
+                        return Err(CompileError::codegen_error(
+                            "Cannot compute dot product of empty vectors".to_string(),
+                            None
+                        ));
+                    }
+                    
+                    // Extract first element as accumulator
+                    let zero_index = self.context.i32_type().const_int(0, false);
+                    let mut accumulator = self.builder.build_extract_element(product, zero_index, "extract_0")
+                        .map_err(|_| CompileError::codegen_error(
+                            "Failed to extract vector element".to_string(),
+                            None
+                        ))?;
+                    
+                    // Sum remaining elements
+                    for i in 1..element_count {
+                        let index = self.context.i32_type().const_int(i as u64, false);
+                        let element = self.builder.build_extract_element(product, index, &format!("extract_{}", i))
+                            .map_err(|_| CompileError::codegen_error(
+                                "Failed to extract vector element".to_string(),
+                                None
+                            ))?;
+                        
+                        accumulator = if vector_type.get_element_type().is_float_type() {
+                            if let (BasicValueEnum::FloatValue(acc), BasicValueEnum::FloatValue(elem)) = (accumulator, element) {
+                                self.builder.build_float_add(acc, elem, "dot_add")
+                                    .map(|v| v.into())
+                                    .map_err(|_| CompileError::codegen_error("Failed to build float add".to_string(), None))?
+                            } else {
+                                return Err(CompileError::codegen_error("Type mismatch in dot product".to_string(), None));
+                            }
+                        } else {
+                            if let (BasicValueEnum::IntValue(acc), BasicValueEnum::IntValue(elem)) = (accumulator, element) {
+                                self.builder.build_int_add(acc, elem, "dot_add")
+                                    .map(|v| v.into())
+                                    .map_err(|_| CompileError::codegen_error("Failed to build int add".to_string(), None))?
+                            } else {
+                                return Err(CompileError::codegen_error("Type mismatch in dot product".to_string(), None));
+                            }
+                        };
+                    }
+                    
+                    Ok(accumulator)
+                } else {
+                    Err(CompileError::codegen_error(
+                        "Dot product requires two vector operands".to_string(),
+                        None
+                    ))
+                }
+            }
+            SIMDExpr::VectorLoad { address, vector_type, alignment, .. } => {
+                // Generate vector load from memory
+                let address_val = self.generate_expression(address)?;
+                
+                if let BasicValueEnum::PointerValue(ptr) = address_val {
+                    // Get the LLVM vector type
+                    let llvm_vector_type = self.simd_type_to_llvm(vector_type)?;
+                    
+                    // Cast pointer to vector pointer type if needed
+                    let vector_ptr = if ptr.get_type().get_element_type() != llvm_vector_type.into() {
+                        self.builder.build_bit_cast(
+                            ptr,
+                            llvm_vector_type.ptr_type(AddressSpace::default()),
+                            "vector_ptr_cast"
+                        ).map_err(|_| CompileError::codegen_error("Failed to cast pointer for vector load".to_string(), None))?
+                            .into_pointer_value()
+                    } else {
+                        ptr
+                    };
+                    
+                    // Set alignment based on parameter or default
+                    let align_bytes = alignment.unwrap_or(self.get_default_alignment(vector_type));
+                    
+                    // Build the load instruction
+                    let load_inst = self.builder.build_load(vector_ptr, "vector_load")
+                        .map_err(|_| CompileError::codegen_error("Failed to build vector load".to_string(), None))?;
+                    
+                    // Set alignment
+                    if let BasicValueEnum::VectorValue(vec_val) = load_inst {
+                        if let Some(load_inst) = vec_val.as_instruction_value() {
+                            load_inst.set_alignment(align_bytes).map_err(|_| 
+                                CompileError::codegen_error("Failed to set load alignment".to_string(), None))?;
+                        }
+                    }
+                    
+                    Ok(load_inst)
+                } else {
+                    Err(CompileError::codegen_error(
+                        "Vector load requires pointer address".to_string(),
+                        None
+                    ))
+                }
+            }
+            SIMDExpr::VectorStore { address, vector, alignment, .. } => {
+                // Generate vector store to memory
+                let address_val = self.generate_expression(address)?;
+                let vector_val = self.generate_expression(vector)?;
+                
+                if let (BasicValueEnum::PointerValue(ptr), BasicValueEnum::VectorValue(vec)) = (address_val, vector_val) {
+                    // Cast pointer to vector pointer type if needed
+                    let vector_ptr = if ptr.get_type().get_element_type() != vec.get_type().into() {
+                        self.builder.build_bit_cast(
+                            ptr,
+                            vec.get_type().ptr_type(AddressSpace::default()),
+                            "vector_ptr_cast"
+                        ).map_err(|_| CompileError::codegen_error("Failed to cast pointer for vector store".to_string(), None))?
+                            .into_pointer_value()
+                    } else {
+                        ptr
+                    };
+                    
+                    // Set alignment based on parameter or infer from vector type
+                    let align_bytes = alignment.unwrap_or_else(|| {
+                        // Infer alignment from vector width
+                        let element_count = vec.get_type().get_size();
+                        let element_size = if vec.get_type().get_element_type().is_float_type() {
+                            if vec.get_type().get_element_type().into_float_type().get_bit_width() == 32 { 4 } else { 8 }
+                        } else {
+                            vec.get_type().get_element_type().into_int_type().get_bit_width() / 8
+                        };
+                        let total_bytes = element_count * element_size;
+                        // Use natural alignment for common SIMD sizes
+                        if total_bytes >= 32 { 32 } else if total_bytes >= 16 { 16 } else { total_bytes }
+                    });
+                    
+                    // Build the store instruction
+                    let store_inst = self.builder.build_store(vector_ptr, vec)
+                        .map_err(|_| CompileError::codegen_error("Failed to build vector store".to_string(), None))?;
+                    
+                    // Set alignment
+                    store_inst.set_alignment(align_bytes).map_err(|_| 
+                        CompileError::codegen_error("Failed to set store alignment".to_string(), None))?;
+                    
+                    // Vector store returns void
+                    Ok(self.context.i32_type().const_int(0, false).into())
+                } else {
+                    Err(CompileError::codegen_error(
+                        "Vector store requires pointer address and vector value".to_string(),
                         None
                     ))
                 }
@@ -2411,5 +2693,50 @@ fn generate_binary_expression(
         // This is a simplified version for demonstration
         
         Ok(())
+    }
+    
+    /// Get default memory alignment for a SIMD vector type
+    fn get_default_alignment(&self, vector_type: &SIMDVectorType) -> u32 {
+        match vector_type {
+            // 32-bit float vectors
+            SIMDVectorType::F32x2 => 8,   // 2 * 4 bytes
+            SIMDVectorType::F32x4 => 16,  // 4 * 4 bytes (SSE alignment)
+            SIMDVectorType::F32x8 => 32,  // 8 * 4 bytes (AVX alignment)
+            SIMDVectorType::F32x16 => 64, // 16 * 4 bytes (AVX-512 alignment)
+            
+            // 64-bit float vectors
+            SIMDVectorType::F64x2 => 16,  // 2 * 8 bytes (SSE alignment)
+            SIMDVectorType::F64x4 => 32,  // 4 * 8 bytes (AVX alignment)
+            SIMDVectorType::F64x8 => 64,  // 8 * 8 bytes (AVX-512 alignment)
+            
+            // 32-bit integer vectors
+            SIMDVectorType::I32x2 | SIMDVectorType::U32x4 => 8,
+            SIMDVectorType::I32x4 => 16,  // SSE alignment
+            SIMDVectorType::I32x8 | SIMDVectorType::U32x8 => 32,  // AVX alignment
+            SIMDVectorType::I32x16 => 64, // AVX-512 alignment
+            
+            // 64-bit integer vectors
+            SIMDVectorType::I64x2 => 16,  // SSE alignment
+            SIMDVectorType::I64x4 => 32,  // AVX alignment
+            SIMDVectorType::I64x8 => 64,  // AVX-512 alignment
+            
+            // 16-bit integer vectors
+            SIMDVectorType::I16x4 => 8,   // 4 * 2 bytes
+            SIMDVectorType::I16x8 | SIMDVectorType::U16x8 => 16,  // SSE alignment
+            SIMDVectorType::I16x16 | SIMDVectorType::U16x16 => 32, // AVX alignment
+            SIMDVectorType::I16x32 => 64, // AVX-512 alignment
+            
+            // 8-bit integer vectors
+            SIMDVectorType::I8x8 => 8,    // 8 * 1 bytes
+            SIMDVectorType::I8x16 | SIMDVectorType::U8x16 => 16,  // SSE alignment
+            SIMDVectorType::I8x32 | SIMDVectorType::U8x32 => 32,  // AVX alignment
+            SIMDVectorType::I8x64 => 64,  // AVX-512 alignment
+            
+            // Mask vectors
+            SIMDVectorType::Mask8 => 1,
+            SIMDVectorType::Mask16 => 2,
+            SIMDVectorType::Mask32 => 4,
+            SIMDVectorType::Mask64 => 8,
+        }
     }
 }

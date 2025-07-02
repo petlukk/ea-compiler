@@ -128,6 +128,29 @@ pub enum SIMDExpr {
         operation: ReductionOp,
         position: Position,
     },
+    
+    /// SIMD dot product: dot_product(a, b)
+    DotProduct {
+        left: Box<Expr>,
+        right: Box<Expr>,
+        position: Position,
+    },
+    
+    /// SIMD vector load from memory: load_vector(address, alignment)
+    VectorLoad {
+        address: Box<Expr>,
+        vector_type: SIMDVectorType,
+        alignment: Option<u32>, // Optional alignment in bytes (16, 32, etc.)
+        position: Position,
+    },
+    
+    /// SIMD vector store to memory: store_vector(address, vector, alignment)
+    VectorStore {
+        address: Box<Expr>,
+        vector: Box<Expr>,
+        alignment: Option<u32>, // Optional alignment in bytes
+        position: Position,
+    },
 }
 
 /// SIMD vector types - all 32 types from SIMD-001
@@ -152,15 +175,27 @@ pub enum SIMDVectorType {
     Mask8, Mask16, Mask32, Mask64,
 }
 
-/// SIMD operators - all 6 operators from SIMD-001
+/// SIMD operators - comprehensive set for element-wise operations
 #[derive(Debug, Clone, PartialEq)]
 pub enum SIMDOperator {
-    DotMultiply,  // .*
+    // Arithmetic
     DotAdd,       // .+
+    DotSubtract,  // .-
+    DotMultiply,  // .*
     DotDivide,    // ./
+    
+    // Bitwise
     DotAnd,       // .&
     DotOr,        // .|
     DotXor,       // .^
+    
+    // Comparison
+    DotEqual,     // .==
+    DotNotEqual,  // .!=
+    DotLess,      // .<
+    DotGreater,   // .>
+    DotLessEqual, // .<=
+    DotGreaterEqual, // .>=
 }
 
 /// Swizzle patterns for SIMD vector element selection
@@ -262,7 +297,8 @@ impl SIMDOperator {
     pub fn is_valid_for_types(&self, left: &SIMDVectorType, right: &SIMDVectorType) -> bool {
         match self {
             // Arithmetic operators require same element type and width
-            SIMDOperator::DotAdd | SIMDOperator::DotMultiply | SIMDOperator::DotDivide => {
+            SIMDOperator::DotAdd | SIMDOperator::DotSubtract | 
+            SIMDOperator::DotMultiply | SIMDOperator::DotDivide => {
                 left.is_compatible_with(right) && 
                 matches!(left.element_type(), "f32" | "f64" | "i32" | "i64" | "i16" | "i8" | "u32" | "u16" | "u8")
             }
@@ -271,6 +307,13 @@ impl SIMDOperator {
             SIMDOperator::DotAnd | SIMDOperator::DotOr | SIMDOperator::DotXor => {
                 left.is_compatible_with(right) && 
                 !matches!(left.element_type(), "f32" | "f64")
+            }
+            
+            // Comparison operators work on all types, produce mask vectors
+            SIMDOperator::DotEqual | SIMDOperator::DotNotEqual |
+            SIMDOperator::DotLess | SIMDOperator::DotGreater |
+            SIMDOperator::DotLessEqual | SIMDOperator::DotGreaterEqual => {
+                left.is_compatible_with(right)
             }
         }
     }
@@ -320,12 +363,24 @@ impl std::fmt::Display for SIMDVectorType {
 impl std::fmt::Display for SIMDOperator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let op = match self {
-            SIMDOperator::DotMultiply => ".*",
+            // Arithmetic
             SIMDOperator::DotAdd => ".+",
+            SIMDOperator::DotSubtract => ".-",
+            SIMDOperator::DotMultiply => ".*",
             SIMDOperator::DotDivide => "./",
+            
+            // Bitwise
             SIMDOperator::DotAnd => ".&",
             SIMDOperator::DotOr => ".|",
             SIMDOperator::DotXor => ".^",
+            
+            // Comparison
+            SIMDOperator::DotEqual => ".==",
+            SIMDOperator::DotNotEqual => ".!=",
+            SIMDOperator::DotLess => ".<",
+            SIMDOperator::DotGreater => ".>",
+            SIMDOperator::DotLessEqual => ".<=",
+            SIMDOperator::DotGreaterEqual => ".>=",
         };
         write!(f, "{}", op)
     }
@@ -374,6 +429,23 @@ impl std::fmt::Display for SIMDExpr {
             }
             SIMDExpr::Reduction { vector, operation, .. } => {
                 write!(f, "{:?}({})", operation, vector)
+            }
+            SIMDExpr::DotProduct { left, right, .. } => {
+                write!(f, "dot_product({}, {})", left, right)
+            }
+            SIMDExpr::VectorLoad { address, vector_type, alignment, .. } => {
+                if let Some(align) = alignment {
+                    write!(f, "load_vector({}, {}, {})", address, vector_type, align)
+                } else {
+                    write!(f, "load_vector({}, {})", address, vector_type)
+                }
+            }
+            SIMDExpr::VectorStore { address, vector, alignment, .. } => {
+                if let Some(align) = alignment {
+                    write!(f, "store_vector({}, {}, {})", address, vector, align)
+                } else {
+                    write!(f, "store_vector({}, {})", address, vector)
+                }
             }
         }
     }

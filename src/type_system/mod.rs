@@ -882,6 +882,15 @@ impl TypeChecker {
             SIMDExpr::Reduction { vector, operation, position } => {
                 self.check_simd_reduction(vector, operation, position)
             }
+            SIMDExpr::DotProduct { left, right, position } => {
+                self.check_simd_dot_product(left, right, position)
+            }
+            SIMDExpr::VectorLoad { address, vector_type, alignment: _, position } => {
+                self.check_simd_vector_load(address, vector_type, position)
+            }
+            SIMDExpr::VectorStore { address, vector, alignment: _, position } => {
+                self.check_simd_vector_store(address, vector, position)
+            }
         }
     }
     
@@ -1058,6 +1067,101 @@ impl TypeChecker {
         }
     }
     
+    fn check_simd_dot_product(
+        &mut self,
+        left: &Box<crate::ast::Expr>,
+        right: &Box<crate::ast::Expr>,
+        _position: &Position
+    ) -> Result<EaType> {
+        let left_type = self.check_expression(left)?;
+        let right_type = self.check_expression(right)?;
+        
+        match (&left_type, &right_type) {
+            (EaType::SIMDVector { element_type: left_elem, vector_type: left_vec, .. }, 
+             EaType::SIMDVector { element_type: right_elem, vector_type: right_vec, .. }) => {
+                // Check that vector types are compatible
+                if left_vec != right_vec {
+                    return Err(CompileError::type_error(
+                        format!("Dot product requires vectors of same type, got {} and {}", left_vec, right_vec),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                
+                // Check that element types are compatible
+                if left_elem != right_elem {
+                    return Err(CompileError::type_error(
+                        format!("Dot product requires vectors with same element type, got {} and {}", left_elem, right_elem),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                
+                // Dot product returns scalar of element type
+                Ok((**left_elem).clone())
+            }
+            _ => Err(CompileError::type_error(
+                format!("Dot product requires two SIMD vectors, got {} and {}", left_type, right_type),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+    
+    fn check_simd_vector_load(
+        &mut self,
+        address: &Box<crate::ast::Expr>,
+        vector_type: &crate::ast::SIMDVectorType,
+        _position: &Position
+    ) -> Result<EaType> {
+        let address_type = self.check_expression(address)?;
+        
+        // Check that address is a reference/pointer type
+        match address_type {
+            EaType::Reference(_) => {
+                // Return the vector type being loaded
+                let element_type = self.simd_vector_type_to_element_type(vector_type);
+                Ok(EaType::SIMDVector {
+                    element_type: Box::new(element_type),
+                    vector_type: vector_type.clone(),
+                    width: vector_type.width(),
+                })
+            }
+            _ => Err(CompileError::type_error(
+                format!("Vector load requires pointer address, got {}", address_type),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+    
+    fn check_simd_vector_store(
+        &mut self,
+        address: &Box<crate::ast::Expr>,
+        vector: &Box<crate::ast::Expr>,
+        _position: &Position
+    ) -> Result<EaType> {
+        let address_type = self.check_expression(address)?;
+        let vector_type = self.check_expression(vector)?;
+        
+        // Check that address is a reference/pointer type
+        match address_type {
+            EaType::Reference(_) => {
+                // Check that vector is a SIMD vector type
+                match vector_type {
+                    EaType::SIMDVector { .. } => {
+                        // Vector store returns void (unit type)
+                        Ok(EaType::Unit)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("Vector store requires SIMD vector value, got {}", vector_type),
+                        Position::new(0, 0, 0),
+                    )),
+                }
+            }
+            _ => Err(CompileError::type_error(
+                format!("Vector store requires pointer address, got {}", address_type),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+    
     /// Convert SIMD vector type to corresponding element type
     pub fn simd_vector_type_to_element_type(&self, vector_type: &crate::ast::SIMDVectorType) -> EaType {
         match vector_type.element_type() {
@@ -1092,7 +1196,8 @@ impl TypeChecker {
         
         // Check element type compatibility for the specific operation
         match operator {
-            crate::ast::SIMDOperator::DotAdd | crate::ast::SIMDOperator::DotMultiply => {
+            crate::ast::SIMDOperator::DotAdd | crate::ast::SIMDOperator::DotSubtract |
+            crate::ast::SIMDOperator::DotMultiply => {
                 if !self.simd_types_arithmetic_compatible(left_vector_type, right_vector_type) {
                     return Err(CompileError::type_error(
                         format!("Arithmetic SIMD operation {:?} requires compatible numeric vector types, got {} and {}", 
@@ -1114,6 +1219,18 @@ impl TypeChecker {
                 if !self.simd_types_bitwise_compatible(left_vector_type, right_vector_type) {
                     return Err(CompileError::type_error(
                         format!("Bitwise SIMD operation {:?} requires integer or mask vector types, got {} and {}", 
+                            operator, left_vector_type, right_vector_type),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+            }
+            crate::ast::SIMDOperator::DotEqual | crate::ast::SIMDOperator::DotNotEqual |
+            crate::ast::SIMDOperator::DotLess | crate::ast::SIMDOperator::DotGreater |
+            crate::ast::SIMDOperator::DotLessEqual | crate::ast::SIMDOperator::DotGreaterEqual => {
+                // Comparison operations work on all types, produce mask vectors
+                if left_vector_type.width() != right_vector_type.width() {
+                    return Err(CompileError::type_error(
+                        format!("Comparison SIMD operation {:?} requires same vector width, got {} and {}", 
                             operator, left_vector_type, right_vector_type),
                         Position::new(0, 0, 0),
                     ));

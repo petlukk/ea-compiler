@@ -1,0 +1,17 @@
+// Simple SIMD load/store demo
+func main() {
+    // Create a simple vector literal  
+    let vec1 = [1.0, 2.0, 3.0, 4.0]f32x4;
+    let vec2 = [5.0, 6.0, 7.0, 8.0]f32x4;
+    
+    // Element-wise addition
+    let result = vec1 .+ vec2;
+    
+    // Dot product demonstration
+    let dot = dot_product(vec1, vec2);
+    
+    // Horizontal sum demonstration
+    let sum = horizontal_sum(result);
+    
+    print("SIMD operations completed!");
+}

@@ -90,6 +90,12 @@ pub enum TokenKind {
     HorizontalMin,
     #[token("horizontal_max")]
     HorizontalMax,
+    #[token("dot_product")]
+    DotProduct,
+    #[token("load_vector")]
+    LoadVector,
+    #[token("store_vector")]
+    StoreVector,
     #[token("from_slice")]
     FromSlice,
     #[token("to_array")]
@@ -271,18 +277,37 @@ pub enum TokenKind {
     SlashAssign,
 
     // === SIMD-specific Operators (NEW) ===
-    #[token(".*")]
-    DotMultiply,     // Element-wise multiply
+    // Arithmetic
     #[token(".+")]
     DotAdd,          // Element-wise add
+    #[token(".-")]
+    DotSubtract,     // Element-wise subtract
+    #[token(".*")]
+    DotMultiply,     // Element-wise multiply
     #[token("./")]
     DotDivide,       // Element-wise divide
-    #[token(".|")]
-    DotOr,           // Element-wise bitwise OR
+    
+    // Bitwise
     #[token(".&")]
     DotAnd,          // Element-wise bitwise AND
+    #[token(".|")]
+    DotOr,           // Element-wise bitwise OR
     #[token(".^")]
     DotXor,          // Element-wise bitwise XOR
+    
+    // Comparison
+    #[token(".==")]
+    DotEqual,        // Element-wise equal
+    #[token(".!=")]
+    DotNotEqual,     // Element-wise not equal
+    #[token(".<")]
+    DotLess,         // Element-wise less than
+    #[token(".>")]
+    DotGreater,      // Element-wise greater than
+    #[token(".<=")]
+    DotLessEqual,    // Element-wise less than or equal
+    #[token(".>=")]
+    DotGreaterEqual, // Element-wise greater than or equal
 
     // === Delimiters ===
     #[token("(")]
@@ -420,6 +445,9 @@ impl fmt::Display for TokenKind {
             TokenKind::HorizontalSum => "horizontal_sum",
             TokenKind::HorizontalMin => "horizontal_min",
             TokenKind::HorizontalMax => "horizontal_max",
+            TokenKind::DotProduct => "dot_product",
+            TokenKind::LoadVector => "load_vector",
+            TokenKind::StoreVector => "store_vector",
             TokenKind::FromSlice => "from_slice",
             TokenKind::ToArray => "to_array",
             TokenKind::Splat => "splat",
@@ -508,12 +536,19 @@ impl fmt::Display for TokenKind {
             TokenKind::SlashAssign => "/=",
             
             // SIMD operators
-            TokenKind::DotMultiply => ".*",
             TokenKind::DotAdd => ".+",
+            TokenKind::DotSubtract => ".-",
+            TokenKind::DotMultiply => ".*",
             TokenKind::DotDivide => "./",
-            TokenKind::DotOr => ".|",
             TokenKind::DotAnd => ".&",
+            TokenKind::DotOr => ".|",
             TokenKind::DotXor => ".^",
+            TokenKind::DotEqual => ".==",
+            TokenKind::DotNotEqual => ".!=",
+            TokenKind::DotLess => ".<",
+            TokenKind::DotGreater => ".>",
+            TokenKind::DotLessEqual => ".<=",
+            TokenKind::DotGreaterEqual => ".>=",
             
             // Delimiters
             TokenKind::LeftParen => "(",
@@ -596,6 +631,9 @@ impl<'source> Lexer<'source> {
             "horizontal_sum" => Some(TokenKind::HorizontalSum),
             "horizontal_min" => Some(TokenKind::HorizontalMin),
             "horizontal_max" => Some(TokenKind::HorizontalMax),
+            "dot_product" => Some(TokenKind::DotProduct),
+            "load_vector" => Some(TokenKind::LoadVector),
+            "store_vector" => Some(TokenKind::StoreVector),
             "from_slice" => Some(TokenKind::FromSlice),
             "to_array" => Some(TokenKind::ToArray),
             "splat" => Some(TokenKind::Splat),

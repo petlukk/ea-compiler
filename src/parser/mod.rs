@@ -8,7 +8,7 @@
 
 use crate::{
     ast::{BinaryOp, Expr, Literal, Parameter, Stmt, TypeAnnotation, UnaryOp, 
-          SIMDExpr, SIMDOperator, SIMDVectorType}, // Added SIMDVectorType import
+          SIMDExpr, SIMDOperator, SIMDVectorType, ReductionOp}, // Added ReductionOp import
     error::{CompileError, Result},
     lexer::{Token, TokenKind}, // Removed unused Position import
 };
@@ -425,15 +425,38 @@ impl Parser {
     fn equality(&mut self) -> Result<Expr> {
         let mut expr = self.comparison()?;
 
-        while self.match_tokens(&[TokenKind::Equal, TokenKind::NotEqual]) {
+        while self.match_tokens(&[
+            TokenKind::Equal, TokenKind::NotEqual,
+            TokenKind::DotEqual, TokenKind::DotNotEqual
+        ]) {
             let operator = self.previous().clone();
             let right = self.comparison()?;
-            let op = match operator.kind {
-                TokenKind::Equal => BinaryOp::Equal,
-                TokenKind::NotEqual => BinaryOp::NotEqual,
+            
+            match operator.kind {
+                TokenKind::Equal => {
+                    expr = Expr::Binary(Box::new(expr), BinaryOp::Equal, Box::new(right));
+                }
+                TokenKind::NotEqual => {
+                    expr = Expr::Binary(Box::new(expr), BinaryOp::NotEqual, Box::new(right));
+                }
+                TokenKind::DotEqual => {
+                    expr = Expr::SIMD(SIMDExpr::ElementWise {
+                        left: Box::new(expr),
+                        operator: SIMDOperator::DotEqual,
+                        right: Box::new(right),
+                        position: operator.position,
+                    });
+                }
+                TokenKind::DotNotEqual => {
+                    expr = Expr::SIMD(SIMDExpr::ElementWise {
+                        left: Box::new(expr),
+                        operator: SIMDOperator::DotNotEqual,
+                        right: Box::new(right),
+                        position: operator.position,
+                    });
+                }
                 _ => unreachable!(),
-            };
-            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+            }
         }
 
         Ok(expr)
@@ -444,23 +467,61 @@ impl Parser {
         let mut expr = self.enhanced_term()?;
 
         while self.match_tokens(&[
-            TokenKind::Less,
-            TokenKind::LessEqual,
-            TokenKind::Greater,
-            TokenKind::GreaterEqual,
+            TokenKind::Less, TokenKind::LessEqual,
+            TokenKind::Greater, TokenKind::GreaterEqual,
+            TokenKind::DotLess, TokenKind::DotLessEqual,
+            TokenKind::DotGreater, TokenKind::DotGreaterEqual,
         ]) {
             let operator = self.previous().clone();
-            let right = self.term()?;
+            let right = self.enhanced_term()?;
             
-            let op = match operator.kind {
-                TokenKind::Less => BinaryOp::Less,
-                TokenKind::LessEqual => BinaryOp::LessEqual,
-                TokenKind::Greater => BinaryOp::Greater,
-                TokenKind::GreaterEqual => BinaryOp::GreaterEqual,
+            match operator.kind {
+                TokenKind::Less => {
+                    expr = Expr::Binary(Box::new(expr), BinaryOp::Less, Box::new(right));
+                }
+                TokenKind::LessEqual => {
+                    expr = Expr::Binary(Box::new(expr), BinaryOp::LessEqual, Box::new(right));
+                }
+                TokenKind::Greater => {
+                    expr = Expr::Binary(Box::new(expr), BinaryOp::Greater, Box::new(right));
+                }
+                TokenKind::GreaterEqual => {
+                    expr = Expr::Binary(Box::new(expr), BinaryOp::GreaterEqual, Box::new(right));
+                }
+                TokenKind::DotLess => {
+                    expr = Expr::SIMD(SIMDExpr::ElementWise {
+                        left: Box::new(expr),
+                        operator: SIMDOperator::DotLess,
+                        right: Box::new(right),
+                        position: operator.position,
+                    });
+                }
+                TokenKind::DotLessEqual => {
+                    expr = Expr::SIMD(SIMDExpr::ElementWise {
+                        left: Box::new(expr),
+                        operator: SIMDOperator::DotLessEqual,
+                        right: Box::new(right),
+                        position: operator.position,
+                    });
+                }
+                TokenKind::DotGreater => {
+                    expr = Expr::SIMD(SIMDExpr::ElementWise {
+                        left: Box::new(expr),
+                        operator: SIMDOperator::DotGreater,
+                        right: Box::new(right),
+                        position: operator.position,
+                    });
+                }
+                TokenKind::DotGreaterEqual => {
+                    expr = Expr::SIMD(SIMDExpr::ElementWise {
+                        left: Box::new(expr),
+                        operator: SIMDOperator::DotGreaterEqual,
+                        right: Box::new(right),
+                        position: operator.position,
+                    });
+                }
                 _ => unreachable!(),
-            };
-            
-            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+            }
         }
 
         Ok(expr)
@@ -605,8 +666,37 @@ impl Parser {
         
         if let Some(token) = self.match_tokens_and_get(&[TokenKind::Identifier("".to_string())]) {
             if let TokenKind::Identifier(name) = token.kind {
+                // Check if this is a function call
+                if self.check(&TokenKind::LeftParen) {
+                    return self.parse_function_call(name);
+                }
                 return Ok(Expr::Variable(name));
             }
+        }
+        
+        // Handle built-in SIMD reduction functions
+        if self.match_tokens(&[TokenKind::HorizontalSum]) {
+            return self.parse_reduction_function(ReductionOp::Sum);
+        }
+        
+        if self.match_tokens(&[TokenKind::HorizontalMin]) {
+            return self.parse_reduction_function(ReductionOp::Min);
+        }
+        
+        if self.match_tokens(&[TokenKind::HorizontalMax]) {
+            return self.parse_reduction_function(ReductionOp::Max);
+        }
+        
+        if self.match_tokens(&[TokenKind::DotProduct]) {
+            return self.parse_dot_product_function();
+        }
+        
+        if self.match_tokens(&[TokenKind::LoadVector]) {
+            return self.parse_load_vector_function();
+        }
+        
+        if self.match_tokens(&[TokenKind::StoreVector]) {
+            return self.parse_store_vector_function();
         }
 
         // Handle SIMD literals that already come as a single token
@@ -708,6 +798,19 @@ impl Parser {
                 TokenKind::DotAdd => {
                     self.advance();
                     let operator = SIMDOperator::DotAdd;
+                    let right = self.enhanced_factor()?;
+                    let position = self.previous().position.clone();
+                    
+                    expr = Expr::SIMD(SIMDExpr::ElementWise {
+                        left: Box::new(expr),
+                        operator,
+                        right: Box::new(right),
+                        position,
+                    });
+                }
+                TokenKind::DotSubtract => {
+                    self.advance();
+                    let operator = SIMDOperator::DotSubtract;
                     let right = self.enhanced_factor()?;
                     let position = self.previous().position.clone();
                     
@@ -1050,6 +1153,161 @@ impl Parser {
         };
         
         Ok(simd_type)
+    }
+    
+    /// Parse a function call expression
+    fn parse_function_call(&mut self, name: String) -> Result<Expr> {
+        self.consume(TokenKind::LeftParen, "Expected '(' after function name".to_string())?;
+        
+        let mut arguments = Vec::new();
+        
+        if !self.check(&TokenKind::RightParen) {
+            loop {
+                arguments.push(self.expression()?);
+                if !self.match_tokens(&[TokenKind::Comma]) {
+                    break;
+                }
+            }
+        }
+        
+        self.consume(TokenKind::RightParen, "Expected ')' after arguments".to_string())?;
+        
+        Ok(Expr::Call(
+            Box::new(Expr::Variable(name)),
+            arguments,
+        ))
+    }
+    
+    /// Parse a SIMD reduction function call
+    fn parse_reduction_function(&mut self, operation: ReductionOp) -> Result<Expr> {
+        self.consume(TokenKind::LeftParen, "Expected '(' after reduction function".to_string())?;
+        
+        let vector = self.expression()?;
+        
+        self.consume(TokenKind::RightParen, "Expected ')' after vector argument".to_string())?;
+        
+        let position = self.previous().position.clone();
+        
+        Ok(Expr::SIMD(SIMDExpr::Reduction {
+            vector: Box::new(vector),
+            operation,
+            position,
+        }))
+    }
+    
+    /// Parse a SIMD dot product function call
+    fn parse_dot_product_function(&mut self) -> Result<Expr> {
+        self.consume(TokenKind::LeftParen, "Expected '(' after dot_product".to_string())?;
+        
+        let left = self.expression()?;
+        
+        self.consume(TokenKind::Comma, "Expected ',' between dot product arguments".to_string())?;
+        
+        let right = self.expression()?;
+        
+        self.consume(TokenKind::RightParen, "Expected ')' after dot product arguments".to_string())?;
+        
+        let position = self.previous().position.clone();
+        
+        Ok(Expr::SIMD(SIMDExpr::DotProduct {
+            left: Box::new(left),
+            right: Box::new(right),
+            position,
+        }))
+    }
+    
+    /// Parse load_vector(address, vector_type) function call
+    fn parse_load_vector_function(&mut self) -> Result<Expr> {
+        self.consume(TokenKind::LeftParen, "Expected '(' after load_vector".to_string())?;
+        
+        let address = self.expression()?;
+        
+        self.consume(TokenKind::Comma, "Expected ',' between load_vector arguments".to_string())?;
+        
+        // Parse the vector type identifier
+        let vector_type = if let Some(token) = self.match_tokens_and_get(&[TokenKind::Identifier("".to_string())]) {
+            self.parse_simd_vector_type(&token.kind)?
+        } else {
+            return Err(CompileError::parse_error(
+                "Expected vector type identifier".to_string(),
+                self.peek().position.clone()
+            ));
+        };
+        
+        // Optional alignment parameter
+        let alignment = if self.match_tokens(&[TokenKind::Comma]) {
+            Some(self.parse_alignment()?)
+        } else {
+            None
+        };
+        
+        self.consume(TokenKind::RightParen, "Expected ')' after load_vector arguments".to_string())?;
+        
+        let position = self.previous().position.clone();
+        
+        Ok(Expr::SIMD(SIMDExpr::VectorLoad {
+            address: Box::new(address),
+            vector_type,
+            alignment,
+            position,
+        }))
+    }
+    
+    /// Parse store_vector(address, vector) function call
+    fn parse_store_vector_function(&mut self) -> Result<Expr> {
+        self.consume(TokenKind::LeftParen, "Expected '(' after store_vector".to_string())?;
+        
+        let address = self.expression()?;
+        
+        self.consume(TokenKind::Comma, "Expected ',' between store_vector arguments".to_string())?;
+        
+        let vector = self.expression()?;
+        
+        // Optional alignment parameter
+        let alignment = if self.match_tokens(&[TokenKind::Comma]) {
+            Some(self.parse_alignment()?)
+        } else {
+            None
+        };
+        
+        self.consume(TokenKind::RightParen, "Expected ')' after store_vector arguments".to_string())?;
+        
+        let position = self.previous().position.clone();
+        
+        Ok(Expr::SIMD(SIMDExpr::VectorStore {
+            address: Box::new(address),
+            vector: Box::new(vector),
+            alignment,
+            position,
+        }))
+    }
+    
+    /// Parse alignment parameter (expects integer literal)
+    fn parse_alignment(&mut self) -> Result<u32> {
+        if let Some(token) = self.match_tokens_and_get(&[TokenKind::Integer(0)]) {
+            if let TokenKind::Integer(value) = token.kind {
+                let alignment = value as u32;
+                // Validate alignment is power of 2 and reasonable
+                if alignment.is_power_of_two() && alignment >= 1 && alignment <= 64 {
+                    Ok(alignment)
+                } else {
+                    Err(CompileError::parse_error(
+                        "Alignment must be a power of 2 between 1 and 64".to_string(),
+                        token.position
+                    ))
+                }
+            } else {
+                Err(CompileError::parse_error(
+                    "Invalid alignment value".to_string(),
+                    token.position
+                ))
+            }
+        } else {
+            Err(CompileError::parse_error(
+                "Expected alignment value".to_string(),
+                self.peek().position.clone()
+            ))
+        }
     }
 }
 
