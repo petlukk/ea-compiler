@@ -8,7 +8,8 @@
 
 use crate::{
     ast::{BinaryOp, Expr, Literal, Parameter, Stmt, TypeAnnotation, UnaryOp, 
-          SIMDExpr, SIMDOperator, SIMDVectorType, ReductionOp}, // Added ReductionOp import
+          SIMDExpr, SIMDOperator, SIMDVectorType, ReductionOp, EnumVariant, 
+          Pattern, MatchArm}, // Added Pattern and MatchArm imports
     error::{CompileError, Result},
     lexer::{Token, TokenKind}, // Removed unused Position import
 };
@@ -40,6 +41,14 @@ impl Parser {
     fn declaration(&mut self) -> Result<Stmt> {
         if self.match_tokens(&[TokenKind::Func]) {
             return self.function_declaration("function");
+        }
+        
+        if self.match_tokens(&[TokenKind::Struct]) {
+            return self.struct_declaration();
+        }
+        
+        if self.match_tokens(&[TokenKind::Enum]) {
+            return self.enum_declaration();
         }
         
         if self.match_tokens(&[TokenKind::Let]) {
@@ -129,6 +138,121 @@ impl Parser {
             return_type,
             body: Box::new(body),
         })
+    }
+    
+    /// Parses a struct declaration.
+    fn struct_declaration(&mut self) -> Result<Stmt> {
+        let name = self.consume_identifier("Expected struct name".to_string())?;
+        
+        self.consume(
+            TokenKind::LeftBrace,
+            "Expected '{' after struct name".to_string(),
+        )?;
+        
+        let mut fields = Vec::new();
+        
+        if !self.check(&TokenKind::RightBrace) {
+            loop {
+                let field_name = self.consume_identifier("Expected field name".to_string())?;
+                
+                self.consume(
+                    TokenKind::Colon,
+                    "Expected ':' after field name".to_string(),
+                )?;
+                
+                let field_type = self.consume_type_name("Expected field type".to_string())?;
+                
+                fields.push(crate::ast::StructField {
+                    name: field_name,
+                    type_annotation: crate::ast::TypeAnnotation {
+                        name: field_type,
+                        is_mutable: false,
+                    },
+                });
+                
+                if !self.match_tokens(&[TokenKind::Comma]) {
+                    break;
+                }
+                
+                // Allow trailing comma
+                if self.check(&TokenKind::RightBrace) {
+                    break;
+                }
+            }
+        }
+        
+        self.consume(
+            TokenKind::RightBrace,
+            "Expected '}' after struct fields".to_string(),
+        )?;
+        
+        Ok(Stmt::StructDeclaration { name, fields })
+    }
+    
+    /// Parses an enum declaration.
+    fn enum_declaration(&mut self) -> Result<Stmt> {
+        let name = self.consume_identifier("Expected enum name".to_string())?;
+        
+        self.consume(
+            TokenKind::LeftBrace,
+            "Expected '{' after enum name".to_string(),
+        )?;
+        
+        let mut variants = Vec::new();
+        
+        if !self.check(&TokenKind::RightBrace) {
+            loop {
+                let variant_name = self.consume_identifier("Expected variant name".to_string())?;
+                
+                let data = if self.match_tokens(&[TokenKind::LeftParen]) {
+                    let mut type_list = Vec::new();
+                    
+                    if !self.check(&TokenKind::RightParen) {
+                        loop {
+                            let type_name = self.consume_type_name("Expected type in variant".to_string())?;
+                            type_list.push(TypeAnnotation {
+                                name: type_name,
+                                is_mutable: false,
+                            });
+                            
+                            if !self.match_tokens(&[TokenKind::Comma]) {
+                                break;
+                            }
+                        }
+                    }
+                    
+                    self.consume(
+                        TokenKind::RightParen,
+                        "Expected ')' after variant types".to_string(),
+                    )?;
+                    
+                    Some(type_list)
+                } else {
+                    None
+                };
+                
+                variants.push(EnumVariant {
+                    name: variant_name,
+                    data,
+                });
+                
+                if !self.match_tokens(&[TokenKind::Comma]) {
+                    break;
+                }
+                
+                // Allow trailing comma
+                if self.check(&TokenKind::RightBrace) {
+                    break;
+                }
+            }
+        }
+        
+        self.consume(
+            TokenKind::RightBrace,
+            "Expected '}' after enum variants".to_string(),
+        )?;
+        
+        Ok(Stmt::EnumDeclaration { name, variants })
     }
     
     /// Parses a variable declaration.
@@ -276,6 +400,31 @@ impl Parser {
     
     /// Parses a for statement.
     fn for_statement(&mut self) -> Result<Stmt> {
+        // Check if this is a for-in loop by looking for the pattern: identifier 'in'
+        // We can peek ahead without consuming tokens
+        
+        // Check if the next token is an identifier
+        if matches!(self.peek().kind, TokenKind::Identifier(_)) {
+            // Look at the token after the identifier to see if it's 'in'
+            if self.current + 1 < self.tokens.len() {
+                if let TokenKind::In = self.tokens[self.current + 1].kind {
+                    // This is a for-in loop
+                    let variable = self.consume_identifier("Expected variable name in for-in loop".to_string())?;
+                    self.consume(TokenKind::In, "Expected 'in' keyword".to_string())?;
+                    let iterable = self.expression()?;
+                    let body = Box::new(self.statement()?);
+                    
+                    return Ok(Stmt::ForIn {
+                        variable,
+                        iterable,
+                        body,
+                    });
+                }
+            }
+        }
+        
+        // Parse as traditional for loop
+        
         self.consume(
             TokenKind::LeftParen,
             "Expected '(' after 'for'".to_string(),
@@ -344,6 +493,15 @@ impl Parser {
 
     /// Parses an expression.
     fn expression(&mut self) -> Result<Expr> {
+        self.match_expression()
+    }
+    
+    /// Parse match expressions or delegate to assignment
+    fn match_expression(&mut self) -> Result<Expr> {
+        if self.match_tokens(&[TokenKind::Match]) {
+            return self.parse_match_expression();
+        }
+        
         self.assignment()
     }
 
@@ -595,13 +753,29 @@ impl Parser {
             if self.match_tokens(&[TokenKind::LeftParen]) {
                 expr = self.finish_call(expr)?;
             } else if self.match_tokens(&[TokenKind::LeftBracket]) {
-                let index = self.expression()?;
-                // Use _ to indicate intentional non-use
-                let _ = self.consume(
-                    TokenKind::RightBracket,
-                    "Expected ']' after array index".to_string(),
-                )?;
-                expr = Expr::Index(Box::new(expr), Box::new(index));
+                let first_expr = self.expression()?;
+                
+                // Check if this is a slice (arr[start:end]) or regular index (arr[index])
+                if self.check(&TokenKind::Colon) {
+                    self.advance(); // consume ':'
+                    let end_expr = self.expression()?;
+                    let _ = self.consume(
+                        TokenKind::RightBracket,
+                        "Expected ']' after slice end".to_string(),
+                    )?;
+                    expr = Expr::Slice {
+                        array: Box::new(expr),
+                        start: Box::new(first_expr),
+                        end: Box::new(end_expr),
+                    };
+                } else {
+                    // Regular indexing
+                    let _ = self.consume(
+                        TokenKind::RightBracket,
+                        "Expected ']' after array index".to_string(),
+                    )?;
+                    expr = Expr::Index(Box::new(expr), Box::new(first_expr));
+                }
             } else if self.match_tokens(&[TokenKind::Dot]) {
                 let name = self.consume_identifier("Expected property name after '.'".to_string())?;
                 expr = Expr::FieldAccess(Box::new(expr), name);
@@ -664,12 +838,25 @@ impl Parser {
             }
         }
         
-        if let Some(token) = self.match_tokens_and_get(&[TokenKind::Identifier("".to_string())]) {
+        // Handle identifiers (variables, function calls, struct literals, enum literals)
+        if !self.is_at_end() && matches!(self.peek().kind, TokenKind::Identifier(_)) {
+            let token = self.advance().clone();
             if let TokenKind::Identifier(name) = token.kind {
+                // Check if this is an enum literal (Name::Variant)
+                if !self.is_at_end() && matches!(self.peek().kind, TokenKind::DoubleColon) {
+                    return self.parse_enum_literal(name);
+                }
+                
                 // Check if this is a function call
                 if self.check(&TokenKind::LeftParen) {
                     return self.parse_function_call(name);
                 }
+                
+                // Check if this is a struct literal
+                if self.check(&TokenKind::LeftBrace) {
+                    return self.parse_struct_literal(name);
+                }
+                
                 return Ok(Expr::Variable(name));
             }
         }
@@ -719,6 +906,11 @@ impl Parser {
         // Handle array literals and SIMD vector literals starting with [
         if self.match_tokens(&[TokenKind::LeftBracket]) {
             return self.parse_array_or_simd_literal();
+        }
+
+        // Handle block expressions
+        if self.match_tokens(&[TokenKind::LeftBrace]) {
+            return self.parse_block_expression();
         }
 
         // If we get here, we couldn't match any expression
@@ -1308,6 +1500,458 @@ impl Parser {
                 self.peek().position.clone()
             ))
         }
+    }
+    
+    /// Parse struct literal: StructName { field1: value1, field2: value2 }
+    fn parse_struct_literal(&mut self, struct_name: String) -> Result<Expr> {
+        self.consume(
+            TokenKind::LeftBrace,
+            "Expected '{' for struct literal".to_string(),
+        )?;
+        
+        let mut fields = Vec::new();
+        
+        if !self.check(&TokenKind::RightBrace) {
+            loop {
+                let field_name = self.consume_identifier("Expected field name".to_string())?;
+                
+                self.consume(
+                    TokenKind::Colon,
+                    "Expected ':' after field name".to_string(),
+                )?;
+                
+                let field_value = self.expression()?;
+                
+                fields.push(crate::ast::StructFieldInit {
+                    name: field_name,
+                    value: field_value,
+                });
+                
+                if !self.match_tokens(&[TokenKind::Comma]) {
+                    break;
+                }
+            }
+        }
+        
+        self.consume(
+            TokenKind::RightBrace,
+            "Expected '}' after struct fields".to_string(),
+        )?;
+        
+        Ok(Expr::StructLiteral {
+            name: struct_name,
+            fields,
+        })
+    }
+    
+    /// Parse enum literal: EnumName::Variant or EnumName::Variant(args)
+    fn parse_enum_literal(&mut self, enum_name: String) -> Result<Expr> {
+        // Consume the DoubleColon token directly since check() has issues with it
+        if !self.is_at_end() && matches!(self.peek().kind, TokenKind::DoubleColon) {
+            self.advance();
+        } else {
+            return Err(CompileError::parse_error(
+                "Expected '::' for enum variant".to_string(),
+                self.peek().position.clone(),
+            ));
+        }
+        
+        let variant_name = self.consume_identifier("Expected variant name".to_string())?;
+        
+        let mut args = Vec::new();
+        
+        // Check if variant has arguments
+        if self.match_tokens(&[TokenKind::LeftParen]) {
+            if !self.check(&TokenKind::RightParen) {
+                loop {
+                    args.push(self.expression()?);
+                    
+                    if !self.match_tokens(&[TokenKind::Comma]) {
+                        break;
+                    }
+                }
+            }
+            
+            self.consume(
+                TokenKind::RightParen,
+                "Expected ')' after enum variant arguments".to_string(),
+            )?;
+        }
+        
+        Ok(Expr::EnumLiteral {
+            enum_name,
+            variant: variant_name,
+            args,
+        })
+    }
+    
+    /// Parse a match value (without struct literal lookahead that conflicts with match arms)
+    fn match_value(&mut self) -> Result<Expr> {
+        self.match_value_logical_or()
+    }
+    
+    /// Logical OR for match values (avoids struct literal parsing)
+    fn match_value_logical_or(&mut self) -> Result<Expr> {
+        let mut expr = self.match_value_logical_and()?;
+
+        while self.match_tokens(&[TokenKind::Or]) {
+            let right = self.match_value_logical_and()?;
+            expr = Expr::Binary(
+                Box::new(expr),
+                BinaryOp::Or,
+                Box::new(right),
+            );
+        }
+
+        Ok(expr)
+    }
+
+    /// Logical AND for match values (avoids struct literal parsing)
+    fn match_value_logical_and(&mut self) -> Result<Expr> {
+        let mut expr = self.match_value_simd_or()?;
+
+        while self.match_tokens(&[TokenKind::And]) {
+            let right = self.match_value_simd_or()?;
+            expr = Expr::Binary(
+                Box::new(expr),
+                BinaryOp::And,
+                Box::new(right),
+            );
+        }
+
+        Ok(expr)
+    }
+
+    /// SIMD OR for match values (avoids struct literal parsing)
+    fn match_value_simd_or(&mut self) -> Result<Expr> {
+        let mut expr = self.match_value_equality()?;
+
+        while self.match_tokens(&[TokenKind::DotOr]) {
+            let right = self.match_value_equality()?;
+            expr = Expr::SIMD(SIMDExpr::ElementWise {
+                left: Box::new(expr),
+                operator: SIMDOperator::DotOr,
+                right: Box::new(right),
+                position: self.previous().position.clone(),
+            });
+        }
+
+        Ok(expr)
+    }
+
+    /// Equality for match values (avoids struct literal parsing)
+    fn match_value_equality(&mut self) -> Result<Expr> {
+        let mut expr = self.match_value_comparison()?;
+
+        while self.match_tokens(&[
+            TokenKind::Equal, TokenKind::NotEqual,
+            TokenKind::DotEqual, TokenKind::DotNotEqual
+        ]) {
+            let operator = self.previous().clone();
+            let right = self.match_value_comparison()?;
+            
+            match operator.kind {
+                TokenKind::Equal => {
+                    expr = Expr::Binary(Box::new(expr), BinaryOp::Equal, Box::new(right));
+                }
+                TokenKind::NotEqual => {
+                    expr = Expr::Binary(Box::new(expr), BinaryOp::NotEqual, Box::new(right));
+                }
+                TokenKind::DotEqual => {
+                    expr = Expr::SIMD(SIMDExpr::ElementWise {
+                        left: Box::new(expr),
+                        operator: SIMDOperator::DotEqual,
+                        right: Box::new(right),
+                        position: operator.position,
+                    });
+                }
+                TokenKind::DotNotEqual => {
+                    expr = Expr::SIMD(SIMDExpr::ElementWise {
+                        left: Box::new(expr),
+                        operator: SIMDOperator::DotNotEqual,
+                        right: Box::new(right),
+                        position: operator.position,
+                    });
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        Ok(expr)
+    }
+
+    /// Comparison for match values (avoids struct literal parsing)
+    fn match_value_comparison(&mut self) -> Result<Expr> {
+        let mut expr = self.match_value_primary()?;
+
+        while self.match_tokens(&[
+            TokenKind::Greater, TokenKind::GreaterEqual,
+            TokenKind::Less, TokenKind::LessEqual,
+        ]) {
+            let operator = self.previous().clone();
+            let right = self.match_value_primary()?;
+            
+            let binary_op = match operator.kind {
+                TokenKind::Greater => BinaryOp::Greater,
+                TokenKind::GreaterEqual => BinaryOp::GreaterEqual,
+                TokenKind::Less => BinaryOp::Less,
+                TokenKind::LessEqual => BinaryOp::LessEqual,
+                _ => unreachable!(),
+            };
+            
+            expr = Expr::Binary(Box::new(expr), binary_op, Box::new(right));
+        }
+
+        Ok(expr)
+    }
+
+    /// Primary expression for match values (WITHOUT struct literal lookahead)
+    fn match_value_primary(&mut self) -> Result<Expr> {
+        // Handle literals
+        if let Some(token) = self.match_tokens_and_get(&[TokenKind::Integer(0)]) {
+            if let TokenKind::Integer(value) = token.kind {
+                return Ok(Expr::Literal(Literal::Integer(value)));
+            }
+        }
+
+        if let Some(token) = self.match_tokens_and_get(&[TokenKind::Float(0.0)]) {
+            if let TokenKind::Float(value) = token.kind {
+                return Ok(Expr::Literal(Literal::Float(value)));
+            }
+        }
+
+        if let Some(token) = self.match_tokens_and_get(&[TokenKind::StringLiteral("".to_string())]) {
+            if let TokenKind::StringLiteral(value) = token.kind {
+                return Ok(Expr::Literal(Literal::String(value)));
+            }
+        }
+
+        if self.match_tokens(&[TokenKind::True]) {
+            return Ok(Expr::Literal(Literal::Boolean(true)));
+        }
+
+        if self.match_tokens(&[TokenKind::False]) {
+            return Ok(Expr::Literal(Literal::Boolean(false)));
+        }
+
+        // Handle identifiers (variables, function calls, enum literals)
+        if let Some(token) = self.match_tokens_and_get(&[TokenKind::Identifier("".to_string())]) {
+            if let TokenKind::Identifier(name) = token.kind {
+                // Check for enum literal with ::
+                if self.match_tokens(&[TokenKind::DoubleColon]) {
+                    let variant_token = self.consume_identifier("Expected variant name after '::'".to_string())?;
+                    
+                    // Check for variant with arguments: EnumName::Variant(args)
+                    if self.check(&TokenKind::LeftParen) {
+                        self.advance();
+                        let mut args = Vec::new();
+                        
+                        if !self.check(&TokenKind::RightParen) {
+                            loop {
+                                args.push(self.expression()?);
+                                if !self.match_tokens(&[TokenKind::Comma]) {
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        self.consume(TokenKind::RightParen, "Expected ')' after enum variant arguments".to_string())?;
+                        
+                        return Ok(Expr::EnumLiteral {
+                            enum_name: name,
+                            variant: variant_token,
+                            args,
+                        });
+                    } else {
+                        // Simple enum literal without arguments
+                        return Ok(Expr::EnumLiteral {
+                            enum_name: name,
+                            variant: variant_token,
+                            args: vec![],
+                        });
+                    }
+                }
+                
+                // Check for function call
+                if self.check(&TokenKind::LeftParen) {
+                    return self.parse_function_call(name);
+                }
+                
+                // NOTE: NO struct literal check here - this is the key difference
+                
+                return Ok(Expr::Variable(name));
+            }
+        }
+
+        // Handle grouping with parentheses
+        if self.match_tokens(&[TokenKind::LeftParen]) {
+            let expr = self.expression()?;
+            self.consume(
+                TokenKind::RightParen,
+                "Expected ')' after expression".to_string(),
+            )?;
+            return Ok(expr);
+        }
+
+        // Handle unary expressions
+        if self.match_tokens(&[TokenKind::Minus, TokenKind::Not, TokenKind::Ampersand]) {
+            let operator = self.previous().clone();
+            let expr = self.match_value_primary()?;
+            
+            let unary_op = match operator.kind {
+                TokenKind::Minus => UnaryOp::Negate,
+                TokenKind::Not => UnaryOp::Not,
+                TokenKind::Ampersand => UnaryOp::Reference,
+                _ => unreachable!(),
+            };
+            
+            return Ok(Expr::Unary(unary_op, Box::new(expr)));
+        }
+
+        Err(CompileError::parse_error(
+            "Expected expression".to_string(),
+            self.peek().position.clone(),
+        ))
+    }
+    
+    /// Parse match expression: match value { pattern => expr, ... }
+    fn parse_match_expression(&mut self) -> Result<Expr> {
+        let value = Box::new(self.match_value()?);
+        
+        self.consume(
+            TokenKind::LeftBrace,
+            "Expected '{' after match value".to_string(),
+        )?;
+        
+        let mut arms = Vec::new();
+        
+        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            let pattern = self.parse_pattern()?;
+            
+            self.consume(
+                TokenKind::FatArrow, // =>
+                "Expected '=>' after pattern".to_string(),
+            )?;
+            
+            let expression = self.expression()?;
+            
+            arms.push(MatchArm { pattern, expression });
+            
+            // Optional comma between arms
+            if self.match_tokens(&[TokenKind::Comma]) {
+                // Allow trailing comma
+                if self.check(&TokenKind::RightBrace) {
+                    break;
+                }
+            }
+        }
+        
+        self.consume(
+            TokenKind::RightBrace,
+            "Expected '}' after match arms".to_string(),
+        )?;
+        
+        Ok(Expr::Match { value, arms })
+    }
+    
+    /// Parse a pattern in a match arm
+    fn parse_pattern(&mut self) -> Result<Pattern> {
+        // Handle identifier patterns (variable, wildcard, enum variant)
+        if self.check_token_type(&TokenKind::Identifier("".to_string())) {
+            let token = self.advance().clone();
+            if let TokenKind::Identifier(name) = token.kind {
+                if name == "_" {
+                    return Ok(Pattern::Wildcard);
+                }
+                
+                // Check if this is an enum variant pattern (Name::Variant)
+                if self.check(&TokenKind::DoubleColon) {
+                    return self.parse_enum_variant_pattern(name);
+                }
+                
+                // Otherwise, it's a variable pattern
+                return Ok(Pattern::Variable(name));
+            }
+        }
+        
+        // Handle literals
+        if self.match_tokens(&[TokenKind::True]) {
+            return Ok(Pattern::Literal(Literal::Boolean(true)));
+        }
+        
+        if self.match_tokens(&[TokenKind::False]) {
+            return Ok(Pattern::Literal(Literal::Boolean(false)));
+        }
+        
+        if let Some(token) = self.match_tokens_and_get(&[TokenKind::Integer(0)]) {
+            if let TokenKind::Integer(n) = token.kind {
+                return Ok(Pattern::Literal(Literal::Integer(n)));
+            }
+        }
+        
+        if let Some(token) = self.match_tokens_and_get(&[TokenKind::StringLiteral("".to_string())]) {
+            if let TokenKind::StringLiteral(s) = token.kind {
+                return Ok(Pattern::Literal(Literal::String(s)));
+            }
+        }
+        
+        
+        Err(CompileError::parse_error(
+            "Expected pattern".to_string(),
+            self.peek().position.clone(),
+        ))
+    }
+    
+    /// Parse a block expression: { statements... }
+    fn parse_block_expression(&mut self) -> Result<Expr> {
+        let mut statements = Vec::new();
+        
+        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            statements.push(self.declaration()?);
+        }
+        
+        self.consume(
+            TokenKind::RightBrace,
+            "Expected '}' after block".to_string(),
+        )?;
+        
+        Ok(Expr::Block(statements))
+    }
+    
+    /// Parse enum variant pattern: EnumName::Variant(patterns...)
+    fn parse_enum_variant_pattern(&mut self, enum_name: String) -> Result<Pattern> {
+        self.consume(
+            TokenKind::DoubleColon,
+            "Expected '::' for enum variant pattern".to_string(),
+        )?;
+        
+        let variant_name = self.consume_identifier("Expected variant name".to_string())?;
+        
+        let mut sub_patterns = Vec::new();
+        
+        // Check if variant has sub-patterns
+        if self.match_tokens(&[TokenKind::LeftParen]) {
+            if !self.check(&TokenKind::RightParen) {
+                loop {
+                    sub_patterns.push(self.parse_pattern()?);
+                    
+                    if !self.match_tokens(&[TokenKind::Comma]) {
+                        break;
+                    }
+                }
+            }
+            
+            self.consume(
+                TokenKind::RightParen,
+                "Expected ')' after variant patterns".to_string(),
+            )?;
+        }
+        
+        Ok(Pattern::EnumVariant {
+            enum_name,
+            variant: variant_name,
+            patterns: sub_patterns,
+        })
     }
 }
 

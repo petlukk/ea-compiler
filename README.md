@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**A systems programming language with built-in SIMD, memory safety, and adaptive optimization**
+**A systems programming language with comprehensive SIMD support**
 
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg?style=flat-square&logo=rust)](https://www.rust-lang.org)
 [![LLVM](https://img.shields.io/badge/LLVM-14-blue.svg?style=flat-square)](https://llvm.org/)
@@ -13,16 +13,18 @@
 
 ## Overview
 
-Eä (pronounced "eh-AH") is a modern systems programming language designed for high-performance computing with built-in SIMD support, zero-cost memory management, and adaptive optimization. It compiles to efficient machine code via LLVM while providing memory safety guarantees and developer-friendly error messages.
+Eä is a programming language compiler that generates LLVM IR from source code. It features comprehensive SIMD support, strong typing, and compiles to efficient machine code.
 
-### Key Features
+### Implemented Features
 
-- **High Performance** - Zero-cost abstractions with LLVM optimization
-- **Memory Safety** - Compile-time guarantees without garbage collection  
-- **Built-in SIMD** - First-class vectorization support with load/store operations
-- **Adaptive Optimization** - Compile-time execution and intelligent caching
-- **Security by Design** - Taint tracking and capability-based security
-- **Developer Friendly** - Clear error messages and excellent tooling
+- **Complete compilation pipeline** - Lexer → Parser → Type Checker → LLVM Code Generator
+- **Arrays and slicing** - `[1, 2, 3]`, `arr[1:3]`, iteration support
+- **Structs** - User-defined types with field access
+- **Enums and pattern matching** - `match` expressions with data variants
+- **SIMD vectors** - 32 vector types (f32x4, i32x8, etc.) with element-wise operations
+- **Standard library** - I/O, string, math, and array functions
+- **Memory operations** - Vector load/store with alignment
+- **Strong typing** - Type checking and inference
 
 ## Quick Start
 
@@ -44,14 +46,19 @@ cargo build --features=llvm --release
 Create `hello.ea`:
 ```eä
 func main() -> () {
-    print("Hello, World!");
+    println("Hello, World!");
     return;
 }
 ```
 
-Compile and run:
+Compile to LLVM IR:
 ```bash
 ./target/release/ea hello.ea
+```
+
+Or compile and run immediately:
+```bash
+./target/release/ea --run hello.ea
 ```
 
 ## Language Examples
@@ -68,7 +75,7 @@ func fibonacci(n: i32) -> i32 {
 
 func main() -> () {
     let result = fibonacci(10);
-    print("Fibonacci result calculated");
+    print_i32(result);
     return;
 }
 ```
@@ -130,6 +137,54 @@ func control_flow_demo() -> () {
 }
 ```
 
+### Arrays and Structs
+
+```eä
+struct Point {
+    x: f32,
+    y: f32,
+}
+
+func array_and_struct_demo() -> () {
+    // Arrays
+    let numbers = [1, 2, 3, 4, 5];
+    let slice = numbers[1:4];  // [2, 3, 4]
+    let element = numbers[2];  // 3
+    
+    // Array iteration
+    for num in numbers {
+        print_i32(num);
+    }
+    
+    // Structs
+    let point = Point { x: 10.0, y: 20.0 };
+    print_f32(point.x);
+    
+    return;
+}
+```
+
+### Enums and Pattern Matching
+
+```eä
+enum Option {
+    Some(i32),
+    None,
+}
+
+func pattern_matching_demo() -> () {
+    let value = Option::Some(42);
+    
+    let result = match value {
+        Option::Some(x) => x,
+        Option::None => 0,
+    };
+    
+    print_i32(result);
+    return;
+}
+```
+
 ### SIMD Vector Operations
 
 ```eä
@@ -141,47 +196,40 @@ func simd_examples() -> () {
     // Element-wise operations
     let sum = vec1 .+ vec2;        // Vector addition
     let product = vec1 .* vec2;    // Vector multiplication
-    let comparison = vec1 .< vec2; // Vector comparison
     
-    // Reduction operations
-    let total = horizontal_sum(sum);     // Sum all elements
-    let maximum = horizontal_max(vec1);  // Find maximum element
-    let dot = dot_product(vec1, vec2);   // Dot product
-    
-    // Memory operations with alignment
-    let data_ptr = &vec1;
-    let loaded = load_vector(data_ptr, f32x4, 16);  // Aligned load
-    store_vector(data_ptr, sum, 16);                // Aligned store
+    // Access individual elements
+    print_f32(sum[0]);
     
     return;
 }
 ```
 
-### Image Processing with SIMD
+## Available Built-in Functions
 
-```eä
-func image_processing_simd() -> () {
-    // Process 16 pixels simultaneously
-    let pixels = [100, 110, 120, 130, 140, 150, 160, 170,
-                  180, 190, 200, 210, 220, 230, 240, 250]u8x16;
-    
-    // Brightness adjustment
-    let brightness = [30, 30, 30, 30, 30, 30, 30, 30,
-                      30, 30, 30, 30, 30, 30, 30, 30]u8x16;
-    let brightened = pixels .+ brightness;
-    
-    // Process multiple color channels
-    let red_channel = [128.0, 129.0, 130.0, 131.0]f32x4;
-    let green_channel = [64.0, 65.0, 66.0, 67.0]f32x4;
-    let blue_channel = [32.0, 33.0, 34.0, 35.0]f32x4;
-    
-    // Apply color transformation matrix
-    let transform = [0.299, 0.587, 0.114, 1.0]f32x4;
-    let grayscale = red_channel .* transform;
-    
-    return;
-}
-```
+### I/O Functions
+- `print(string)` - Print string without newline
+- `println(string)` - Print string with newline
+- `print_i32(i32)` - Print integer
+- `print_f32(f32)` - Print float
+- `read_line() -> string` - Read line from stdin
+
+### File Operations
+- `read_file(string) -> string` - Read file content
+- `write_file(string, string) -> ()` - Write to file
+- `file_exists(string) -> bool` - Check if file exists
+
+### String Functions
+- `string_length(string) -> i32`
+- `string_concat(string, string) -> string`
+- `string_equals(string, string) -> bool`
+
+### Math Functions
+- `sqrt(f32) -> f32`, `sin(f32) -> f32`, `cos(f32) -> f32`
+- `abs(f32) -> f32`, `min(f32, f32) -> f32`, `max(f32, f32) -> f32`
+
+### Array Functions
+- `array_length([T]) -> i32`
+- `array_get([T], i32) -> T`
 
 ## Project Structure
 
@@ -230,43 +278,17 @@ cargo bench
 
 ## Performance
 
-Current performance characteristics:
+Current compilation performance:
 
-- **Lexer Throughput**: >1MB/sec
 - **Small Programs**: <100ms compilation
-- **Medium Programs**: <500ms compilation  
-- **Memory Usage**: Efficient, minimal allocation
-- **Generated Code**: Optimized LLVM IR
+- **Generated Code**: LLVM-optimized IR
+- **Test Suite**: 102/102 tests passing
 
 ### Benchmarks
 
+Run benchmarks with:
 ```bash
 cargo bench --features=llvm
-```
-
-Sample results:
-```
-lexer/tokenize/small    time: 45.2 μs
-parser/parse/small      time: 128.7 μs  
-type_checker/check/small time: 89.3 μs
-full_compilation/small   time: 334.1 μs
-```
-
-### SIMD Performance
-
-Eä delivers exceptional SIMD performance with industry-leading optimizations:
-
-- **Vector Operations**: 2-4x speedup over scalar equivalents
-- **Memory Bandwidth**: Optimized aligned loads/stores (16/32/64-byte alignment)
-- **Instruction Efficiency**: Single LLVM vector instructions vs scalar loops
-- **Cache Optimization**: SIMD-friendly data structures and access patterns
-
-Sample SIMD benchmarks:
-```
-simd_vector_add/f32x4    time: 15.2 μs (4x faster than scalar)
-simd_matrix_mult/4x4     time: 89.7 μs (3.2x faster than scalar)
-simd_image_blur/256x256  time: 2.1 ms (2.8x faster than scalar)
-simd_audio_reverb/44khz  time: 445.3 μs (3.7x faster than scalar)
 ```
 
 ## CLI Usage
@@ -303,44 +325,37 @@ ea --test
 ea --help
 ```
 
-## Current Status
+## Implementation Status
 
-### Completed (Sprint 1)
+### ✅ **Completed Features**
 
-- **Complete Compilation Pipeline** - Source → Tokens → AST → Type-checked → LLVM IR
-- **Lexical Analysis** - All tokens, position tracking, error recovery
-- **Expression Parsing** - Full operator precedence, all expression types
-- **Statement Parsing** - Functions, variables, control flow
-- **Type System** - Type checking, inference, compatibility rules
-- **LLVM Code Generation** - Working compilation to machine code
-- **Error Handling** - Position-aware errors with helpful messages
-- **CLI Interface** - Full-featured command-line tool
+#### **Core Language**
+- **Complete compilation pipeline** - Source → Tokens → AST → Type-checked → LLVM IR
+- **Arrays** - Literals `[1, 2, 3]`, indexing `arr[i]`, slicing `arr[1:3]`, iteration
+- **Structs** - Declarations, instantiation `Point { x: 1.0, y: 2.0 }`, field access
+- **Enums** - Variants with data, pattern matching with `match` expressions
+- **Functions** - Parameters, return values, recursion
+- **Control flow** - if/else, while loops, for loops, for-in iteration
+- **Type system** - Strong typing, type inference, compatibility checking
 
-### Recently Completed (Sprint 2)
+#### **SIMD Support**
+- **32 vector types** - f32x4, i32x8, u8x16, etc. covering all major SIMD widths
+- **Element-wise operations** - `.+`, `.-`, `.*`, `./`, `.&`, `.|`, `.^`
+- **Vector literals** - `[1.0, 2.0, 3.0, 4.0]f32x4`
+- **Memory operations** - `load_vector()`, `store_vector()` with alignment
+- **Hardware detection** - SSE, AVX, NEON target features
 
-- **SIMD Foundation** - 32 SIMD vector types (i32x4, f32x8, etc.) with full lexer/parser support
-- **Advanced CLI Features** - JIT execution mode (`--run`), output formatting (`--emit-llvm-only`, `--quiet`)
-- **Binary Operators** - Complete arithmetic, logical, and comparison operators
-- **Standard Library** - Built-in print() function with proper LLVM integration
-- **JIT Compilation** - Immediate program execution via LLVM ExecutionEngine
-- **Enhanced Error Handling** - Comprehensive error propagation and user feedback
+#### **Standard Library**
+- **I/O functions** - `print()`, `println()`, `print_i32()`, `print_f32()`, `read_line()`
+- **File operations** - `read_file()`, `write_file()`, `file_exists()`
+- **String functions** - `string_length()`, `string_concat()`, `string_equals()`
+- **Math functions** - `sqrt()`, `sin()`, `cos()`, `abs()`, `min()`, `max()`
+- **Array functions** - `array_length()`, `array_get()`
 
-### Latest Achievements (SIMD Memory Operations)
-
-- **SIMD Vector Load/Store Operations** - Complete implementation with memory alignment support
-- **Advanced Memory Patterns** - Cache-friendly processing, bandwidth optimization, streaming
-- **Comprehensive SIMD Benchmarks** - Real-world performance demonstrations across multiple domains
-- **Vector Memory Functions** - `load_vector()` and `store_vector()` with alignment parameters
-- **Hardware-Specific Optimization** - 16/32/64-byte alignment for SSE/AVX/AVX-512 compatibility
-- **Performance Validation** - Proven 2-4x speedup across image, audio, physics, and math workloads
-- **Production-Ready SIMD** - Industry-leading vector operations with optimal LLVM IR generation
-
-### Current Development (Sprint 3)
-
-- **Full SIMD Code Generation** - LLVM vector instruction emission
-- **Memory Regions** - `mem_region` syntax, zero-cost memory management  
-- **Adaptive Optimization** - `@optimize` attributes, compile-time execution
-- **Security Features** - Taint tracking, capability types
+#### **Developer Tools**
+- **CLI interface** - Multiple output formats, JIT execution mode
+- **Error handling** - Position-aware errors with helpful messages
+- **Testing** - Comprehensive test suite with 102 passing tests
 
 ## Architecture
 
@@ -392,47 +407,24 @@ We welcome contributions! Please see our [Getting Started Guide](docs/getting_st
 
 ### Areas for Contribution
 
-- **Language Features** - Memory regions, adaptive optimization, security features
+- **Language features** - Additional control flow, more built-in functions
 - **Testing** - More test cases, edge case coverage, performance benchmarks
-- **Documentation** - Examples, tutorials, API docs
-- **Performance** - Optimization, benchmarking, hardware-specific tuning
-- **Security** - Taint tracking, capability types, memory safety features
-
-## Achievements
-
-- **100% Binary Operator Support** - All 13 operators (arithmetic, logical, comparison, assignment) fully implemented
-- **Complete Compilation Pipeline** - Source code to executable machine code via LLVM
-- **JIT Execution** - Immediate program execution without intermediate files
-- **SIMD-First Design** - 32 built-in vector types with element-wise and memory operations
-- **Advanced Memory Operations** - Load/store with hardware-specific alignment optimization
-- **Comprehensive Benchmarks** - Proven 2-4x performance across multiple application domains
-- **Boolean Logic System** - Full support for logical operators with proper precedence
-- **Advanced CLI** - Professional-grade tooling with piping and formatting options
-- **Production-Ready Quality** - Clean architecture, excellent error handling
-- **Cross-Platform Support** - Linux, WSL2, Windows development
-- **Industry-Leading Performance** - Competitive with established compilers
-- **World's First Native SIMD Language** - Unique architecture with SIMD as first-class citizen
-
-## Future Vision
-
-Eä aims to become the go-to language for:
-
-- **High-Performance Computing** - Scientific computing, simulations
-- **Systems Programming** - Operating systems, embedded systems  
-- **Game Development** - Real-time graphics, physics engines
-- **Financial Systems** - Low-latency trading, risk analysis
-- **AI/ML Infrastructure** - High-performance neural network training
+- **Documentation** - Examples, tutorials, language specification
+- **Standard library** - Additional math, string, and utility functions
 
 ## Documentation
 
-- [Getting Started Guide](docs/getting_started.md)
-- [Language Specification](docs/language_spec.md)  
-- [API Documentation](target/doc/ea_compiler/index.html) (run `cargo doc --open`)
-- [Examples](examples/)
+- [Getting Started Guide](docs/getting-started.md)
+- [V0.1 Progress Report](V01_Progress_Report.md) - Complete implementation status
+- [Language Specification](specification-v01.md) - Full language reference
+- [Examples](examples/) - Sample programs demonstrating features
 
-## Known Issues
+## Test Results
 
-None! All 102 tests are passing.
+All 102 tests passing. Run tests with:
+```bash
+cargo test --features=llvm
+```
 
 ## License
 
@@ -456,6 +448,6 @@ at your option.
 
 **Built with Rust**
 
-[Website](#) • [Documentation](#) • [Examples](examples/) • [Contributing](docs/getting_started.md)
+[Examples](examples/) • [Documentation](docs/)
 
 </div>

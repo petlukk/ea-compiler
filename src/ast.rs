@@ -504,8 +504,37 @@ pub enum Expr {
     /// Array indexing: array[index]
     Index(Box<Expr>, Box<Expr>),
     
+    /// Array slicing: array[start:end]
+    Slice {
+        array: Box<Expr>,
+        start: Box<Expr>,
+        end: Box<Expr>,
+    },
+    
     /// Field access: object.field
     FieldAccess(Box<Expr>, String),
+    
+    /// Struct literal: StructName { field1: value1, field2: value2 }
+    StructLiteral {
+        name: String,
+        fields: Vec<StructFieldInit>,
+    },
+
+    /// Enum literal: EnumName::Variant or EnumName::Variant(args)
+    EnumLiteral {
+        enum_name: String,
+        variant: String,
+        args: Vec<Expr>,
+    },
+
+    /// Match expression: match value { pattern => expr, ... }
+    Match {
+        value: Box<Expr>,
+        arms: Vec<MatchArm>,
+    },
+
+    /// Block expression: { statements... }
+    Block(Vec<Stmt>),
 
     SIMD(SIMDExpr),
 }
@@ -529,7 +558,46 @@ impl fmt::Display for Expr {
                 write!(f, ")")
             },
             Expr::Index(array, index) => write!(f, "{}[{}]", array, index),
+            Expr::Slice { array, start, end } => write!(f, "{}[{}:{}]", array, start, end),
             Expr::FieldAccess(object, field) => write!(f, "{}.{}", object, field),
+            Expr::StructLiteral { name, fields } => {
+                write!(f, "{} {{", name)?;
+                for (i, field) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", field)?;
+                }
+                write!(f, "}}")
+            },
+            Expr::EnumLiteral { enum_name, variant, args } => {
+                write!(f, "{}::{}", enum_name, variant)?;
+                if !args.is_empty() {
+                    write!(f, "(")?;
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", arg)?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
+            },
+            Expr::Match { value, arms } => {
+                write!(f, "match {} {{", value)?;
+                for arm in arms {
+                    write!(f, " {},", arm)?;
+                }
+                write!(f, " }}")
+            },
+            Expr::Block(statements) => {
+                write!(f, "{{")?;
+                for stmt in statements {
+                    write!(f, " {};", stmt)?;
+                }
+                write!(f, " }}")
+            },
             Expr::SIMD(simd_expr) => write!(f, "{}", simd_expr),
         }
     }
@@ -565,6 +633,113 @@ impl fmt::Display for Parameter {
     }
 }
 
+/// Represents a field in a struct declaration
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructField {
+    pub name: String,
+    pub type_annotation: TypeAnnotation,
+}
+
+/// Represents a variant in an enum declaration
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumVariant {
+    pub name: String,
+    pub data: Option<Vec<TypeAnnotation>>, // Optional tuple data like Result::Ok(T)
+}
+
+/// Represents a pattern in a match expression
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    /// Literal pattern: 42, "hello", true
+    Literal(Literal),
+    
+    /// Variable pattern: x (binds to variable)
+    Variable(String),
+    
+    /// Enum variant pattern: Some(x), None, Ok(value)
+    EnumVariant {
+        enum_name: String,
+        variant: String,
+        patterns: Vec<Pattern>, // Sub-patterns for variant data
+    },
+    
+    /// Wildcard pattern: _
+    Wildcard,
+}
+
+/// Represents a match arm with pattern and expression
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub expression: Expr,
+}
+
+impl fmt::Display for StructField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.name, self.type_annotation)
+    }
+}
+
+impl fmt::Display for EnumVariant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if let Some(data) = &self.data {
+            write!(f, "(")?;
+            for (i, type_ann) in data.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", type_ann)?;
+            }
+            write!(f, ")")?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Pattern::Literal(lit) => write!(f, "{}", lit),
+            Pattern::Variable(name) => write!(f, "{}", name),
+            Pattern::EnumVariant { enum_name, variant, patterns } => {
+                write!(f, "{}::{}", enum_name, variant)?;
+                if !patterns.is_empty() {
+                    write!(f, "(")?;
+                    for (i, pattern) in patterns.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", pattern)?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
+            },
+            Pattern::Wildcard => write!(f, "_"),
+        }
+    }
+}
+
+impl fmt::Display for MatchArm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} => {}", self.pattern, self.expression)
+    }
+}
+
+/// Represents a field initialization in a struct literal
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructFieldInit {
+    pub name: String,
+    pub value: Expr,
+}
+
+impl fmt::Display for StructFieldInit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.name, self.value)
+    }
+}
+
 /// Represents a statement in the AST
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
@@ -589,6 +764,18 @@ pub enum Stmt {
         body: Box<Stmt>, // Block statement
     },
     
+    /// Struct declaration: `struct Name { field1: Type1, field2: Type2 }`
+    StructDeclaration {
+        name: String,
+        fields: Vec<StructField>,
+    },
+    
+    /// Enum declaration: `enum Name { Variant1, Variant2(Type) }`
+    EnumDeclaration {
+        name: String,
+        variants: Vec<EnumVariant>,
+    },
+    
     /// Return statement: `return expr`
     Return(Option<Expr>),
     
@@ -610,6 +797,13 @@ pub enum Stmt {
         initializer: Option<Box<Stmt>>,
         condition: Option<Expr>,
         increment: Option<Expr>,
+        body: Box<Stmt>,
+    },
+    
+    /// For-in loop: `for item in array { body }`
+    ForIn {
+        variable: String,
+        iterable: Expr,
         body: Box<Stmt>,
     },
 }
@@ -661,6 +855,30 @@ impl fmt::Display for Stmt {
                 
                 write!(f, " {}", body)
             },
+            Stmt::StructDeclaration { name, fields } => {
+                write!(f, "struct {} {{", name)?;
+                
+                for (i, field) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", field)?;
+                }
+                
+                write!(f, "}}")
+            },
+            Stmt::EnumDeclaration { name, variants } => {
+                write!(f, "enum {} {{", name)?;
+                
+                for (i, variant) in variants.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", variant)?;
+                }
+                
+                write!(f, "}}")
+            },
             Stmt::Return(expr) => {
                 if let Some(e) = expr {
                     write!(f, "return {};", e)
@@ -700,6 +918,9 @@ impl fmt::Display for Stmt {
                 }
                 
                 write!(f, " {}", body)
+            },
+            Stmt::ForIn { variable, iterable, body } => {
+                write!(f, "for {} in {} {}", variable, iterable, body)
             },
         }
     }

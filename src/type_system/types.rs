@@ -3,6 +3,14 @@
 
 use std::fmt;
 
+/// Simple element types for SIMD vectors to avoid recursive type issues
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SIMDElementType {
+    I8, I16, I32, I64,
+    U8, U16, U32, U64,
+    F32, F64,
+}
+
 /// Represents all types in the Eä programming language.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EaType {
@@ -34,14 +42,27 @@ pub enum EaType {
     // Array type
     Array(Box<EaType>),
     
+    // SIMD vector type with non-recursive element type
+    SIMDVector {
+        element_type: SIMDElementType,  // Use non-recursive element type
+        width: usize,
+        vector_type: crate::ast::SIMDVectorType,
+    },
+    
     // Reference type
     Reference(Box<EaType>),
     
     // Function type (separate from FunctionType for expression typing)
     Function(Box<FunctionType>),
     
-    // Custom/user-defined types (structs, enums, etc. - for future)
+    // Custom/user-defined types (structs - for future)
     Custom(String),
+    
+    // Enum type
+    Enum {
+        name: String,
+        variants: Vec<String>, // For now, just variant names
+    },
     
     // Generic type parameter (for future generic support)
     Generic(String),
@@ -49,6 +70,15 @@ pub enum EaType {
     // Error type (for error recovery during type checking)
     Error,
 }
+
+impl fmt::Display for EaType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EaType::I8 => write!(f, "i8"),
+            EaType::I16 => write!(f, "i16"),
+            EaType::I32 => write!(f, "i32"),
+            EaType::I64 => write!(f, "i64"),
+            EaType::U8 => write!(f, "u8"),
             EaType::U16 => write!(f, "u16"),
             EaType::U32 => write!(f, "u32"),
             EaType::U64 => write!(f, "u64"),
@@ -58,9 +88,11 @@ pub enum EaType {
             EaType::String => write!(f, "string"),
             EaType::Unit => write!(f, "()"),
             EaType::Array(elem_type) => write!(f, "[{}]", elem_type),
+            EaType::SIMDVector { vector_type, .. } => write!(f, "{}", vector_type),
             EaType::Reference(inner_type) => write!(f, "&{}", inner_type),
             EaType::Function(func_type) => write!(f, "{}", func_type),
             EaType::Custom(name) => write!(f, "{}", name),
+            EaType::Enum { name, .. } => write!(f, "{}", name),
             EaType::Generic(name) => write!(f, "{}", name),
             EaType::Error => write!(f, "<error>"),
         }
@@ -103,7 +135,8 @@ impl EaType {
         matches!(self, 
             EaType::I8 | EaType::I16 | EaType::I32 | EaType::I64 |
             EaType::U8 | EaType::U16 | EaType::U32 | EaType::U64 |
-            EaType::F32 | EaType::F64 | EaType::Bool | EaType::String | EaType::Unit
+            EaType::F32 | EaType::F64 | EaType::Bool | EaType::String | EaType::Unit |
+            EaType::SIMDVector { .. }
         )
     }
     
@@ -300,4 +333,56 @@ pub enum TypeOperation {
     Negation,        // -x
     LogicalNot,      // !x
     BitwiseNot,      // ~x
+}
+
+impl SIMDElementType {
+    /// Convert SIMDElementType to EaType
+    pub fn to_ea_type(&self) -> EaType {
+        match self {
+            SIMDElementType::I8 => EaType::I8,
+            SIMDElementType::I16 => EaType::I16,
+            SIMDElementType::I32 => EaType::I32,
+            SIMDElementType::I64 => EaType::I64,
+            SIMDElementType::U8 => EaType::U8,
+            SIMDElementType::U16 => EaType::U16,
+            SIMDElementType::U32 => EaType::U32,
+            SIMDElementType::U64 => EaType::U64,
+            SIMDElementType::F32 => EaType::F32,
+            SIMDElementType::F64 => EaType::F64,
+        }
+    }
+
+    /// Convert EaType to SIMDElementType (if possible)
+    pub fn from_ea_type(ea_type: &EaType) -> Option<SIMDElementType> {
+        match ea_type {
+            EaType::I8 => Some(SIMDElementType::I8),
+            EaType::I16 => Some(SIMDElementType::I16),
+            EaType::I32 => Some(SIMDElementType::I32),
+            EaType::I64 => Some(SIMDElementType::I64),
+            EaType::U8 => Some(SIMDElementType::U8),
+            EaType::U16 => Some(SIMDElementType::U16),
+            EaType::U32 => Some(SIMDElementType::U32),
+            EaType::U64 => Some(SIMDElementType::U64),
+            EaType::F32 => Some(SIMDElementType::F32),
+            EaType::F64 => Some(SIMDElementType::F64),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for SIMDElementType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SIMDElementType::I8 => write!(f, "i8"),
+            SIMDElementType::I16 => write!(f, "i16"),
+            SIMDElementType::I32 => write!(f, "i32"),
+            SIMDElementType::I64 => write!(f, "i64"),
+            SIMDElementType::U8 => write!(f, "u8"),
+            SIMDElementType::U16 => write!(f, "u16"),
+            SIMDElementType::U32 => write!(f, "u32"),
+            SIMDElementType::U64 => write!(f, "u64"),
+            SIMDElementType::F32 => write!(f, "f32"),
+            SIMDElementType::F64 => write!(f, "f64"),
+        }
+    }
 }

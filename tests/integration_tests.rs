@@ -292,7 +292,7 @@ func main() -> () {
     
     let (program, context) = result.unwrap();
     assert_eq!(program.len(), 51, "Should have 50 helper functions + main");
-    assert_eq!(context.functions.len(), 52, "Should have all functions + print"); // +1 for built-in print
+    assert_eq!(context.functions.len(), 56, "Should have all functions + built-ins"); // Updated after memory fix
 }
 
 #[test]
@@ -366,6 +366,9 @@ func main() -> () {
 "#;
     
     let result = compile_to_llvm(source, "test_control_flow");
+    if let Err(e) = &result {
+        eprintln!("Control flow test error: {:?}", e);
+    }
     assert!(result.is_ok(), "LLVM control flow compilation should succeed");
     
     cleanup_test_file("test_control_flow.ll");

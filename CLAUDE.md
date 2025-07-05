@@ -219,3 +219,120 @@ make quality-check
 - **Medium programs**: <500ms compilation
 - **Memory usage**: Efficient allocation patterns
 - **Test suite**: 102/102 tests passing
+
+## CLI Interface Details
+
+### Available Commands
+```bash
+# Basic compilation modes
+ea program.ea                    # Compile to LLVM IR
+ea --emit-ast program.ea        # Show Abstract Syntax Tree
+ea --emit-tokens program.ea     # Show tokenization output
+ea --emit-llvm program.ea       # Show LLVM IR with diagnostics
+ea --emit-llvm-only program.ea  # Clean LLVM IR output (for piping)
+
+# Execution modes
+ea --run program.ea             # JIT compile and execute immediately
+ea --verbose program.ea         # Detailed compilation diagnostics
+ea --quiet program.ea           # Suppress non-error output
+
+# Testing and development
+ea --test                       # Run built-in compiler tests
+ea --version                    # Show version information
+ea --help                       # Show usage help
+```
+
+### CLI Testing Examples
+```bash
+# Test individual components
+./target/release/ea --emit-tokens test_tokens.ea
+./target/release/ea --emit-ast test_simple_expr.ea
+./target/release/ea --emit-llvm test_fibonacci.ea
+
+# Test JIT execution
+./target/release/ea --run test_minimal.ea
+./target/release/ea --run --verbose test_print.ea
+
+# Verify compilation output
+./target/release/ea --emit-llvm-only test_simd.ea | lli
+```
+
+## Testing Infrastructure
+
+### Test Organization
+- **Unit Tests**: Module-level tests in `src/*/mod.rs` files
+- **Integration Tests**: End-to-end tests in `tests/` directory
+- **SIMD Tests**: Specialized SIMD functionality tests
+- **CLI Tests**: Command-line interface validation
+- **Performance Tests**: Benchmark suite in `benches/`
+
+### Running Specific Test Categories
+```bash
+# Run specific test files
+cargo test --features=llvm integration_tests
+cargo test --features=llvm simd_codegen_tests
+cargo test --features=llvm simd_integration_tests
+cargo test --features=llvm lexer_tests
+cargo test --features=llvm type_system_tests
+
+# Run tests with pattern matching
+cargo test --features=llvm fibonacci
+cargo test --features=llvm simd
+cargo test --features=llvm vector
+
+# Run single test function
+cargo test --features=llvm test_basic_tokenization
+```
+
+## Development Workflow
+
+### Before Making Changes
+1. **Check current status**: `make quality-check`
+2. **Run full test suite**: `cargo test --features=llvm`
+3. **Create feature branch**: `git checkout -b feature-name`
+
+### During Development
+1. **Continuous testing**: `cargo test --features=llvm` (specific modules)
+2. **Format code**: `cargo fmt`
+3. **Check linting**: `cargo clippy --all-targets --all-features -- -D warnings`
+
+### Before Committing
+1. **Full quality check**: `make check-all`
+2. **Verify CLI works**: `./target/release/ea --test`
+3. **Test example files**: `make run-examples`
+
+## Error Handling and Debugging
+
+### Common Issues and Solutions
+- **LLVM not found**: Install `llvm-14-dev` package
+- **Compilation failures**: Check feature flags (`--features=llvm`)
+- **Test failures**: Ensure clean build with `cargo clean && cargo build --features=llvm`
+- **CLI issues**: Rebuild with `cargo build --release --features=llvm`
+
+### Debug Mode Features
+```bash
+# Enable debug lexer (requires feature)
+cargo build --features=llvm,debug-lexer
+
+# Verbose compilation output
+ea --verbose program.ea
+```
+
+## Advanced Features
+
+### SIMD Vector Operations
+The compiler supports 32 built-in SIMD vector types:
+- Integer vectors: `i8x16`, `i16x8`, `i32x4`, `i64x2`, etc.
+- Float vectors: `f32x4`, `f64x2`, etc.
+- Element-wise operations: `.+`, `.-`, `.*`, `./`
+- Memory operations: `load_vector()`, `store_vector()`
+
+### JIT Compilation
+- Immediate program execution via `--run` flag
+- Uses LLVM ExecutionEngine for in-memory compilation
+- Supports both void and i32 return types for main function
+
+### Memory Management
+- Stack-based allocation via LLVM
+- Automatic memory management for local variables
+- Reference types for parameter passing

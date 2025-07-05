@@ -44,6 +44,8 @@ pub enum TokenKind {
     // === Core Keywords ===
     #[token("func")]
     Func,
+    #[token("struct")]
+    Struct,
     #[token("let")]
     Let,
     #[token("mut")]
@@ -64,6 +66,12 @@ pub enum TokenKind {
     While,
     #[token("for")]
     For,
+    #[token("in")]
+    In,
+    #[token("enum")]
+    Enum,
+    #[token("match")]
+    Match,
 
     // === Memory Management Keywords ===
     #[token("mem_region")]
@@ -332,6 +340,8 @@ pub enum TokenKind {
     DoubleColon,
     #[token("->")]
     Arrow,
+    #[token("=>")]
+    FatArrow,
     #[token(".")]
     Dot,
 
@@ -420,6 +430,7 @@ impl fmt::Display for TokenKind {
         let display = match self {
             // Core keywords
             TokenKind::Func => "func",
+            TokenKind::Struct => "struct",
             TokenKind::Let => "let",
             TokenKind::Mut => "mut",
             TokenKind::Const => "const",
@@ -430,6 +441,9 @@ impl fmt::Display for TokenKind {
             TokenKind::False => "false",
             TokenKind::While => "while",
             TokenKind::For => "for",
+            TokenKind::In => "in",
+            TokenKind::Enum => "enum",
+            TokenKind::Match => "match",
             
             // Memory management
             TokenKind::MemRegion => "mem_region",
@@ -562,6 +576,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Colon => ":",
             TokenKind::DoubleColon => "::",
             TokenKind::Arrow => "->",
+            TokenKind::FatArrow => "=>",
             TokenKind::Dot => ".",
             
             // Literals with values
@@ -606,6 +621,7 @@ impl<'source> Lexer<'source> {
         match text {
             // Core language keywords
             "func" => Some(TokenKind::Func),
+            "struct" => Some(TokenKind::Struct),
             "let" => Some(TokenKind::Let),
             "mut" => Some(TokenKind::Mut),
             "const" => Some(TokenKind::Const),
@@ -616,6 +632,9 @@ impl<'source> Lexer<'source> {
             "false" => Some(TokenKind::False),
             "while" => Some(TokenKind::While),
             "for" => Some(TokenKind::For),
+            "in" => Some(TokenKind::In),
+            "enum" => Some(TokenKind::Enum),
+            "match" => Some(TokenKind::Match),
             
             // Memory management
             "mem_region" => Some(TokenKind::MemRegion),
@@ -952,5 +971,17 @@ mod tests {
         assert_eq!(tokens[1].kind, TokenKind::FromSlice);
         assert_eq!(tokens[2].kind, TokenKind::ToArray);
         assert_eq!(tokens[3].kind, TokenKind::Splat);
+    }
+
+    #[test]
+    fn test_enum_and_match_keywords() {
+        let mut lexer = Lexer::new("enum Option match value");
+        let tokens = lexer.tokenize_all().unwrap();
+        
+        assert_eq!(tokens[0].kind, TokenKind::Enum);
+        assert_eq!(tokens[1].kind, TokenKind::Identifier("Option".to_string()));
+        assert_eq!(tokens[2].kind, TokenKind::Match);
+        assert_eq!(tokens[3].kind, TokenKind::Identifier("value".to_string()));
+        assert_eq!(tokens[4].kind, TokenKind::Eof);
     }
 }
