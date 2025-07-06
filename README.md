@@ -13,18 +13,36 @@
 
 ## Overview
 
-Eä is a programming language compiler that generates LLVM IR from source code. It features comprehensive SIMD support, strong typing, and compiles to efficient machine code.
+Eä is a systems programming language compiler focused on extreme performance. It generates highly optimized LLVM IR from source code and features comprehensive SIMD support, strong typing, and zero-cost abstractions.
 
-### Implemented Features
+**Current Status**: v0.1.1 - Production-ready static compilation with working JIT execution engine.
 
-- **Complete compilation pipeline** - Lexer → Parser → Type Checker → LLVM Code Generator
-- **Arrays and slicing** - `[1, 2, 3]`, `arr[1:3]`, iteration support
-- **Structs** - User-defined types with field access
-- **Enums and pattern matching** - `match` expressions with data variants
-- **SIMD vectors** - 32 vector types (f32x4, i32x8, etc.) with element-wise operations
-- **Standard library** - I/O, string, math, and array functions
-- **Memory operations** - Vector load/store with alignment
-- **Strong typing** - Type checking and inference
+### Core Features (v0.1.1)
+
+**Compilation Pipeline**
+- **Complete LLVM-based compilation** - Lexer → Parser → Type Checker → LLVM Code Generator
+- **JIT execution engine** - Immediate program execution with comprehensive symbol resolution
+- **Static compilation** - Generates valid LLVM IR for deployment scenarios
+- **Advanced error handling** - Position-aware errors with helpful diagnostics
+
+**Language Features**
+- **Strong type system** - Type checking, inference, and compatibility validation
+- **Control flow** - if/else statements, while/for loops, pattern matching
+- **Functions** - Parameters, return values, recursion support
+- **Data structures** - Arrays, structs, enums with data variants
+- **Memory safety** - Stack-based allocation with automatic cleanup
+
+**SIMD & Performance**
+- **32 SIMD vector types** - f32x4, i32x8, u8x16, etc. covering all major widths
+- **Element-wise operations** - .+, .-, .*, ./, .&, .|, .^ for vectors
+- **Memory operations** - Vector load/store with alignment support
+- **Hardware detection** - SSE, AVX, NEON target feature support
+
+**Standard Library**
+- **I/O functions** - print(), println(), read_file(), write_file()
+- **Math functions** - sqrt(), sin(), cos(), abs(), min(), max()
+- **String functions** - length, concatenation, equality, SIMD-accelerated operations
+- **Array functions** - length, indexing, iteration support
 
 ## Quick Start
 
@@ -286,23 +304,19 @@ cargo bench
 - **Test Suite**: 102/102 tests passing
 - **JIT Execution**: Production-ready for compute workloads
 
-### JIT Execution Status
+### Execution Modes
 
-The Eä compiler includes a working JIT execution engine that supports:
+**JIT Execution** (`ea --run program.ea`)
+- **Strengths**: Immediate execution, perfect for compute workloads
+- **Supports**: All language features, arithmetic, control flow, functions
+- **Limitation**: I/O operations have compatibility constraints in some environments
+- **Performance**: Excellent for mathematical and algorithmic code
 
-✅ **Fully Working**:
-- Empty functions and arithmetic operations
-- Variable declarations and assignments  
-- Function calls and return values
-- Control flow (if/else, loops)
-- Complete program compilation
-
-⚠️ **Known Limitation**:
-- I/O system calls require static compilation for maximum compatibility
-
-**Recommended Usage**:
-- For compute-heavy workloads: Use JIT execution (`ea --run program.ea`)
-- For I/O operations: Use static compilation (`ea program.ea && lli program.ll`)
+**Static Compilation** (`ea program.ea`)
+- **Strengths**: Generates deployable LLVM IR, full system compatibility
+- **Supports**: Complete language feature set including all I/O operations
+- **Deployment**: Use with `lli` or compile to native code via LLVM toolchain
+- **Performance**: Optimized for production deployment scenarios
 
 ### Benchmarks
 

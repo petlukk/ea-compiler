@@ -1426,16 +1426,22 @@ impl<'ctx> CodeGenerator<'ctx> {
             .builder
             .build_int_compare(IntPredicate::SGE, a_len, sixteen, "use_simd")
             .unwrap();
+        // Calculate simd_iterations here so it dominates all uses
+        let simd_iterations = self
+            .builder
+            .build_int_signed_div(a_len, sixteen, "simd_iterations")
+            .unwrap();
+        // Also calculate simd_processed here so it dominates all uses
+        let simd_processed = self
+            .builder
+            .build_int_mul(simd_iterations, sixteen, "simd_processed")
+            .unwrap();
         self.builder
             .build_conditional_branch(use_simd, simd_loop_block, remainder_block)
             .unwrap();
 
         // SIMD processing loop
         self.builder.position_at_end(simd_loop_block);
-        let simd_iterations = self
-            .builder
-            .build_int_signed_div(a_len, sixteen, "simd_iterations")
-            .unwrap();
         let simd_index_alloca = self.builder.build_alloca(i32_type, "simd_index").unwrap();
         let zero = self.context.i32_type().const_int(0, false);
         self.builder.build_store(simd_index_alloca, zero).unwrap();
@@ -1570,10 +1576,6 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // Handle remainder bytes
         self.builder.position_at_end(remainder_block);
-        let simd_processed = self
-            .builder
-            .build_int_mul(simd_iterations, sixteen, "simd_processed")
-            .unwrap();
         let remainder_start = simd_processed;
         let remainder_index_alloca = self
             .builder
@@ -2025,16 +2027,22 @@ impl<'ctx> CodeGenerator<'ctx> {
             .builder
             .build_int_compare(IntPredicate::SGE, len, sixteen, "use_simd")
             .unwrap();
+        // Calculate simd_iterations here so it dominates all uses
+        let simd_iterations = self
+            .builder
+            .build_int_signed_div(len, sixteen, "simd_iterations")
+            .unwrap();
+        // Also calculate simd_processed here so it dominates all uses
+        let simd_processed = self
+            .builder
+            .build_int_mul(simd_iterations, sixteen, "simd_processed")
+            .unwrap();
         self.builder
             .build_conditional_branch(use_simd, simd_validate_loop, remainder_check_block)
             .unwrap();
 
         // SIMD validation loop
         self.builder.position_at_end(simd_validate_loop);
-        let simd_iterations = self
-            .builder
-            .build_int_signed_div(len, sixteen, "simd_iterations")
-            .unwrap();
         let simd_index_alloca = self.builder.build_alloca(i32_type, "simd_index").unwrap();
         self.builder
             .build_store(simd_index_alloca, self.context.i32_type().const_zero())
@@ -2197,10 +2205,6 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // Handle remainder bytes
         self.builder.position_at_end(remainder_check_block);
-        let simd_processed = self
-            .builder
-            .build_int_mul(simd_iterations, sixteen, "simd_processed")
-            .unwrap();
         let remainder_start = simd_processed;
         let remainder_index_alloca = self
             .builder
@@ -2365,9 +2369,10 @@ impl<'ctx> CodeGenerator<'ctx> {
         let opt_entry = self
             .context
             .append_basic_block(read_file_optimized_function, "entry");
-        let size_check_block = self
-            .context
-            .append_basic_block(read_file_optimized_function, "size_check");
+        // COMMENTED OUT: size_check_block causing unreachable block LLVM IR issues  
+        // let size_check_block = self
+        //     .context
+        //     .append_basic_block(read_file_optimized_function, "size_check");
         let small_file_block = self
             .context
             .append_basic_block(read_file_optimized_function, "small_file");
