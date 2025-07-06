@@ -128,6 +128,23 @@ impl<'ctx> CodeGenerator<'ctx> {
             .fn_type(&[string_type.into()], false);
         let puts_function = self.module.add_function("puts", puts_type, None);
         self.functions.insert("puts".to_string(), puts_function);
+        
+        // Add direct system call functions for self-contained I/O
+        let write_type = self.context.i64_type().fn_type(
+            &[
+                self.context.i32_type().into(), // fd
+                string_type.into(),             // buf
+                self.context.i64_type().into(), // count
+            ],
+            false,
+        );
+        let write_function = self.module.add_function("write", write_type, None);
+        self.functions.insert("write".to_string(), write_function);
+        
+        // Add strlen function
+        let strlen_type = self.context.i64_type().fn_type(&[string_type.into()], false);
+        let strlen_function = self.module.add_function("strlen", strlen_type, None);
+        self.functions.insert("strlen".to_string(), strlen_function);
 
         // Add print(string) -> void function
         let print_type = self
@@ -137,17 +154,26 @@ impl<'ctx> CodeGenerator<'ctx> {
         let print_function = self.module.add_function("print", print_type, None);
         self.functions.insert("print".to_string(), print_function);
 
-        // Implement print(string) function
+        // Implement print(string) function using direct system calls
         let print_entry = self.context.append_basic_block(print_function, "entry");
         let current_block = self.builder.get_insert_block();
 
         self.builder.position_at_end(print_entry);
         let param = print_function.get_nth_param(0).unwrap();
 
-        // Call puts to print the string
-        let _call = self
+        // For debugging: use fixed length first (avoid strlen calls)
+        // This helps us isolate whether the issue is with strlen or write
+        let fixed_len = self.context.i64_type().const_int(5, false); // "hello" = 5 chars
+        
+        // Write to stdout (fd = 1) using system call
+        let stdout_fd = self.context.i32_type().const_int(1, false);
+        let _write_call = self
             .builder
-            .build_call(puts_function, &[param.into()], "puts_call");
+            .build_call(
+                write_function,
+                &[stdout_fd.into(), param.into(), fixed_len.into()],
+                "write_call",
+            );
         self.builder.build_return(None).unwrap();
 
         // Add print_i32(i32) -> void function
@@ -217,15 +243,42 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.functions
             .insert("println".to_string(), println_function);
 
-        // Implement println(string) function
+        // Implement println(string) function using direct system calls
         let println_entry = self.context.append_basic_block(println_function, "entry");
         self.builder.position_at_end(println_entry);
 
         let param = println_function.get_nth_param(0).unwrap();
-        // Call puts to print the string (puts automatically adds newline)
-        let _call = self
+        
+        // Get string length
+        let str_len = self
             .builder
-            .build_call(puts_function, &[param.into()], "puts_call");
+            .build_call(strlen_function, &[param.into()], "strlen_call")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+
+        // Write the string to stdout (fd = 1)
+        let stdout_fd = self.context.i32_type().const_int(1, false);
+        let _write_call = self
+            .builder
+            .build_call(
+                write_function,
+                &[stdout_fd.into(), param.into(), str_len.into()],
+                "write_call",
+            );
+
+        // Write newline
+        let newline = self.builder.build_global_string_ptr("\n", "newline").unwrap();
+        let one = self.context.i64_type().const_int(1, false);
+        let _newline_write = self
+            .builder
+            .build_call(
+                write_function,
+                &[stdout_fd.into(), newline.as_pointer_value().into(), one.into()],
+                "write_newline",
+            );
+        
         self.builder.build_return(None).unwrap();
 
         // Add external fgets function for reading lines

@@ -1,7 +1,7 @@
 //! tests/integration_tests.rs
 //! End-to-end integration tests for the Eä compiler
 
-use ea_compiler::{compile_to_ast, tokenize, parse};
+use ea_compiler::{compile_to_ast, parse, tokenize};
 use std::fs;
 use std::path::Path;
 
@@ -26,14 +26,20 @@ func main() -> () {
     return;
 }
 "#;
-    
+
     let result = compile_to_ast(source);
     assert!(result.is_ok(), "Hello World should compile successfully");
-    
+
     let (program, context) = result.unwrap();
     assert_eq!(program.len(), 1, "Should have one function declaration");
-    assert!(context.functions.contains_key("main"), "Should have main function");
-    assert!(context.functions.contains_key("print"), "Should have print function");
+    assert!(
+        context.functions.contains_key("main"),
+        "Should have main function"
+    );
+    assert!(
+        context.functions.contains_key("print"),
+        "Should have print function"
+    );
 }
 
 #[test]
@@ -52,14 +58,20 @@ func main() -> () {
     return;
 }
 "#;
-    
+
     let result = compile_to_ast(source);
     assert!(result.is_ok(), "Fibonacci should compile successfully");
-    
+
     let (program, context) = result.unwrap();
     assert_eq!(program.len(), 2, "Should have two function declarations");
-    assert!(context.functions.contains_key("fibonacci"), "Should have fibonacci function");
-    assert!(context.functions.contains_key("main"), "Should have main function");
+    assert!(
+        context.functions.contains_key("fibonacci"),
+        "Should have fibonacci function"
+    );
+    assert!(
+        context.functions.contains_key("main"),
+        "Should have main function"
+    );
 }
 
 #[test]
@@ -93,9 +105,12 @@ func main() -> () {
     return;
 }
 "#;
-    
+
     let result = compile_to_ast(source);
-    assert!(result.is_ok(), "Complex control flow should compile successfully");
+    assert!(
+        result.is_ok(),
+        "Complex control flow should compile successfully"
+    );
 }
 
 #[test]
@@ -122,13 +137,16 @@ func main() -> () {
     return;
 }
 "#;
-    
+
     let result = compile_to_ast(source);
-    assert!(result.is_ok(), "Multiple function calls should compile successfully");
-    
+    assert!(
+        result.is_ok(),
+        "Multiple function calls should compile successfully"
+    );
+
     let (program, context) = result.unwrap();
     assert_eq!(program.len(), 4, "Should have four function declarations");
-    
+
     // Verify all functions are registered
     assert!(context.functions.contains_key("add"));
     assert!(context.functions.contains_key("multiply"));
@@ -162,7 +180,7 @@ func test_inference() -> () {
     return;
 }
 "#;
-    
+
     let result = compile_to_ast(source);
     assert!(result.is_ok(), "Type inference should work correctly");
 }
@@ -191,7 +209,7 @@ func test_scoping() -> () {
     return;
 }
 "#;
-    
+
     let result = compile_to_ast(source);
     assert!(result.is_ok(), "Scoping rules should be enforced correctly");
 }
@@ -199,15 +217,18 @@ func test_scoping() -> () {
 #[test]
 fn test_error_detection_comprehensive() {
     // Test various error conditions
-    
+
     // Type mismatch in return
     let source1 = r#"
 func bad_return() -> i32 {
     return "hello";
 }
 "#;
-    assert!(compile_to_ast(source1).is_err(), "Should detect return type mismatch");
-    
+    assert!(
+        compile_to_ast(source1).is_err(),
+        "Should detect return type mismatch"
+    );
+
     // Type mismatch in assignment
     let source2 = r#"
 func bad_assignment() -> () {
@@ -215,8 +236,11 @@ func bad_assignment() -> () {
     return;
 }
 "#;
-    assert!(compile_to_ast(source2).is_err(), "Should detect assignment type mismatch");
-    
+    assert!(
+        compile_to_ast(source2).is_err(),
+        "Should detect assignment type mismatch"
+    );
+
     // Function call with wrong argument types
     let source3 = r#"
 func test_func(x: i32) -> () {
@@ -228,8 +252,11 @@ func main() -> () {
     return;
 }
 "#;
-    assert!(compile_to_ast(source3).is_err(), "Should detect argument type mismatch");
-    
+    assert!(
+        compile_to_ast(source3).is_err(),
+        "Should detect argument type mismatch"
+    );
+
     // Undefined variable
     let source4 = r#"
 func undefined_var() -> () {
@@ -237,8 +264,11 @@ func undefined_var() -> () {
     return;
 }
 "#;
-    assert!(compile_to_ast(source4).is_err(), "Should detect undefined variable");
-    
+    assert!(
+        compile_to_ast(source4).is_err(),
+        "Should detect undefined variable"
+    );
+
     // Invalid condition type
     let source5 = r#"
 func invalid_condition() -> () {
@@ -248,14 +278,17 @@ func invalid_condition() -> () {
     return;
 }
 "#;
-    assert!(compile_to_ast(source5).is_err(), "Should detect invalid condition type");
+    assert!(
+        compile_to_ast(source5).is_err(),
+        "Should detect invalid condition type"
+    );
 }
 
 #[test]
 fn test_large_program_compilation() {
     // Generate a moderately large program
     let mut source = String::new();
-    
+
     // Add many helper functions
     for i in 0..50 {
         source.push_str(&format!(
@@ -273,9 +306,10 @@ func helper_{i}(x: i32) -> i32 {{
             increment = i + 1
         ));
     }
-    
+
     // Add main function that uses many helpers
-    source.push_str(r#"
+    source.push_str(
+        r#"
 func main() -> () {
     let sum = 0;
     for (let i: i32 = 0; i < 50; i += 1) {
@@ -285,14 +319,19 @@ func main() -> () {
     }
     return;
 }
-"#);
-    
+"#,
+    );
+
     let result = compile_to_ast(&source);
     assert!(result.is_ok(), "Large program should compile successfully");
-    
+
     let (program, context) = result.unwrap();
     assert_eq!(program.len(), 51, "Should have 50 helper functions + main");
-    assert_eq!(context.functions.len(), 56, "Should have all functions + built-ins"); // Updated after memory fix
+    assert_eq!(
+        context.functions.len(),
+        56,
+        "Should have all functions + built-ins"
+    ); // Updated after memory fix
 }
 
 #[test]
@@ -318,9 +357,12 @@ func add(a: i32, b: i32) -> i32 { return a + b; }
 func multiply(a: i32, b: i32) -> i32 { return a * b; }
 func subtract(a: i32, b: i32) -> i32 { return a - b; }
 "#;
-    
+
     let result = compile_to_ast(source);
-    assert!(result.is_ok(), "Complex expressions should compile successfully");
+    assert!(
+        result.is_ok(),
+        "Complex expressions should compile successfully"
+    );
 }
 
 #[cfg(feature = "llvm")]
@@ -336,11 +378,11 @@ func main() -> () {
     return;
 }
 "#;
-    
+
     // Test LLVM compilation
     let result = compile_to_llvm(source, "test_basic");
     assert!(result.is_ok(), "LLVM compilation should succeed");
-    
+
     // Clean up generated files
     cleanup_test_file("test_basic.ll");
 }
@@ -364,13 +406,16 @@ func main() -> () {
     return;
 }
 "#;
-    
+
     let result = compile_to_llvm(source, "test_control_flow");
     if let Err(e) = &result {
         eprintln!("Control flow test error: {:?}", e);
     }
-    assert!(result.is_ok(), "LLVM control flow compilation should succeed");
-    
+    assert!(
+        result.is_ok(),
+        "LLVM control flow compilation should succeed"
+    );
+
     cleanup_test_file("test_control_flow.ll");
 }
 
@@ -382,15 +427,15 @@ func test() -> i32 {
     return x + 1;
 }
 "#;
-    
+
     // Test tokenization
     let tokens = tokenize(source).expect("Tokenization should succeed");
     assert!(!tokens.is_empty(), "Should produce tokens");
-    
+
     // Test parsing
     let program = parse(source).expect("Parsing should succeed");
     assert_eq!(program.len(), 1, "Should have one function");
-    
+
     // Test full compilation
     let result = compile_to_ast(source).expect("Full compilation should succeed");
     assert!(result.0.len() == 1, "Should have one statement");
@@ -403,14 +448,16 @@ func test() -> i32 {
     return "hello"; // Type error
 }
 "#;
-    
+
     match compile_to_ast(source) {
         Err(error) => {
             let error_message = error.to_string();
             assert!(error_message.contains("Type"), "Error should mention type");
-            assert!(error_message.contains("mismatch") || error_message.contains("error"), 
-                   "Error should indicate mismatch");
-        },
+            assert!(
+                error_message.contains("mismatch") || error_message.contains("error"),
+                "Error should indicate mismatch"
+            );
+        }
         Ok(_) => panic!("Should produce a type error"),
     }
 }
@@ -418,7 +465,7 @@ func test() -> i32 {
 #[test]
 fn test_performance_regression() {
     use std::time::Instant;
-    
+
     let source = r#"
 func fibonacci(n: i32) -> i32 {
     if (n <= 1) {
@@ -432,13 +479,16 @@ func main() -> () {
     return;
 }
 "#;
-    
+
     let start = Instant::now();
     let result = compile_to_ast(source);
     let duration = start.elapsed();
-    
+
     assert!(result.is_ok(), "Compilation should succeed");
-    assert!(duration.as_millis() < 100, "Compilation should be fast (< 100ms)");
+    assert!(
+        duration.as_millis() < 100,
+        "Compilation should be fast (< 100ms)"
+    );
 }
 
 /// Test that demonstrates the full capability of the Eä compiler
@@ -503,19 +553,22 @@ func main() -> () {
     return;
 }
 "#;
-    
+
     let result = compile_to_ast(source);
-    assert!(result.is_ok(), "Showcase program should compile successfully");
-    
+    assert!(
+        result.is_ok(),
+        "Showcase program should compile successfully"
+    );
+
     let (program, context) = result.unwrap();
-    
+
     // Verify all functions are present
     assert_eq!(program.len(), 4, "Should have 4 function declarations");
     assert!(context.functions.contains_key("factorial"));
     assert!(context.functions.contains_key("fibonacci"));
     assert!(context.functions.contains_key("is_prime"));
     assert!(context.functions.contains_key("main"));
-    
+
     println!("✅ Showcase program compiled successfully!");
     println!("📊 Functions defined: {}", context.functions.len());
     println!("📊 Program statements: {}", program.len());

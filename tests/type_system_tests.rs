@@ -2,10 +2,10 @@
 //! Basic tests for the Eä type system implementation.
 
 use ea_compiler::{
+    compile_to_ast,
     lexer::Lexer,
     parser::Parser,
-    type_system::{TypeChecker, EaType, FunctionType},
-    compile_to_ast,
+    type_system::{EaType, FunctionType, TypeChecker},
 };
 
 /// Helper function to type check a single expression.
@@ -14,7 +14,7 @@ fn type_check_expression(source: &str) -> Result<EaType, ea_compiler::error::Com
     let tokens = lexer.tokenize_all()?;
     let mut parser = Parser::new(tokens);
     let expr = parser.parse()?;
-    
+
     let mut type_checker = TypeChecker::new();
     type_checker.check_expression(&expr)
 }
@@ -24,17 +24,17 @@ fn test_debug_tokenization() {
     // Debug the tokenization issue
     let source = "i32";
     let tokens = ea_compiler::tokenize(source).unwrap();
-    
+
     println!("Tokens for 'i32': {:?}", tokens[0].kind);
-    
+
     // Should be TokenKind::I32, not Identifier("i32")
     match &tokens[0].kind {
         ea_compiler::lexer::TokenKind::I32 => {
             println!("✅ Correctly tokenized as I32");
-        },
+        }
         ea_compiler::lexer::TokenKind::Identifier(name) => {
             println!("❌ Incorrectly tokenized as Identifier: {}", name);
-        },
+        }
         other => {
             println!("❌ Unexpected token: {:?}", other);
         }
@@ -46,15 +46,15 @@ fn test_literal_types() {
     // Integer literals
     assert_eq!(type_check_expression("42").unwrap(), EaType::I64);
     assert_eq!(type_check_expression("-42").unwrap(), EaType::I64);
-    
+
     // Float literals
     assert_eq!(type_check_expression("3.14").unwrap(), EaType::F64);
     assert_eq!(type_check_expression("-3.14").unwrap(), EaType::F64);
-    
+
     // Boolean literals
     assert_eq!(type_check_expression("true").unwrap(), EaType::Bool);
     assert_eq!(type_check_expression("false").unwrap(), EaType::Bool);
-    
+
     // String literals
     assert_eq!(type_check_expression("\"hello\"").unwrap(), EaType::String);
 }
@@ -67,13 +67,13 @@ fn test_arithmetic_expressions() {
     assert_eq!(type_check_expression("3 * 4").unwrap(), EaType::I64);
     assert_eq!(type_check_expression("8 / 2").unwrap(), EaType::I64);
     assert_eq!(type_check_expression("9 % 4").unwrap(), EaType::I64);
-    
+
     // Float arithmetic
     assert_eq!(type_check_expression("1.5 + 2.5").unwrap(), EaType::F64);
     assert_eq!(type_check_expression("10.0 - 3.14").unwrap(), EaType::F64);
     assert_eq!(type_check_expression("2.0 * 3.0").unwrap(), EaType::F64);
     assert_eq!(type_check_expression("7.5 / 2.5").unwrap(), EaType::F64);
-    
+
     // Complex expressions
     assert_eq!(type_check_expression("(1 + 2) * 3").unwrap(), EaType::I64);
     assert_eq!(type_check_expression("1 + 2 * 3").unwrap(), EaType::I64);
@@ -88,27 +88,45 @@ fn test_comparison_expressions() {
     assert_eq!(type_check_expression("7 >= 6").unwrap(), EaType::Bool);
     assert_eq!(type_check_expression("1 == 1").unwrap(), EaType::Bool);
     assert_eq!(type_check_expression("2 != 3").unwrap(), EaType::Bool);
-    
+
     // Float comparisons
     assert_eq!(type_check_expression("1.5 < 2.5").unwrap(), EaType::Bool);
     assert_eq!(type_check_expression("3.14 == 3.14").unwrap(), EaType::Bool);
-    
+
     // String comparisons
-    assert_eq!(type_check_expression("\"a\" == \"b\"").unwrap(), EaType::Bool);
-    assert_eq!(type_check_expression("\"hello\" != \"world\"").unwrap(), EaType::Bool);
+    assert_eq!(
+        type_check_expression("\"a\" == \"b\"").unwrap(),
+        EaType::Bool
+    );
+    assert_eq!(
+        type_check_expression("\"hello\" != \"world\"").unwrap(),
+        EaType::Bool
+    );
 }
 
 #[test]
 fn test_logical_expressions() {
     // Boolean logic
-    assert_eq!(type_check_expression("true && false").unwrap(), EaType::Bool);
-    assert_eq!(type_check_expression("true || false").unwrap(), EaType::Bool);
+    assert_eq!(
+        type_check_expression("true && false").unwrap(),
+        EaType::Bool
+    );
+    assert_eq!(
+        type_check_expression("true || false").unwrap(),
+        EaType::Bool
+    );
     assert_eq!(type_check_expression("!true").unwrap(), EaType::Bool);
     assert_eq!(type_check_expression("!false").unwrap(), EaType::Bool);
-    
+
     // Complex logical expressions
-    assert_eq!(type_check_expression("(1 < 2) && (3 > 2)").unwrap(), EaType::Bool);
-    assert_eq!(type_check_expression("true || (5 == 5)").unwrap(), EaType::Bool);
+    assert_eq!(
+        type_check_expression("(1 < 2) && (3 > 2)").unwrap(),
+        EaType::Bool
+    );
+    assert_eq!(
+        type_check_expression("true || (5 == 5)").unwrap(),
+        EaType::Bool
+    );
 }
 
 #[test]
@@ -116,15 +134,15 @@ fn test_variable_declarations() {
     // Variable with explicit type and initializer
     let result = compile_to_ast("let x: i32 = 42;");
     assert!(result.is_ok());
-    
+
     // Variable with type inference
     let result = compile_to_ast("let y = 3.14;");
     assert!(result.is_ok());
-    
+
     // Variable with explicit type, no initializer
     let result = compile_to_ast("let z: bool;");
     assert!(result.is_ok());
-    
+
     // Mutable variable
     let result = compile_to_ast("let mut a: i64 = 100;");
     assert!(result.is_ok());
@@ -140,7 +158,7 @@ fn test_function_declarations() {
     "#;
     let result = compile_to_ast(source);
     assert!(result.is_ok());
-    
+
     // Void function
     let source = r#"
         func greet(name: string) -> () {
@@ -179,7 +197,7 @@ fn test_control_flow_statements() {
     "#;
     let result = compile_to_ast(source);
     assert!(result.is_ok());
-    
+
     // While loop
     let source = r#"
         func test_while() -> () {
@@ -191,7 +209,7 @@ fn test_control_flow_statements() {
     "#;
     let result = compile_to_ast(source);
     assert!(result.is_ok());
-    
+
     // For loop
     let source = r#"
         func test_for() -> () {
@@ -211,11 +229,11 @@ fn test_type_errors() {
     let source = "let x: i32 = \"hello\";";
     let result = compile_to_ast(source);
     assert!(result.is_err());
-    
+
     // Type mismatch in arithmetic
     let result = type_check_expression("1 + \"hello\"");
     assert!(result.is_err());
-    
+
     // Invalid condition in if statement
     let source = r#"
         func test() -> () {
@@ -227,7 +245,7 @@ fn test_type_errors() {
     "#;
     let result = compile_to_ast(source);
     assert!(result.is_err());
-    
+
     // Wrong return type
     let source = r#"
         func test() -> i32 {
@@ -264,9 +282,12 @@ fn test_complex_program() {
             return;
         }
     "#;
-    
+
     let result = compile_to_ast(source);
-    assert!(result.is_ok(), "Complex program should type check successfully");
+    assert!(
+        result.is_ok(),
+        "Complex program should type check successfully"
+    );
 }
 
 #[test]
@@ -283,7 +304,7 @@ fn test_scoping() {
             return;
         }
     "#;
-    
+
     let result = compile_to_ast(source);
     assert!(result.is_ok(), "Scoping should work correctly");
 }
@@ -294,21 +315,21 @@ fn test_type_basic_properties() {
     assert_eq!(EaType::I32, EaType::I32);
     assert_ne!(EaType::I32, EaType::I64);
     assert_ne!(EaType::I32, EaType::String);
-    
+
     // Test built-in type properties (methods we actually implemented)
     assert!(EaType::I32.is_integer());
     assert!(EaType::I32.is_numeric());
     assert!(!EaType::I32.is_float());
     assert!(EaType::I32.is_comparable());
-    
+
     assert!(EaType::F64.is_float());
     assert!(EaType::F64.is_numeric());
     assert!(!EaType::F64.is_integer());
     assert!(EaType::F64.is_comparable());
-    
+
     assert!(!EaType::Bool.is_numeric());
     assert!(!EaType::Bool.is_comparable());
-    
+
     assert!(EaType::String.is_comparable());
     assert!(!EaType::String.is_numeric());
 }
@@ -324,16 +345,25 @@ fn test_expressions_with_variables() {
             return;
         }
     "#;
-    
+
     let result = compile_to_ast(source);
-    assert!(result.is_ok(), "Variable expressions should type check correctly");
+    assert!(
+        result.is_ok(),
+        "Variable expressions should type check correctly"
+    );
 }
 
 #[test]
 fn test_nested_expressions() {
     // Test complex nested expressions
-    assert_eq!(type_check_expression("((1 + 2) * 3) + (4 - 5)").unwrap(), EaType::I64);
-    assert_eq!(type_check_expression("(1 < 2) && (3 > 2) || (4 == 4)").unwrap(), EaType::Bool);
+    assert_eq!(
+        type_check_expression("((1 + 2) * 3) + (4 - 5)").unwrap(),
+        EaType::I64
+    );
+    assert_eq!(
+        type_check_expression("(1 < 2) && (3 > 2) || (4 == 4)").unwrap(),
+        EaType::Bool
+    );
 }
 
 // Tests from basic_type_test.rs (consolidated for optimization)
@@ -350,7 +380,7 @@ fn test_basic_compilation() {
             return;
         }
     "#;
-    
+
     // Test full compilation pipeline
     let result = compile_to_ast(source);
     assert!(result.is_ok(), "Basic program should compile successfully");
@@ -367,7 +397,7 @@ fn test_type_inference() {
             return;
         }
     "#;
-    
+
     let result = compile_to_ast(source);
     assert!(result.is_ok(), "Type inference should work correctly");
 }
@@ -379,7 +409,7 @@ fn test_basic_type_errors() {
             return "hello";  // Type error: string instead of i32
         }
     "#;
-    
+
     let result = compile_to_ast(source);
     assert!(result.is_err(), "Type errors should be caught");
 }
@@ -387,20 +417,20 @@ fn test_basic_type_errors() {
 #[test]
 fn test_expression_types() {
     let mut type_checker = TypeChecker::new();
-    
+
     // Test arithmetic expression
     let tokens = ea_compiler::tokenize("1 + 2").unwrap();
     let mut parser = ea_compiler::parser::Parser::new(tokens);
     let expr = parser.parse().unwrap();
-    
+
     let expr_type = type_checker.check_expression(&expr).unwrap();
     assert_eq!(expr_type, EaType::I64);
-    
+
     // Test boolean expression
     let tokens = ea_compiler::tokenize("true && false").unwrap();
     let mut parser = ea_compiler::parser::Parser::new(tokens);
     let expr = parser.parse().unwrap();
-    
+
     let expr_type = type_checker.check_expression(&expr).unwrap();
     assert_eq!(expr_type, EaType::Bool);
 }
@@ -417,7 +447,7 @@ fn test_basic_function_calls() {
             return;
         }
     "#;
-    
+
     let result = compile_to_ast(source);
     assert!(result.is_ok(), "Function calls should type check correctly");
 }

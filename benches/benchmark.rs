@@ -1,8 +1,8 @@
 //! benches/benchmarks.rs
 //! Performance benchmarks for the Eä compiler
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use ea_compiler::{Lexer, Parser, TypeChecker, compile_to_ast};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use ea_compiler::{compile_to_ast, lexer::Lexer, parser::Parser, type_system::TypeChecker};
 use std::time::Duration;
 
 // Sample Eä programs for benchmarking
@@ -98,31 +98,27 @@ func main() -> () {
 // Lexer benchmarks
 fn bench_lexer(c: &mut Criterion) {
     let mut group = c.benchmark_group("lexer");
-    
+
     for (name, program) in [
         ("small", SMALL_PROGRAM),
-        ("medium", MEDIUM_PROGRAM), 
+        ("medium", MEDIUM_PROGRAM),
         ("large", LARGE_PROGRAM),
     ] {
-        group.bench_with_input(
-            BenchmarkId::new("tokenize", name),
-            program,
-            |b, program| {
-                b.iter(|| {
-                    let mut lexer = Lexer::new(black_box(program));
-                    black_box(lexer.tokenize_all().unwrap())
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("tokenize", name), program, |b, program| {
+            b.iter(|| {
+                let mut lexer = Lexer::new(black_box(program));
+                black_box(lexer.tokenize_all().unwrap())
+            })
+        });
     }
-    
+
     group.finish();
 }
 
 // Parser benchmarks
 fn bench_parser(c: &mut Criterion) {
     let mut group = c.benchmark_group("parser");
-    
+
     for (name, program) in [
         ("small", SMALL_PROGRAM),
         ("medium", MEDIUM_PROGRAM),
@@ -130,26 +126,22 @@ fn bench_parser(c: &mut Criterion) {
     ] {
         let mut lexer = Lexer::new(program);
         let tokens = lexer.tokenize_all().unwrap();
-        
-        group.bench_with_input(
-            BenchmarkId::new("parse", name),
-            &tokens,
-            |b, tokens| {
-                b.iter(|| {
-                    let mut parser = Parser::new(black_box(tokens.clone()));
-                    black_box(parser.parse_program().unwrap())
-                })
-            },
-        );
+
+        group.bench_with_input(BenchmarkId::new("parse", name), &tokens, |b, tokens| {
+            b.iter(|| {
+                let mut parser = Parser::new(black_box(tokens.clone()));
+                black_box(parser.parse_program().unwrap())
+            })
+        });
     }
-    
+
     group.finish();
 }
 
 // Type checker benchmarks
 fn bench_type_checker(c: &mut Criterion) {
     let mut group = c.benchmark_group("type_checker");
-    
+
     for (name, program) in [
         ("small", SMALL_PROGRAM),
         ("medium", MEDIUM_PROGRAM),
@@ -159,19 +151,15 @@ fn bench_type_checker(c: &mut Criterion) {
         let tokens = lexer.tokenize_all().unwrap();
         let mut parser = Parser::new(tokens);
         let ast = parser.parse_program().unwrap();
-        
-        group.bench_with_input(
-            BenchmarkId::new("check_types", name),
-            &ast,
-            |b, ast| {
-                b.iter(|| {
-                    let mut type_checker = TypeChecker::new();
-                    black_box(type_checker.check_program(black_box(ast)).unwrap())
-                })
-            },
-        );
+
+        group.bench_with_input(BenchmarkId::new("check_types", name), &ast, |b, ast| {
+            b.iter(|| {
+                let mut type_checker = TypeChecker::new();
+                black_box(type_checker.check_program(black_box(ast)).unwrap())
+            })
+        });
     }
-    
+
     group.finish();
 }
 
@@ -179,7 +167,7 @@ fn bench_type_checker(c: &mut Criterion) {
 fn bench_full_compilation(c: &mut Criterion) {
     let mut group = c.benchmark_group("full_compilation");
     group.measurement_time(Duration::from_secs(10));
-    
+
     for (name, program) in [
         ("small", SMALL_PROGRAM),
         ("medium", MEDIUM_PROGRAM),
@@ -188,37 +176,31 @@ fn bench_full_compilation(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("compile_to_ast", name),
             program,
-            |b, program| {
-                b.iter(|| {
-                    black_box(compile_to_ast(black_box(program)).unwrap())
-                })
-            },
+            |b, program| b.iter(|| black_box(compile_to_ast(black_box(program)).unwrap())),
         );
     }
-    
+
     group.finish();
 }
 
 // Memory usage benchmarks
 fn bench_memory_usage(c: &mut Criterion) {
     let mut group = c.benchmark_group("memory");
-    
+
     // Generate a very large program for memory testing
     let large_program = generate_large_program(1000); // 1000 functions
-    
+
     group.bench_function("large_program_memory", |b| {
-        b.iter(|| {
-            black_box(compile_to_ast(black_box(&large_program)).unwrap())
-        })
+        b.iter(|| black_box(compile_to_ast(black_box(&large_program)).unwrap()))
     });
-    
+
     group.finish();
 }
 
 // Helper function to generate large programs for testing
 fn generate_large_program(num_functions: usize) -> String {
     let mut program = String::new();
-    
+
     for i in 0..num_functions {
         program.push_str(&format!(
             r#"
@@ -235,8 +217,9 @@ func function_{i}(x: i32, y: i32) -> i32 {{
             i = i
         ));
     }
-    
-    program.push_str(r#"
+
+    program.push_str(
+        r#"
 func main() -> () {
     let sum = 0;
     for (let i: i32 = 0; i < 100; i += 1) {
@@ -244,8 +227,9 @@ func main() -> () {
     }
     return;
 }
-"#);
-    
+"#,
+    );
+
     program
 }
 
@@ -253,14 +237,14 @@ func main() -> () {
 fn bench_lexer_throughput(c: &mut Criterion) {
     let large_input = LARGE_PROGRAM.repeat(100); // ~100KB+ of source
     let input_size = large_input.len();
-    
+
     c.bench_function("lexer_throughput", |b| {
         b.iter(|| {
             let mut lexer = Lexer::new(black_box(&large_input));
             black_box(lexer.tokenize_all().unwrap())
         });
     });
-    
+
     println!("Input size for throughput test: {} bytes", input_size);
 }
 

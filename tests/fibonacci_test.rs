@@ -2,10 +2,7 @@
 //! End-to-end test to verify that fibonacci actually compiles and generates correct LLVM IR
 
 #[cfg(feature = "llvm")]
-use ea_compiler::{
-    compile_to_ast,
-    codegen::CodeGenerator,
-};
+use ea_compiler::{codegen::CodeGenerator, compile_to_ast};
 #[cfg(feature = "llvm")]
 use inkwell::context::Context;
 
@@ -24,33 +21,33 @@ fn test_fibonacci_compiles_to_llvm() {
             return fibonacci(5);
         }
     "#;
-    
+
     println!("Testing fibonacci source:");
     println!("{}", source);
-    
+
     // First, test parsing and type checking
-    let (program, _type_context) = compile_to_ast(source)
-        .expect("Fibonacci should parse and type check successfully");
-    
+    let (program, _type_context) =
+        compile_to_ast(source).expect("Fibonacci should parse and type check successfully");
+
     println!("✅ Parsing and type checking successful");
     println!("Program has {} statements", program.len());
-    
+
     // Now test LLVM code generation
     let context = Context::create();
     let mut codegen = CodeGenerator::new(&context, "fibonacci_test");
-    
+
     let result = codegen.compile_program(&program);
     match result {
         Ok(()) => {
             println!("✅ LLVM code generation successful!");
-            
+
             // Write the IR to see what we generated
             if let Err(e) = codegen.write_ir_to_file("fibonacci_test.ll") {
                 println!("Warning: Failed to write IR file: {}", e);
             } else {
                 println!("✅ LLVM IR written to fibonacci_test.ll");
             }
-        },
+        }
         Err(e) => {
             panic!("❌ LLVM code generation failed: {}", e);
         }
@@ -68,16 +65,16 @@ fn test_simple_if_statement() {
             return 0;
         }
     "#;
-    
-    let (program, _) = compile_to_ast(source)
-        .expect("Simple if statement should parse");
-    
+
+    let (program, _) = compile_to_ast(source).expect("Simple if statement should parse");
+
     let context = Context::create();
     let mut codegen = CodeGenerator::new(&context, "test_if");
-    
-    codegen.compile_program(&program)
+
+    codegen
+        .compile_program(&program)
         .expect("Simple if statement should compile to LLVM");
-    
+
     println!("✅ Simple if statement compiles successfully");
 }
 
@@ -106,16 +103,16 @@ fn test_comparison_operations() {
             return 0;
         }
     "#;
-    
-    let (program, _) = compile_to_ast(source)
-        .expect("Comparison operations should parse");
-    
+
+    let (program, _) = compile_to_ast(source).expect("Comparison operations should parse");
+
     let context = Context::create();
     let mut codegen = CodeGenerator::new(&context, "test_comparisons");
-    
-    codegen.compile_program(&program)
+
+    codegen
+        .compile_program(&program)
         .expect("Comparison operations should compile to LLVM");
-    
+
     println!("✅ Comparison operations compile successfully");
 }
 
@@ -133,16 +130,16 @@ fn test_nested_if_statements() {
             return 0;
         }
     "#;
-    
-    let (program, _) = compile_to_ast(source)
-        .expect("Nested if statements should parse");
-    
+
+    let (program, _) = compile_to_ast(source).expect("Nested if statements should parse");
+
     let context = Context::create();
     let mut codegen = CodeGenerator::new(&context, "test_nested");
-    
-    codegen.compile_program(&program)
+
+    codegen
+        .compile_program(&program)
         .expect("Nested if statements should compile to LLVM");
-    
+
     println!("✅ Nested if statements compile successfully");
 }
 
@@ -155,16 +152,16 @@ fn test_void_function() {
             return;
         }
     "#;
-    
-    let (program, _) = compile_to_ast(source)
-        .expect("Void function should parse");
-    
+
+    let (program, _) = compile_to_ast(source).expect("Void function should parse");
+
     let context = Context::create();
     let mut codegen = CodeGenerator::new(&context, "test_void");
-    
-    codegen.compile_program(&program)
+
+    codegen
+        .compile_program(&program)
         .expect("Void function should compile to LLVM");
-    
+
     println!("✅ Void function compiles successfully");
 }
 
@@ -180,11 +177,11 @@ fn test_fibonacci_parsing_only() {
             return fibonacci(n - 1) + fibonacci(n - 2);
         }
     "#;
-    
+
     // This should still work - parsing and type checking
-    let (program, _) = compile_to_ast(source)
-        .expect("Fibonacci should parse and type check even without LLVM");
-    
+    let (program, _) =
+        compile_to_ast(source).expect("Fibonacci should parse and type check even without LLVM");
+
     println!("✅ Fibonacci parsing and type checking works (LLVM disabled)");
     println!("Program has {} statements", program.len());
 }
@@ -199,21 +196,21 @@ fn test_factorial_parsing() {
             return n * factorial(n - 1);
         }
     "#;
-    
-    let (program, _) = compile_to_ast(source)
-        .expect("Factorial should parse and type check");
-    
+
+    let (program, _) = compile_to_ast(source).expect("Factorial should parse and type check");
+
     #[cfg(feature = "llvm")]
     {
         let context = Context::create();
         let mut codegen = CodeGenerator::new(&context, "test_factorial");
-        
-        codegen.compile_program(&program)
+
+        codegen
+            .compile_program(&program)
             .expect("Factorial should compile to LLVM");
-        
+
         println!("✅ Factorial compiles successfully");
     }
-    
+
     #[cfg(not(feature = "llvm"))]
     {
         println!("✅ Factorial parsing successful (LLVM disabled)");

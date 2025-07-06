@@ -30,10 +30,19 @@ cargo test lexer_tests
 cargo test parser_tests  
 cargo test type_system_tests
 cargo test integration_tests
+cargo test simd_codegen_tests
+cargo test simd_integration_tests
+cargo test simd_lexer_tests
+cargo test fibonacci_test
 
 # Alternative: Use makefile
 make test           # All tests
 make test-verbose   # With output
+
+# Run tests for specific functionality
+cargo test --features=llvm -- --test-threads=1 --nocapture test_simd_vector_operations
+cargo test --features=llvm -- fibonacci
+cargo test --features=llvm -- vector_add
 ```
 
 ### Code Quality Commands
@@ -76,6 +85,15 @@ make bench
 # JIT execution (immediate run)
 ./target/release/ea --run examples/fibonacci.ea
 
+# Test SIMD examples
+./target/release/ea --run examples/simd_example.ea
+./target/release/ea --emit-llvm examples/vector_add.ea
+./target/release/ea --run examples/simd_memory_demo.ea
+
+# Test with stress tests
+./target/release/ea --run stress_test_1000.ea
+./target/release/ea --emit-llvm-only stress_test_100k.ea | head -20
+
 # Alternative
 make test-cli
 make run-examples
@@ -103,6 +121,8 @@ The Eä compiler follows a traditional multi-phase compilation pipeline:
 - **SIMD operators**: Element-wise operations (.*, .+, ./, .&, .|, .^)
 - **Position tracking**: Line/column information for error reporting
 - **Error resilience**: Continues after lexical errors
+- **Key files**: `mod.rs` (main lexer), `tokens.rs` (token utilities)
+- **Token types**: 80+ token types including SIMD vector literals and operations
 
 #### 3. **Syntax Analysis** (`src/parser/`, `src/ast.rs`)
 - **Pattern**: Recursive descent parser with operator precedence
@@ -123,6 +143,8 @@ The Eä compiler follows a traditional multi-phase compilation pipeline:
   - Control flow analysis (return statement validation)
   - Scoped variable and function management
   - SIMD type validation infrastructure (foundation for future expansion)
+- **Key files**: `mod.rs` (main type checker), `types.rs` (type definitions), `simd_validator.rs` (SIMD validation), `hardware.rs` (hardware feature detection)
+- **Type categories**: 14 primitive types, SIMD vectors, arrays, functions, structs, enums
 
 #### 5. **Code Generation** (`src/codegen/`)
 - **LLVM Integration**: Uses `inkwell` Rust bindings for LLVM 14
@@ -189,15 +211,48 @@ src/
 ├── type_system/        # Type checking and validation
 │   ├── mod.rs          # Type checker implementation
 │   ├── types.rs        # Type definitions
-│   └── simd_validator.rs # SIMD type validation
+│   ├── simd_validator.rs # SIMD type validation
+│   └── hardware.rs     # Hardware feature detection
 └── codegen/            # LLVM code generation
     └── mod.rs          # Code generator implementation
+
+tests/                  # Integration test suite
+├── integration_tests.rs    # End-to-end compilation tests
+├── lexer_tests.rs         # Lexer functionality tests
+├── type_system_tests.rs   # Type system validation tests
+├── simd_codegen_tests.rs  # SIMD code generation tests
+├── simd_integration_tests.rs # SIMD end-to-end tests
+├── simd_lexer_tests.rs    # SIMD lexer tests
+└── fibonacci_test.rs      # Fibonacci algorithm tests
+
+benches/                # Performance benchmarks
+├── benchmark.rs           # General compiler benchmarks
+└── simd_performance_benchmarks.rs # SIMD-specific benchmarks
+
+examples/               # Example Eä programs
+├── simd_example.ea       # Basic SIMD operations
+├── vector_add.ea         # Vector addition example
+├── simd_memory_demo.ea   # Memory load/store operations
+└── advanced_memory_simd.ea # Advanced SIMD memory patterns
 ```
 
 ## Development Environment Setup
+
+### System Requirements
+- **Rust**: 1.70+ (install via [rustup.rs](https://rustup.rs/))
+- **LLVM**: Version 14 specifically (not 15 or later)
+- **Platform**: Linux (Ubuntu/WSL recommended), macOS, Windows (via WSL)
+- **Memory**: 4GB+ recommended for compilation
+- **Disk**: 2GB+ for full build including LLVM
+
+### Ubuntu/WSL Setup
 ```bash
 # Install dependencies (Ubuntu/WSL)
+sudo apt update
 sudo apt install llvm-14-dev clang-14 build-essential
+
+# Verify LLVM installation
+llvm-config-14 --version  # Should show 14.x.x
 
 # One-time setup (includes dep install, examples, build, test)
 make setup
@@ -212,6 +267,22 @@ make create-examples
 cargo test --features=llvm
 make quality-check
 ```
+
+### macOS Setup
+```bash
+# Install LLVM 14 via Homebrew
+brew install llvm@14
+export PATH="/opt/homebrew/opt/llvm@14/bin:$PATH"
+
+# Set environment variables
+export LLVM_SYS_140_PREFIX="/opt/homebrew/opt/llvm@14"
+```
+
+### Common Setup Issues
+- **LLVM version mismatch**: Ensure exactly LLVM 14, not 15+
+- **Path issues**: Verify `llvm-config-14` is in PATH
+- **Permission errors**: Use `sudo` for apt installs only
+- **Disk space**: Ensure 2GB+ free for complete build
 
 ## Performance Characteristics
 - **Lexer throughput**: >1MB/sec
@@ -245,16 +316,22 @@ ea --help                       # Show usage help
 ### CLI Testing Examples
 ```bash
 # Test individual components
-./target/release/ea --emit-tokens test_tokens.ea
-./target/release/ea --emit-ast test_simple_expr.ea
-./target/release/ea --emit-llvm test_fibonacci.ea
+./target/release/ea --emit-tokens hello.ea
+./target/release/ea --emit-ast test_fibonacci.ea
+./target/release/ea --emit-llvm examples/simd_example.ea
 
 # Test JIT execution
-./target/release/ea --run test_minimal.ea
+./target/release/ea --run hello.ea
 ./target/release/ea --run --verbose test_print.ea
+./target/release/ea --run examples/vector_add.ea
 
 # Verify compilation output
-./target/release/ea --emit-llvm-only test_simd.ea | lli
+./target/release/ea --emit-llvm-only examples/simd_example.ea | lli
+./target/release/ea --emit-llvm-only stress_test_1000.ea > output.ll
+
+# Debug compilation issues
+./target/release/ea --diagnose-jit problematic_file.ea
+./target/release/ea --verbose --emit-ast failing_program.ea
 ```
 
 ## Testing Infrastructure
@@ -274,14 +351,24 @@ cargo test --features=llvm simd_codegen_tests
 cargo test --features=llvm simd_integration_tests
 cargo test --features=llvm lexer_tests
 cargo test --features=llvm type_system_tests
+cargo test --features=llvm fibonacci_test
 
 # Run tests with pattern matching
 cargo test --features=llvm fibonacci
 cargo test --features=llvm simd
 cargo test --features=llvm vector
+cargo test --features=llvm stress_test
+cargo test --features=llvm memory_operations
 
 # Run single test function
 cargo test --features=llvm test_basic_tokenization
+cargo test --features=llvm test_simd_vector_operations
+cargo test --features=llvm test_fibonacci_compilation
+cargo test --features=llvm test_vector_load_store
+
+# Run tests with specific output
+cargo test --features=llvm -- --test-threads=1 test_jit_execution
+cargo test --features=llvm -- --nocapture test_error_handling
 ```
 
 ## Development Workflow
@@ -336,3 +423,86 @@ The compiler supports 32 built-in SIMD vector types:
 - Stack-based allocation via LLVM
 - Automatic memory management for local variables
 - Reference types for parameter passing
+
+## Common Development Tasks
+
+### Adding New Language Features
+When implementing new language constructs, follow this order:
+
+1. **Lexer** (`src/lexer/mod.rs`): Add token definitions around line 50-200
+2. **AST** (`src/ast.rs`): Add new AST node types around line 100-300
+3. **Parser** (`src/parser/mod.rs`): Add parsing logic, typically in `expression()` or `declaration()` methods
+4. **Type System** (`src/type_system/mod.rs`): Add type checking in `check_expression()` or `check_statement()`
+5. **Codegen** (`src/codegen/mod.rs`): Add LLVM IR generation in `compile_expression()` or `compile_statement()`
+6. **Tests**: Add comprehensive tests in appropriate `tests/*.rs` files
+
+### Adding New SIMD Operations
+SIMD features require special attention across all phases:
+
+1. **Lexer**: Add SIMD tokens in `TokenKind` enum (src/lexer/mod.rs:50-150)
+2. **AST**: Extend `SIMDExpr` enum (src/ast.rs:92-200)
+3. **Parser**: Add parsing in `parse_simd_expression()` method
+4. **Type System**: Update `simd_validator.rs` for new operation validation
+5. **Codegen**: Implement LLVM vector intrinsics in codegen module
+
+### Debugging Compilation Issues
+```bash
+# Step-by-step debugging
+./target/release/ea --emit-tokens problematic.ea    # Check tokenization
+./target/release/ea --emit-ast problematic.ea       # Check parsing
+./target/release/ea --verbose problematic.ea        # Check type checking
+./target/release/ea --emit-llvm problematic.ea      # Check code generation
+./target/release/ea --diagnose-jit problematic.ea   # Check JIT issues
+
+# Common file locations for errors
+grep -n "error" src/lexer/mod.rs     # Lexical errors
+grep -n "ParseError" src/parser/mod.rs # Parse errors  
+grep -n "TypeError" src/type_system/mod.rs # Type errors
+grep -n "CodeGenError" src/codegen/mod.rs # Codegen errors
+```
+
+### Performance Testing and Benchmarking
+```bash
+# Run all benchmarks
+cargo bench --features=llvm
+
+# Run specific benchmarks
+cargo bench --features=llvm lexer
+cargo bench --features=llvm simd
+cargo bench --features=llvm fibonacci
+
+# Profile compilation performance
+time ./target/release/ea large_program.ea
+time ./target/release/ea stress_test_100k.ea
+
+# Memory usage analysis (requires valgrind)
+valgrind --tool=massif ./target/release/ea --run examples/simd_example.ea
+```
+
+## File Location Quick Reference
+
+### Core Implementation Files
+- **Main API**: `src/lib.rs` (compilation pipeline orchestration)
+- **CLI Interface**: `src/main.rs` (argument parsing, user interface)
+- **Error Handling**: `src/error.rs` (all error types and formatting)
+- **AST Definitions**: `src/ast.rs` (all syntax tree node types)
+
+### Module-Specific Files
+- **Lexer Core**: `src/lexer/mod.rs` (tokenization engine)
+- **Parser Core**: `src/parser/mod.rs` (recursive descent parser)
+- **Type Checker**: `src/type_system/mod.rs` (type validation and inference)
+- **Code Generator**: `src/codegen/mod.rs` (LLVM IR generation)
+- **SIMD Validator**: `src/type_system/simd_validator.rs` (SIMD type checking)
+
+### Test Files by Category
+- **Integration**: `tests/integration_tests.rs` (end-to-end pipeline tests)
+- **Lexer**: `tests/lexer_tests.rs` (tokenization tests)
+- **Type System**: `tests/type_system_tests.rs` (type checking tests)
+- **SIMD**: `tests/simd_*_tests.rs` (SIMD-specific functionality)
+- **Performance**: `benches/benchmark.rs` (performance regression tests)
+
+### Configuration Files
+- **Dependencies**: `Cargo.toml` (crate configuration and dependencies)
+- **Build Automation**: `Makefile` (development workflow commands)
+- **Examples**: `examples/*.ea` (demonstration programs)
+- **Documentation**: `README.md`, `docs/getting-started.md`

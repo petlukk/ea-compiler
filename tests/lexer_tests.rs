@@ -19,7 +19,10 @@ func fibonacci(n: u64) -> u64 {
 
     // Check that we got the expected tokens
     assert_eq!(tokens[0].kind, TokenKind::Func);
-    assert_eq!(tokens[1].kind, TokenKind::Identifier("fibonacci".to_string()));
+    assert_eq!(
+        tokens[1].kind,
+        TokenKind::Identifier("fibonacci".to_string())
+    );
     assert_eq!(tokens[2].kind, TokenKind::LeftParen);
     assert_eq!(tokens[3].kind, TokenKind::Identifier("n".to_string()));
     assert_eq!(tokens[4].kind, TokenKind::Colon);
@@ -73,9 +76,18 @@ fn test_string_literals() {
     let mut lexer = Lexer::new(source);
     let tokens = lexer.tokenize_all().expect("Failed to tokenize");
 
-    assert_eq!(tokens[0].kind, TokenKind::StringLiteral("hello".to_string()));
-    assert_eq!(tokens[1].kind, TokenKind::StringLiteral("world".to_string()));
-    assert_eq!(tokens[2].kind, TokenKind::StringLiteral(r#"escaped \"quotes\""#.to_string()));
+    assert_eq!(
+        tokens[0].kind,
+        TokenKind::StringLiteral("hello".to_string())
+    );
+    assert_eq!(
+        tokens[1].kind,
+        TokenKind::StringLiteral("world".to_string())
+    );
+    assert_eq!(
+        tokens[2].kind,
+        TokenKind::StringLiteral(r#"escaped \"quotes\""#.to_string())
+    );
 }
 
 #[test]
@@ -114,11 +126,17 @@ fn test_optimization_attributes() {
     let tokens = lexer.tokenize_all().expect("Failed to tokenize");
 
     assert_eq!(tokens[0].kind, TokenKind::At);
-    assert_eq!(tokens[1].kind, TokenKind::Identifier("optimize".to_string()));
+    assert_eq!(
+        tokens[1].kind,
+        TokenKind::Identifier("optimize".to_string())
+    );
     assert_eq!(tokens[2].kind, TokenKind::At);
     assert_eq!(tokens[3].kind, TokenKind::Identifier("tainted".to_string()));
     assert_eq!(tokens[4].kind, TokenKind::At);
-    assert_eq!(tokens[5].kind, TokenKind::Identifier("untainted".to_string()));
+    assert_eq!(
+        tokens[5].kind,
+        TokenKind::Identifier("untainted".to_string())
+    );
 }
 
 #[test]
@@ -162,13 +180,14 @@ let y = 3.14;
     let tokens = lexer.tokenize_all().expect("Failed to tokenize");
 
     // Should only find the actual code tokens, not comments
-    let non_eof_tokens: Vec<_> = tokens.iter()
-        .filter(|t| t.kind != TokenKind::Eof)
-        .collect();
+    let non_eof_tokens: Vec<_> = tokens.iter().filter(|t| t.kind != TokenKind::Eof).collect();
 
     assert_eq!(non_eof_tokens.len(), 10); // let x = 42 ; let y = 3.14 ;
     assert_eq!(non_eof_tokens[0].kind, TokenKind::Let);
-    assert_eq!(non_eof_tokens[1].kind, TokenKind::Identifier("x".to_string()));
+    assert_eq!(
+        non_eof_tokens[1].kind,
+        TokenKind::Identifier("x".to_string())
+    );
     assert_eq!(non_eof_tokens[2].kind, TokenKind::Assign);
     assert_eq!(non_eof_tokens[3].kind, TokenKind::Integer(42));
     assert_eq!(non_eof_tokens[4].kind, TokenKind::Semicolon);
@@ -178,11 +197,11 @@ let y = 3.14;
 fn test_position_tracking() {
     let source = "func\nmain";
     let mut lexer = Lexer::new(source);
-    
+
     let token1 = lexer.next_token().unwrap();
     assert_eq!(token1.position.line, 1);
     assert_eq!(token1.position.column, 1);
-    
+
     let token2 = lexer.next_token().unwrap();
     assert_eq!(token2.position.line, 2);
     assert_eq!(token2.position.column, 1);
@@ -194,7 +213,7 @@ fn test_error_handling() {
     let source = "func $ main";
     let mut lexer = Lexer::new(source);
     let result = lexer.tokenize_all();
-    
+
     assert!(result.is_err());
     if let Err(e) = result {
         let error_msg = e.to_string();
