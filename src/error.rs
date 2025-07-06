@@ -1,7 +1,7 @@
 //! Error handling for the Eä compiler.
 
-use std::fmt;
 use crate::lexer::Position;
+use std::fmt;
 
 /// Result type for compiler operations.
 pub type Result<T> = std::result::Result<T, CompileError>;
@@ -10,20 +10,11 @@ pub type Result<T> = std::result::Result<T, CompileError>;
 #[derive(Debug)]
 pub enum CompileError {
     /// Lexical analysis error
-    LexError {
-        message: String,
-        position: Position,
-    },
+    LexError { message: String, position: Position },
     /// Parsing error
-    ParseError {
-        message: String,
-        position: Position,
-    },
+    ParseError { message: String, position: Position },
     /// Type checking error
-    TypeError {
-        message: String,
-        position: Position,
-    },
+    TypeError { message: String, position: Position },
     /// Code generation error
     CodeGenError {
         message: String,
@@ -57,17 +48,33 @@ impl fmt::Display for CompileError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CompileError::LexError { message, position } => {
-                write!(f, "Lexical error at {}:{}: {}", position.line, position.column, message)
+                write!(
+                    f,
+                    "Lexical error at {}:{}: {}",
+                    position.line, position.column, message
+                )
             }
             CompileError::ParseError { message, position } => {
-                write!(f, "Parse error at {}:{}: {}", position.line, position.column, message)
+                write!(
+                    f,
+                    "Parse error at {}:{}: {}",
+                    position.line, position.column, message
+                )
             }
             CompileError::TypeError { message, position } => {
-                write!(f, "Type error at {}:{}: {}", position.line, position.column, message)
+                write!(
+                    f,
+                    "Type error at {}:{}: {}",
+                    position.line, position.column, message
+                )
             }
             CompileError::CodeGenError { message, position } => {
                 if let Some(pos) = position {
-                    write!(f, "Code generation error at {}:{}: {}", pos.line, pos.column, message)
+                    write!(
+                        f,
+                        "Code generation error at {}:{}: {}",
+                        pos.line, pos.column, message
+                    )
                 } else {
                     write!(f, "Code generation error: {}", message)
                 }

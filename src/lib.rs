@@ -1,6 +1,6 @@
 // src/lib.rs
 //! Eä programming language compiler
-//! 
+//!
 //! A high-performance systems programming language with built-in SIMD support,
 //! adaptive optimization, and memory safety guarantees.
 
@@ -16,8 +16,8 @@ pub mod codegen;
 
 // Re-export commonly used types
 pub use error::{CompileError, Result};
-pub use lexer::{Lexer, Token, TokenKind, Position};
-pub use type_system::{TypeChecker, EaType, FunctionType, TypeContext};
+pub use lexer::{Lexer, Position, Token, TokenKind};
+pub use type_system::{EaType, FunctionType, TypeChecker, TypeContext};
 
 /// Compiler version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -53,18 +53,110 @@ pub fn compile_to_ast(source: &str) -> Result<(Vec<ast::Stmt>, TypeContext)> {
 #[cfg(feature = "llvm")]
 pub fn compile_to_llvm(source: &str, module_name: &str) -> Result<()> {
     use inkwell::context::Context;
-    
+
     let (program, _type_context) = compile_to_ast(source)?;
-    
+
     let context = Context::create();
     let mut codegen = codegen::CodeGenerator::new(&context, module_name);
     codegen.compile_program(&program)?;
-    
+
     // Write LLVM IR to file for inspection
     let ir_filename = format!("{}.ll", module_name);
     codegen.write_ir_to_file(&ir_filename)?;
-    
+
     Ok(())
+}
+
+/// Diagnostic information for JIT execution
+#[cfg(feature = "llvm")]
+pub fn diagnose_jit_execution(source: &str, module_name: &str) -> Result<String> {
+    use inkwell::context::Context;
+    use inkwell::OptimizationLevel;
+
+    let mut diagnostics = String::new();
+
+    // Parse and type check
+    let (program, _type_context) = compile_to_ast(source)?;
+    diagnostics.push_str("✅ Parsing and type checking successful\n");
+
+    // Generate LLVM IR
+    let context = Context::create();
+    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
+    codegen.compile_program(&program)?;
+    diagnostics.push_str("✅ LLVM IR generation successful\n");
+
+    // Create execution engine
+    let execution_engine = match codegen
+        .get_module()
+        .create_jit_execution_engine(OptimizationLevel::None)
+    {
+        Ok(engine) => {
+            diagnostics.push_str("✅ JIT execution engine created\n");
+            engine
+        }
+        Err(e) => {
+            diagnostics.push_str(&format!(
+                "❌ Failed to create JIT execution engine: {}\n",
+                e
+            ));
+            return Ok(diagnostics);
+        }
+    };
+
+    // Check for external functions in the module
+    let mut external_functions = Vec::new();
+    for function in codegen.get_module().get_functions() {
+        if function.count_basic_blocks() == 0 {
+            external_functions.push(function.get_name().to_string_lossy().to_string());
+        }
+    }
+
+    if !external_functions.is_empty() {
+        diagnostics.push_str("📋 External functions found:\n");
+        for func in &external_functions {
+            diagnostics.push_str(&format!("  - {}\n", func));
+        }
+    }
+
+    // Map external symbols
+    unsafe {
+        let mut mapped_symbols = Vec::new();
+
+        if let Some(puts_fn) = codegen.get_module().get_function("puts") {
+            let puts_addr = libc::puts as *const () as usize;
+            execution_engine.add_global_mapping(&puts_fn, puts_addr);
+            mapped_symbols.push("puts");
+        }
+        if let Some(printf_fn) = codegen.get_module().get_function("printf") {
+            let printf_addr = libc::printf as *const () as usize;
+            execution_engine.add_global_mapping(&printf_fn, printf_addr);
+            mapped_symbols.push("printf");
+        }
+
+        // Add other mappings as before...
+
+        if !mapped_symbols.is_empty() {
+            diagnostics.push_str("✅ Symbol mappings applied:\n");
+            for symbol in &mapped_symbols {
+                diagnostics.push_str(&format!("  - {}\n", symbol));
+            }
+        }
+    }
+
+    // Check for main function
+    if let Some(main_fn) = codegen.get_module().get_function("main") {
+        diagnostics.push_str("✅ Main function found\n");
+        let params = main_fn.get_params();
+        diagnostics.push_str(&format!("  Parameters: {}\n", params.len()));
+        diagnostics.push_str(&format!(
+            "  Return type: {:?}\n",
+            main_fn.get_type().get_return_type()
+        ));
+    } else {
+        diagnostics.push_str("❌ Main function not found\n");
+    }
+
+    Ok(diagnostics)
 }
 
 /// JIT compile and execute a program immediately
@@ -73,43 +165,133 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
     use inkwell::context::Context;
     use inkwell::execution_engine::JitFunction;
     use inkwell::OptimizationLevel;
-    
+
     let (program, _type_context) = compile_to_ast(source)?;
-    
+
     let context = Context::create();
     let mut codegen = codegen::CodeGenerator::new(&context, module_name);
     codegen.compile_program(&program)?;
-    
+
     // Create execution engine for JIT compilation
-    let execution_engine = codegen.get_module()
+    let execution_engine = codegen
+        .get_module()
         .create_jit_execution_engine(OptimizationLevel::None)
-        .map_err(|e| CompileError::codegen_error(
-            format!("Failed to create JIT execution engine: {}", e),
-            None
-        ))?;
-    
+        .map_err(|e| {
+            CompileError::codegen_error(
+                format!("Failed to create JIT execution engine: {}", e),
+                None,
+            )
+        })?;
+
+    // Enhanced symbol mapping for all potential external functions
+    // Map symbols regardless of whether they exist in the module
+    unsafe {
+        // Standard C library I/O functions
+        let puts_addr = libc::puts as *const () as usize;
+        let printf_addr = libc::printf as *const () as usize;
+
+        // Try to map if functions exist in module
+        if let Some(puts_fn) = codegen.get_module().get_function("puts") {
+            execution_engine.add_global_mapping(&puts_fn, puts_addr);
+        }
+        if let Some(printf_fn) = codegen.get_module().get_function("printf") {
+            execution_engine.add_global_mapping(&printf_fn, printf_addr);
+        }
+
+        // Math functions from libm
+        if let Some(sqrt_fn) = codegen.get_module().get_function("sqrt") {
+            let sqrt_addr = libm::sqrt as *const () as usize;
+            execution_engine.add_global_mapping(&sqrt_fn, sqrt_addr);
+        }
+        if let Some(sin_fn) = codegen.get_module().get_function("sin") {
+            let sin_addr = libm::sin as *const () as usize;
+            execution_engine.add_global_mapping(&sin_fn, sin_addr);
+        }
+        if let Some(cos_fn) = codegen.get_module().get_function("cos") {
+            let cos_addr = libm::cos as *const () as usize;
+            execution_engine.add_global_mapping(&cos_fn, cos_addr);
+        }
+        if let Some(pow_fn) = codegen.get_module().get_function("pow") {
+            let pow_addr = libm::pow as *const () as usize;
+            execution_engine.add_global_mapping(&pow_fn, pow_addr);
+        }
+        if let Some(log_fn) = codegen.get_module().get_function("log") {
+            let log_addr = libm::log as *const () as usize;
+            execution_engine.add_global_mapping(&log_fn, log_addr);
+        }
+        if let Some(exp_fn) = codegen.get_module().get_function("exp") {
+            let exp_addr = libm::exp as *const () as usize;
+            execution_engine.add_global_mapping(&exp_fn, exp_addr);
+        }
+
+        // Additional standard library functions
+        if let Some(malloc_fn) = codegen.get_module().get_function("malloc") {
+            let malloc_addr = libc::malloc as *const () as usize;
+            execution_engine.add_global_mapping(&malloc_fn, malloc_addr);
+        }
+        if let Some(free_fn) = codegen.get_module().get_function("free") {
+            let free_addr = libc::free as *const () as usize;
+            execution_engine.add_global_mapping(&free_fn, free_addr);
+        }
+    }
+
     // Find and execute the main function
     unsafe {
-        // Try to get main as a void function first (most common case)
-        let void_result = execution_engine.get_function::<unsafe extern "C" fn()>("main");
-        if let Ok(main_fn) = void_result {
-            let main_fn: JitFunction<unsafe extern "C" fn()> = main_fn;
-            main_fn.call();
-            return Ok(0); // Return 0 for successful void main
+        // Check if main function exists first
+        let main_fn_ref = codegen.get_module().get_function("main");
+        if main_fn_ref.is_none() {
+            return Err(CompileError::codegen_error(
+                "Main function not found in module".to_string(),
+                None,
+            ));
         }
-        
-        // Try to get main as an i32 function
-        let i32_result = execution_engine.get_function::<unsafe extern "C" fn() -> i32>("main");
-        if let Ok(main_fn) = i32_result {
-            let main_fn: JitFunction<unsafe extern "C" fn() -> i32> = main_fn;
-            let result = main_fn.call();
-            return Ok(result);
+
+        let main_fn_info = main_fn_ref.unwrap();
+        let return_type = main_fn_info.get_type().get_return_type();
+
+        match return_type {
+            None => {
+                // Void function
+                let void_result = execution_engine.get_function::<unsafe extern "C" fn()>("main");
+                match void_result {
+                    Ok(main_fn) => {
+                        let main_fn: JitFunction<unsafe extern "C" fn()> = main_fn;
+                        match std::panic::catch_unwind(|| main_fn.call()) {
+                            Ok(_) => Ok(0),
+                            Err(_) => Err(CompileError::codegen_error(
+                                "JIT execution failed with runtime error (likely missing symbol mapping)".to_string(),
+                                None
+                            ))
+                        }
+                    }
+                    Err(e) => Err(CompileError::codegen_error(
+                        format!("Failed to get void main function: {}", e),
+                        None,
+                    )),
+                }
+            }
+            Some(_) => {
+                // i32 function (most likely)
+                let i32_result =
+                    execution_engine.get_function::<unsafe extern "C" fn() -> i32>("main");
+                match i32_result {
+                    Ok(main_fn) => {
+                        let main_fn: JitFunction<unsafe extern "C" fn() -> i32> = main_fn;
+                        match std::panic::catch_unwind(|| main_fn.call()) {
+                            Ok(result) => Ok(result),
+                            Err(_) => Err(CompileError::codegen_error(
+                                "JIT execution failed with runtime error (likely missing symbol mapping)".to_string(),
+                                None
+                            ))
+                        }
+                    }
+                    Err(e) => Err(CompileError::codegen_error(
+                        format!("Failed to get i32 main function: {}", e),
+                        None,
+                    )),
+                }
+            }
         }
-        
-        Err(CompileError::codegen_error(
-            "Main function not found or has unsupported signature".to_string(),
-            None
-        ))
     }
 }
 
@@ -121,7 +303,7 @@ mod tests {
     fn test_basic_tokenization() {
         let source = "func main() { let x = 42; }";
         let tokens = tokenize(source).unwrap();
-        
+
         assert!(!tokens.is_empty());
         assert_eq!(tokens[0].kind, TokenKind::Func);
         assert_eq!(tokens.last().unwrap().kind, TokenKind::Eof);
@@ -134,15 +316,15 @@ mod tests {
                 return a + b;
             }
         "#;
-        
+
         let program = parse(source).unwrap();
         assert_eq!(program.len(), 1);
-        
+
         match &program[0] {
             ast::Stmt::FunctionDeclaration { name, params, .. } => {
                 assert_eq!(name, "add");
                 assert_eq!(params.len(), 2);
-            },
+            }
             _ => panic!("Expected function declaration"),
         }
     }
@@ -159,9 +341,12 @@ mod tests {
                 return;
             }
         "#;
-        
+
         let result = compile_to_ast(source);
-        assert!(result.is_ok(), "Type checking should succeed for valid program");
+        assert!(
+            result.is_ok(),
+            "Type checking should succeed for valid program"
+        );
     }
 
     #[test]
@@ -171,9 +356,12 @@ mod tests {
                 return "hello"; // Type error: string instead of i32
             }
         "#;
-        
+
         let result = compile_to_ast(source);
-        assert!(result.is_err(), "Type checking should fail for invalid program");
+        assert!(
+            result.is_err(),
+            "Type checking should fail for invalid program"
+        );
     }
 
     #[test]
@@ -182,10 +370,10 @@ mod tests {
         let tokens = tokenize(source).unwrap();
         let mut parser = parser::Parser::new(tokens);
         let expr = parser.parse().unwrap();
-        
+
         let mut type_checker = TypeChecker::new();
         let expr_type = type_checker.check_expression(&expr).unwrap();
-        
+
         assert_eq!(expr_type, EaType::I64);
     }
 
@@ -197,7 +385,7 @@ mod tests {
                 return a + b;
             }
         "#;
-        
+
         let result = compile_to_llvm(source, "test_module");
         assert!(result.is_ok(), "LLVM compilation should succeed");
     }
@@ -223,9 +411,12 @@ mod tests {
                 return;
             }
         "#;
-        
+
         let result = compile_to_ast(source);
-        assert!(result.is_ok(), "Complex program should type check successfully");
+        assert!(
+            result.is_ok(),
+            "Complex program should type check successfully"
+        );
     }
 
     #[test]
@@ -241,7 +432,7 @@ mod tests {
                 return;
             }
         "#;
-        
+
         let result = compile_to_ast(source);
         assert!(result.is_ok(), "Scoping should work correctly");
     }

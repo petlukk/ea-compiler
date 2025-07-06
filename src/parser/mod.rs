@@ -1,5 +1,5 @@
 //! Parser for the Eä programming language.
-//! 
+//!
 //! This module is responsible for transforming a sequence of tokens into an
 //! Abstract Syntax Tree (AST) that represents the structure of the source code.
 
@@ -7,9 +7,10 @@
 // Extends existing recursive descent parser with industry-first SIMD support
 
 use crate::{
-    ast::{BinaryOp, Expr, Literal, Parameter, Stmt, TypeAnnotation, UnaryOp, 
-          SIMDExpr, SIMDOperator, SIMDVectorType, ReductionOp, EnumVariant, 
-          Pattern, MatchArm}, // Added Pattern and MatchArm imports
+    ast::{
+        BinaryOp, EnumVariant, Expr, Literal, MatchArm, Parameter, Pattern, ReductionOp, SIMDExpr,
+        SIMDOperator, SIMDVectorType, Stmt, TypeAnnotation, UnaryOp,
+    }, // Added Pattern and MatchArm imports
     error::{CompileError, Result},
     lexer::{Token, TokenKind}, // Removed unused Position import
 };
@@ -29,56 +30,59 @@ impl Parser {
     /// Parses the tokens and returns the resulting program as a list of statements.
     pub fn parse_program(&mut self) -> Result<Vec<Stmt>> {
         let mut statements = Vec::new();
-        
+
         while !self.is_at_end() {
             statements.push(self.declaration()?);
         }
-        
+
         Ok(statements)
     }
-    
+
     /// Parses a declaration statement (function, variable, or regular statement).
     fn declaration(&mut self) -> Result<Stmt> {
         if self.match_tokens(&[TokenKind::Func]) {
             return self.function_declaration("function");
         }
-        
+
         if self.match_tokens(&[TokenKind::Struct]) {
             return self.struct_declaration();
         }
-        
+
         if self.match_tokens(&[TokenKind::Enum]) {
             return self.enum_declaration();
         }
-        
+
         if self.match_tokens(&[TokenKind::Let]) {
             return self.var_declaration();
         }
-        
+
         self.statement()
     }
-    
+
     /// Parses a function declaration.
     fn function_declaration(&mut self, kind: &str) -> Result<Stmt> {
         let name = self.consume_identifier(format!("Expected {kind} name"))?;
-        
+
         self.consume(
             TokenKind::LeftParen,
             format!("Expected '(' after {kind} name"),
         )?;
-        
+
         let mut parameters = Vec::new();
         if !self.check(&TokenKind::RightParen) {
             loop {
                 // Parse parameter name
                 let param_name = self.consume_identifier("Expected parameter name".to_string())?;
-                
+
                 // Parse parameter type
-                self.consume(TokenKind::Colon, "Expected ':' after parameter name".to_string())?;
-                
+                self.consume(
+                    TokenKind::Colon,
+                    "Expected ':' after parameter name".to_string(),
+                )?;
+
                 let is_mutable = self.match_tokens(&[TokenKind::Mut]);
                 let type_name = self.consume_type_name("Expected parameter type".to_string())?;
-                
+
                 let param = Parameter {
                     name: param_name,
                     type_annotation: TypeAnnotation {
@@ -86,20 +90,20 @@ impl Parser {
                         is_mutable,
                     },
                 };
-                
+
                 parameters.push(param);
-                
+
                 if !self.match_tokens(&[TokenKind::Comma]) {
                     break;
                 }
             }
         }
-        
+
         self.consume(
             TokenKind::RightParen,
             "Expected ')' after parameters".to_string(),
         )?;
-        
+
         // Parse optional return type
         let return_type = if self.match_tokens(&[TokenKind::Arrow]) {
             let is_mutable = self.match_tokens(&[TokenKind::Mut]);
@@ -123,45 +127,46 @@ impl Parser {
         } else {
             None
         };
-        
+
         // Parse function body
         self.consume(
             TokenKind::LeftBrace,
             format!("Expected '{{' before {kind} body"),
         )?;
-        
+
         let body = self.block()?;
-        
+
         Ok(Stmt::FunctionDeclaration {
             name,
             params: parameters,
             return_type,
             body: Box::new(body),
+            attributes: Vec::new(), // TODO: Parse attributes
         })
     }
-    
+
     /// Parses a struct declaration.
     fn struct_declaration(&mut self) -> Result<Stmt> {
         let name = self.consume_identifier("Expected struct name".to_string())?;
-        
+
         self.consume(
             TokenKind::LeftBrace,
             "Expected '{' after struct name".to_string(),
         )?;
-        
+
         let mut fields = Vec::new();
-        
+
         if !self.check(&TokenKind::RightBrace) {
             loop {
                 let field_name = self.consume_identifier("Expected field name".to_string())?;
-                
+
                 self.consume(
                     TokenKind::Colon,
                     "Expected ':' after field name".to_string(),
                 )?;
-                
+
                 let field_type = self.consume_type_name("Expected field type".to_string())?;
-                
+
                 fields.push(crate::ast::StructField {
                     name: field_name,
                     type_annotation: crate::ast::TypeAnnotation {
@@ -169,97 +174,98 @@ impl Parser {
                         is_mutable: false,
                     },
                 });
-                
+
                 if !self.match_tokens(&[TokenKind::Comma]) {
                     break;
                 }
-                
+
                 // Allow trailing comma
                 if self.check(&TokenKind::RightBrace) {
                     break;
                 }
             }
         }
-        
+
         self.consume(
             TokenKind::RightBrace,
             "Expected '}' after struct fields".to_string(),
         )?;
-        
+
         Ok(Stmt::StructDeclaration { name, fields })
     }
-    
+
     /// Parses an enum declaration.
     fn enum_declaration(&mut self) -> Result<Stmt> {
         let name = self.consume_identifier("Expected enum name".to_string())?;
-        
+
         self.consume(
             TokenKind::LeftBrace,
             "Expected '{' after enum name".to_string(),
         )?;
-        
+
         let mut variants = Vec::new();
-        
+
         if !self.check(&TokenKind::RightBrace) {
             loop {
                 let variant_name = self.consume_identifier("Expected variant name".to_string())?;
-                
+
                 let data = if self.match_tokens(&[TokenKind::LeftParen]) {
                     let mut type_list = Vec::new();
-                    
+
                     if !self.check(&TokenKind::RightParen) {
                         loop {
-                            let type_name = self.consume_type_name("Expected type in variant".to_string())?;
+                            let type_name =
+                                self.consume_type_name("Expected type in variant".to_string())?;
                             type_list.push(TypeAnnotation {
                                 name: type_name,
                                 is_mutable: false,
                             });
-                            
+
                             if !self.match_tokens(&[TokenKind::Comma]) {
                                 break;
                             }
                         }
                     }
-                    
+
                     self.consume(
                         TokenKind::RightParen,
                         "Expected ')' after variant types".to_string(),
                     )?;
-                    
+
                     Some(type_list)
                 } else {
                     None
                 };
-                
+
                 variants.push(EnumVariant {
                     name: variant_name,
                     data,
                 });
-                
+
                 if !self.match_tokens(&[TokenKind::Comma]) {
                     break;
                 }
-                
+
                 // Allow trailing comma
                 if self.check(&TokenKind::RightBrace) {
                     break;
                 }
             }
         }
-        
+
         self.consume(
             TokenKind::RightBrace,
             "Expected '}' after enum variants".to_string(),
         )?;
-        
+
         Ok(Stmt::EnumDeclaration { name, variants })
     }
-    
+
     /// Parses a variable declaration.
     fn var_declaration(&mut self) -> Result<Stmt> {
         let is_mutable = self.match_tokens(&[TokenKind::Mut]);
         let name = self.consume_identifier("Expected variable name".to_string())?;
-        
+
         // Parse optional type annotation
         let type_annotation = if self.match_tokens(&[TokenKind::Colon]) {
             let type_name = self.consume_type_name("Expected type after ':'".to_string())?;
@@ -270,51 +276,51 @@ impl Parser {
         } else {
             None
         };
-        
+
         // Parse optional initializer
         let initializer = if self.match_tokens(&[TokenKind::Assign]) {
             Some(self.expression()?)
         } else {
             None
         };
-        
+
         self.consume(
             TokenKind::Semicolon,
             "Expected ';' after variable declaration".to_string(),
         )?;
-        
+
         Ok(Stmt::VarDeclaration {
             name,
             type_annotation,
             initializer,
         })
     }
-    
+
     /// Parses a regular statement.
     fn statement(&mut self) -> Result<Stmt> {
         if self.match_tokens(&[TokenKind::Return]) {
             return self.return_statement();
         }
-        
+
         if self.match_tokens(&[TokenKind::LeftBrace]) {
             return self.block();
         }
-        
+
         if self.match_tokens(&[TokenKind::If]) {
             return self.if_statement();
         }
-        
+
         if self.match_tokens(&[TokenKind::While]) {
             return self.while_statement();
         }
-        
+
         if self.match_tokens(&[TokenKind::For]) {
             return self.for_statement();
         }
-        
+
         self.expression_statement()
     }
-    
+
     /// Parses a return statement.
     fn return_statement(&mut self) -> Result<Stmt> {
         let expr = if !self.check(&TokenKind::Semicolon) {
@@ -322,98 +328,93 @@ impl Parser {
         } else {
             None
         };
-        
+
         self.consume(
             TokenKind::Semicolon,
             "Expected ';' after return value".to_string(),
         )?;
-        
+
         Ok(Stmt::Return(expr))
     }
-    
+
     /// Parses a block statement.
     fn block(&mut self) -> Result<Stmt> {
         let mut statements = Vec::new();
-        
+
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             statements.push(self.declaration()?);
         }
-        
+
         self.consume(
             TokenKind::RightBrace,
             "Expected '}' after block".to_string(),
         )?;
-        
+
         Ok(Stmt::Block(statements))
     }
-    
+
     /// Parses an if statement.
     fn if_statement(&mut self) -> Result<Stmt> {
-        self.consume(
-            TokenKind::LeftParen,
-            "Expected '(' after 'if'".to_string(),
-        )?;
-        
+        self.consume(TokenKind::LeftParen, "Expected '(' after 'if'".to_string())?;
+
         let condition = self.expression()?;
-        
+
         self.consume(
             TokenKind::RightParen,
             "Expected ')' after if condition".to_string(),
         )?;
-        
+
         let then_branch = Box::new(self.statement()?);
-        
+
         let else_branch = if self.match_tokens(&[TokenKind::Else]) {
             Some(Box::new(self.statement()?))
         } else {
             None
         };
-        
+
         Ok(Stmt::If {
             condition,
             then_branch,
             else_branch,
         })
     }
-    
+
     /// Parses a while statement.
     fn while_statement(&mut self) -> Result<Stmt> {
         self.consume(
             TokenKind::LeftParen,
             "Expected '(' after 'while'".to_string(),
         )?;
-        
+
         let condition = self.expression()?;
-        
+
         self.consume(
             TokenKind::RightParen,
             "Expected ')' after while condition".to_string(),
         )?;
-        
+
         let body = Box::new(self.statement()?);
-        
-        Ok(Stmt::While {
-            condition,
-            body,
-        })
+
+        Ok(Stmt::While { condition, body })
     }
-    
+
     /// Parses a for statement.
     fn for_statement(&mut self) -> Result<Stmt> {
         // Check if this is a for-in loop by looking for the pattern: identifier 'in'
         // We can peek ahead without consuming tokens
-        
+
         // Check if the next token is an identifier
         if matches!(self.peek().kind, TokenKind::Identifier(_)) {
             // Look at the token after the identifier to see if it's 'in'
             if self.current + 1 < self.tokens.len() {
                 if let TokenKind::In = self.tokens[self.current + 1].kind {
                     // This is a for-in loop
-                    let variable = self.consume_identifier("Expected variable name in for-in loop".to_string())?;
+                    let variable = self
+                        .consume_identifier("Expected variable name in for-in loop".to_string())?;
                     self.consume(TokenKind::In, "Expected 'in' keyword".to_string())?;
                     let iterable = self.expression()?;
                     let body = Box::new(self.statement()?);
-                    
+
                     return Ok(Stmt::ForIn {
                         variable,
                         iterable,
@@ -422,14 +423,11 @@ impl Parser {
                 }
             }
         }
-        
+
         // Parse as traditional for loop
-        
-        self.consume(
-            TokenKind::LeftParen,
-            "Expected '(' after 'for'".to_string(),
-        )?;
-        
+
+        self.consume(TokenKind::LeftParen, "Expected '(' after 'for'".to_string())?;
+
         // Initializer
         let initializer = if self.match_tokens(&[TokenKind::Semicolon]) {
             None
@@ -438,34 +436,34 @@ impl Parser {
         } else {
             Some(Box::new(self.expression_statement()?))
         };
-        
+
         // Condition
         let condition = if !self.check(&TokenKind::Semicolon) {
             Some(self.expression()?)
         } else {
             None
         };
-        
+
         self.consume(
             TokenKind::Semicolon,
             "Expected ';' after loop condition".to_string(),
         )?;
-        
+
         // Increment
         let increment = if !self.check(&TokenKind::RightParen) {
             Some(self.expression()?)
         } else {
             None
         };
-        
+
         self.consume(
             TokenKind::RightParen,
             "Expected ')' after for clauses".to_string(),
         )?;
-        
+
         // Body
         let body = Box::new(self.statement()?);
-        
+
         Ok(Stmt::For {
             initializer,
             condition,
@@ -473,16 +471,16 @@ impl Parser {
             body,
         })
     }
-    
+
     /// Parses an expression statement.
     fn expression_statement(&mut self) -> Result<Stmt> {
         let expr = self.expression()?;
-        
+
         self.consume(
             TokenKind::Semicolon,
             "Expected ';' after expression".to_string(),
         )?;
-        
+
         Ok(Stmt::Expression(expr))
     }
 
@@ -495,13 +493,13 @@ impl Parser {
     fn expression(&mut self) -> Result<Expr> {
         self.match_expression()
     }
-    
+
     /// Parse match expressions or delegate to assignment
     fn match_expression(&mut self) -> Result<Expr> {
         if self.match_tokens(&[TokenKind::Match]) {
             return self.parse_match_expression();
         }
-        
+
         self.assignment()
     }
 
@@ -553,11 +551,7 @@ impl Parser {
 
         while self.match_tokens(&[TokenKind::Or]) {
             let right = self.logical_and()?;
-            expr = Expr::Binary(
-                Box::new(expr),
-                BinaryOp::Or,
-                Box::new(right),
-            );
+            expr = Expr::Binary(Box::new(expr), BinaryOp::Or, Box::new(right));
         }
 
         Ok(expr)
@@ -569,11 +563,7 @@ impl Parser {
 
         while self.match_tokens(&[TokenKind::And]) {
             let right = self.simd_or()?;
-            expr = Expr::Binary(
-                Box::new(expr),
-                BinaryOp::And,
-                Box::new(right),
-            );
+            expr = Expr::Binary(Box::new(expr), BinaryOp::And, Box::new(right));
         }
 
         Ok(expr)
@@ -584,12 +574,14 @@ impl Parser {
         let mut expr = self.comparison()?;
 
         while self.match_tokens(&[
-            TokenKind::Equal, TokenKind::NotEqual,
-            TokenKind::DotEqual, TokenKind::DotNotEqual
+            TokenKind::Equal,
+            TokenKind::NotEqual,
+            TokenKind::DotEqual,
+            TokenKind::DotNotEqual,
         ]) {
             let operator = self.previous().clone();
             let right = self.comparison()?;
-            
+
             match operator.kind {
                 TokenKind::Equal => {
                     expr = Expr::Binary(Box::new(expr), BinaryOp::Equal, Box::new(right));
@@ -625,14 +617,18 @@ impl Parser {
         let mut expr = self.enhanced_term()?;
 
         while self.match_tokens(&[
-            TokenKind::Less, TokenKind::LessEqual,
-            TokenKind::Greater, TokenKind::GreaterEqual,
-            TokenKind::DotLess, TokenKind::DotLessEqual,
-            TokenKind::DotGreater, TokenKind::DotGreaterEqual,
+            TokenKind::Less,
+            TokenKind::LessEqual,
+            TokenKind::Greater,
+            TokenKind::GreaterEqual,
+            TokenKind::DotLess,
+            TokenKind::DotLessEqual,
+            TokenKind::DotGreater,
+            TokenKind::DotGreaterEqual,
         ]) {
             let operator = self.previous().clone();
             let right = self.enhanced_term()?;
-            
+
             match operator.kind {
                 TokenKind::Less => {
                     expr = Expr::Binary(Box::new(expr), BinaryOp::Less, Box::new(right));
@@ -692,13 +688,13 @@ impl Parser {
         while self.match_tokens(&[TokenKind::Plus, TokenKind::Minus]) {
             let operator = self.previous().clone();
             let right = self.factor()?;
-            
+
             let op = match operator.kind {
                 TokenKind::Plus => BinaryOp::Add,
                 TokenKind::Minus => BinaryOp::Subtract,
                 _ => unreachable!(),
             };
-            
+
             expr = Expr::Binary(Box::new(expr), op, Box::new(right));
         }
 
@@ -712,14 +708,14 @@ impl Parser {
         while self.match_tokens(&[TokenKind::Star, TokenKind::Slash, TokenKind::Percent]) {
             let operator = self.previous().clone();
             let right = self.unary()?;
-            
+
             let op = match operator.kind {
                 TokenKind::Star => BinaryOp::Multiply,
                 TokenKind::Slash => BinaryOp::Divide,
                 TokenKind::Percent => BinaryOp::Modulo,
                 _ => unreachable!(),
             };
-            
+
             expr = Expr::Binary(Box::new(expr), op, Box::new(right));
         }
 
@@ -731,14 +727,14 @@ impl Parser {
         if self.match_tokens(&[TokenKind::Minus, TokenKind::Not, TokenKind::Ampersand]) {
             let operator = self.previous().clone();
             let right = self.unary()?;
-            
+
             let op = match operator.kind {
                 TokenKind::Minus => UnaryOp::Negate,
                 TokenKind::Not => UnaryOp::Not,
                 TokenKind::Ampersand => UnaryOp::Reference,
                 _ => unreachable!(),
             };
-            
+
             return Ok(Expr::Unary(op, Box::new(right)));
         }
 
@@ -754,7 +750,7 @@ impl Parser {
                 expr = self.finish_call(expr)?;
             } else if self.match_tokens(&[TokenKind::LeftBracket]) {
                 let first_expr = self.expression()?;
-                
+
                 // Check if this is a slice (arr[start:end]) or regular index (arr[index])
                 if self.check(&TokenKind::Colon) {
                     self.advance(); // consume ':'
@@ -777,7 +773,8 @@ impl Parser {
                     expr = Expr::Index(Box::new(expr), Box::new(first_expr));
                 }
             } else if self.match_tokens(&[TokenKind::Dot]) {
-                let name = self.consume_identifier("Expected property name after '.'".to_string())?;
+                let name =
+                    self.consume_identifier("Expected property name after '.'".to_string())?;
                 expr = Expr::FieldAccess(Box::new(expr), name);
             } else {
                 break;
@@ -815,29 +812,30 @@ impl Parser {
         if self.match_tokens(&[TokenKind::True]) {
             return Ok(Expr::Literal(Literal::Boolean(true)));
         }
-        
+
         if self.match_tokens(&[TokenKind::False]) {
             return Ok(Expr::Literal(Literal::Boolean(false)));
         }
-        
+
         if let Some(token) = self.match_tokens_and_get(&[TokenKind::Integer(0)]) {
             if let TokenKind::Integer(n) = token.kind {
                 return Ok(Expr::Literal(Literal::Integer(n)));
             }
         }
-        
+
         if let Some(token) = self.match_tokens_and_get(&[TokenKind::Float(0.0)]) {
             if let TokenKind::Float(f) = token.kind {
                 return Ok(Expr::Literal(Literal::Float(f)));
             }
         }
-        
-        if let Some(token) = self.match_tokens_and_get(&[TokenKind::StringLiteral("".to_string())]) {
+
+        if let Some(token) = self.match_tokens_and_get(&[TokenKind::StringLiteral("".to_string())])
+        {
             if let TokenKind::StringLiteral(s) = token.kind {
                 return Ok(Expr::Literal(Literal::String(s)));
             }
         }
-        
+
         // Handle identifiers (variables, function calls, struct literals, enum literals)
         if !self.is_at_end() && matches!(self.peek().kind, TokenKind::Identifier(_)) {
             let token = self.advance().clone();
@@ -846,42 +844,42 @@ impl Parser {
                 if !self.is_at_end() && matches!(self.peek().kind, TokenKind::DoubleColon) {
                     return self.parse_enum_literal(name);
                 }
-                
+
                 // Check if this is a function call
                 if self.check(&TokenKind::LeftParen) {
                     return self.parse_function_call(name);
                 }
-                
+
                 // Check if this is a struct literal
                 if self.check(&TokenKind::LeftBrace) {
                     return self.parse_struct_literal(name);
                 }
-                
+
                 return Ok(Expr::Variable(name));
             }
         }
-        
+
         // Handle built-in SIMD reduction functions
         if self.match_tokens(&[TokenKind::HorizontalSum]) {
             return self.parse_reduction_function(ReductionOp::Sum);
         }
-        
+
         if self.match_tokens(&[TokenKind::HorizontalMin]) {
             return self.parse_reduction_function(ReductionOp::Min);
         }
-        
+
         if self.match_tokens(&[TokenKind::HorizontalMax]) {
             return self.parse_reduction_function(ReductionOp::Max);
         }
-        
+
         if self.match_tokens(&[TokenKind::DotProduct]) {
             return self.parse_dot_product_function();
         }
-        
+
         if self.match_tokens(&[TokenKind::LoadVector]) {
             return self.parse_load_vector_function();
         }
-        
+
         if self.match_tokens(&[TokenKind::StoreVector]) {
             return self.parse_store_vector_function();
         }
@@ -919,7 +917,7 @@ impl Parser {
             self.peek().position.clone(),
         ))
     }
-    
+
     /// Parse SIMD logical OR operations (.|)
     fn simd_or(&mut self) -> Result<Expr> {
         let mut expr = self.simd_xor()?;
@@ -928,7 +926,7 @@ impl Parser {
             let operator = SIMDOperator::DotOr;
             let right = self.simd_xor()?;
             let position = self.previous().position.clone();
-            
+
             expr = Expr::SIMD(SIMDExpr::ElementWise {
                 left: Box::new(expr),
                 operator,
@@ -948,7 +946,7 @@ impl Parser {
             let operator = SIMDOperator::DotXor;
             let right = self.simd_and()?;
             let position = self.previous().position.clone();
-            
+
             expr = Expr::SIMD(SIMDExpr::ElementWise {
                 left: Box::new(expr),
                 operator,
@@ -968,7 +966,7 @@ impl Parser {
             let operator = SIMDOperator::DotAnd;
             let right = self.equality()?;
             let position = self.previous().position.clone();
-            
+
             expr = Expr::SIMD(SIMDExpr::ElementWise {
                 left: Box::new(expr),
                 operator,
@@ -984,7 +982,8 @@ impl Parser {
     fn enhanced_term(&mut self) -> Result<Expr> {
         let mut expr = self.enhanced_factor()?;
 
-        while !self.is_at_end() { // Fix: Check bounds instead of using while let
+        while !self.is_at_end() {
+            // Fix: Check bounds instead of using while let
             let token = self.peek();
             match token.kind {
                 TokenKind::DotAdd => {
@@ -992,7 +991,7 @@ impl Parser {
                     let operator = SIMDOperator::DotAdd;
                     let right = self.enhanced_factor()?;
                     let position = self.previous().position.clone();
-                    
+
                     expr = Expr::SIMD(SIMDExpr::ElementWise {
                         left: Box::new(expr),
                         operator,
@@ -1005,7 +1004,7 @@ impl Parser {
                     let operator = SIMDOperator::DotSubtract;
                     let right = self.enhanced_factor()?;
                     let position = self.previous().position.clone();
-                    
+
                     expr = Expr::SIMD(SIMDExpr::ElementWise {
                         left: Box::new(expr),
                         operator,
@@ -1014,18 +1013,14 @@ impl Parser {
                     });
                 }
                 TokenKind::Plus | TokenKind::Minus => {
-                    let op = if matches!(token.kind, TokenKind::Plus) { 
-                        BinaryOp::Add 
-                    } else { 
-                        BinaryOp::Subtract 
+                    let op = if matches!(token.kind, TokenKind::Plus) {
+                        BinaryOp::Add
+                    } else {
+                        BinaryOp::Subtract
                     };
                     self.advance();
                     let right = self.enhanced_factor()?;
-                    expr = Expr::Binary(
-                        Box::new(expr),
-                        op,
-                        Box::new(right),
-                    );
+                    expr = Expr::Binary(Box::new(expr), op, Box::new(right));
                 }
                 _ => break,
             }
@@ -1038,7 +1033,8 @@ impl Parser {
     fn enhanced_factor(&mut self) -> Result<Expr> {
         let mut expr = self.unary()?;
 
-        while !self.is_at_end() { // Fix: Check bounds instead of using while let
+        while !self.is_at_end() {
+            // Fix: Check bounds instead of using while let
             let token = self.peek();
             match token.kind {
                 TokenKind::DotMultiply => {
@@ -1046,7 +1042,7 @@ impl Parser {
                     let operator = SIMDOperator::DotMultiply;
                     let right = self.unary()?;
                     let position = self.previous().position.clone();
-                    
+
                     expr = Expr::SIMD(SIMDExpr::ElementWise {
                         left: Box::new(expr),
                         operator,
@@ -1059,7 +1055,7 @@ impl Parser {
                     let operator = SIMDOperator::DotDivide;
                     let right = self.unary()?;
                     let position = self.previous().position.clone();
-                    
+
                     expr = Expr::SIMD(SIMDExpr::ElementWise {
                         left: Box::new(expr),
                         operator,
@@ -1101,7 +1097,7 @@ impl Parser {
         if self.is_at_end() {
             return false;
         }
-        
+
         // Special handling for tokens with associated values
         match (&self.peek().kind, token_type) {
             (TokenKind::Integer(_), TokenKind::Integer(_)) => true,
@@ -1151,19 +1147,28 @@ impl Parser {
     fn consume_type_name(&mut self, message: String) -> Result<String> {
         // Check for built-in type tokens first
         if self.match_tokens(&[
-            TokenKind::I8, TokenKind::I16, TokenKind::I32, TokenKind::I64,
-            TokenKind::U8, TokenKind::U16, TokenKind::U32, TokenKind::U64,
-            TokenKind::F32, TokenKind::F64, TokenKind::Bool, TokenKind::String,
+            TokenKind::I8,
+            TokenKind::I16,
+            TokenKind::I32,
+            TokenKind::I64,
+            TokenKind::U8,
+            TokenKind::U16,
+            TokenKind::U32,
+            TokenKind::U64,
+            TokenKind::F32,
+            TokenKind::F64,
+            TokenKind::Bool,
+            TokenKind::String,
         ]) {
             let token = self.previous();
             let type_name = match &token.kind {
                 TokenKind::I8 => "i8",
-                TokenKind::I16 => "i16", 
+                TokenKind::I16 => "i16",
                 TokenKind::I32 => "i32",
                 TokenKind::I64 => "i64",
                 TokenKind::U8 => "u8",
                 TokenKind::U16 => "u16",
-                TokenKind::U32 => "u32", 
+                TokenKind::U32 => "u32",
                 TokenKind::U64 => "u64",
                 TokenKind::F32 => "f32",
                 TokenKind::F64 => "f64",
@@ -1206,27 +1211,30 @@ impl Parser {
     /// Parse array literals or SIMD vector literals starting with [
     fn parse_array_or_simd_literal(&mut self) -> Result<Expr> {
         let mut expressions = Vec::new();
-        
+
         // Handle empty array/vector
         if self.check(&TokenKind::RightBracket) {
             self.advance(); // consume ]
-            return Ok(Expr::Literal(Literal::Vector { 
-                elements: vec![], 
-                vector_type: None 
+            return Ok(Expr::Literal(Literal::Vector {
+                elements: vec![],
+                vector_type: None,
             }));
         }
-        
+
         // Parse elements
         loop {
             expressions.push(self.expression()?);
-            
+
             if !self.match_tokens(&[TokenKind::Comma]) {
                 break;
             }
         }
-        
-        self.consume(TokenKind::RightBracket, "Expected ']' after array elements".to_string())?;
-        
+
+        self.consume(
+            TokenKind::RightBracket,
+            "Expected ']' after array elements".to_string(),
+        )?;
+
         // Check if this is a SIMD vector literal with type annotation
         if self.check_simd_type() {
             let simd_type_token_kind = self.advance().kind.clone();
@@ -1237,7 +1245,7 @@ impl Parser {
                 position: self.previous().position.clone(),
             }));
         }
-        
+
         // Regular array literal - convert expressions to literals where possible
         let mut literal_elements = Vec::new();
         for expr in expressions {
@@ -1251,27 +1259,53 @@ impl Parser {
                 }
             }
         }
-        
-        Ok(Expr::Literal(Literal::Vector { 
-            elements: literal_elements, 
-            vector_type: None 
+
+        Ok(Expr::Literal(Literal::Vector {
+            elements: literal_elements,
+            vector_type: None,
         }))
     }
 
     /// Check if current token is a SIMD type
     fn check_simd_type(&self) -> bool {
-        if self.is_at_end() { return false; }
-        
-        matches!(self.peek().kind,
-            TokenKind::F32x2 | TokenKind::F32x4 | TokenKind::F32x8 | TokenKind::F32x16 |
-            TokenKind::F64x2 | TokenKind::F64x4 | TokenKind::F64x8 |
-            TokenKind::I32x2 | TokenKind::I32x4 | TokenKind::I32x8 | TokenKind::I32x16 |
-            TokenKind::I64x2 | TokenKind::I64x4 | TokenKind::I64x8 |
-            TokenKind::I16x4 | TokenKind::I16x8 | TokenKind::I16x16 | TokenKind::I16x32 |
-            TokenKind::I8x8 | TokenKind::I8x16 | TokenKind::I8x32 | TokenKind::I8x64 |
-            TokenKind::U32x4 | TokenKind::U32x8 | TokenKind::U16x8 | TokenKind::U16x16 |
-            TokenKind::U8x16 | TokenKind::U8x32 |
-            TokenKind::Mask8 | TokenKind::Mask16 | TokenKind::Mask32 | TokenKind::Mask64
+        if self.is_at_end() {
+            return false;
+        }
+
+        matches!(
+            self.peek().kind,
+            TokenKind::F32x2
+                | TokenKind::F32x4
+                | TokenKind::F32x8
+                | TokenKind::F32x16
+                | TokenKind::F64x2
+                | TokenKind::F64x4
+                | TokenKind::F64x8
+                | TokenKind::I32x2
+                | TokenKind::I32x4
+                | TokenKind::I32x8
+                | TokenKind::I32x16
+                | TokenKind::I64x2
+                | TokenKind::I64x4
+                | TokenKind::I64x8
+                | TokenKind::I16x4
+                | TokenKind::I16x8
+                | TokenKind::I16x16
+                | TokenKind::I16x32
+                | TokenKind::I8x8
+                | TokenKind::I8x16
+                | TokenKind::I8x32
+                | TokenKind::I8x64
+                | TokenKind::U32x4
+                | TokenKind::U32x8
+                | TokenKind::U16x8
+                | TokenKind::U16x16
+                | TokenKind::U8x16
+                | TokenKind::U8x32
+                | TokenKind::Mask8
+                | TokenKind::Mask16
+                | TokenKind::Mask32
+                | TokenKind::Mask64
         )
     }
 
@@ -1287,8 +1321,10 @@ impl Parser {
 
     /// Check if current token matches a specific token type (handles variants)
     fn check_token_type(&self, token_type: &TokenKind) -> bool {
-        if self.is_at_end() { return false; }
-        
+        if self.is_at_end() {
+            return false;
+        }
+
         match (token_type, &self.peek().kind) {
             (TokenKind::Integer(_), TokenKind::Integer(_)) => true,
             (TokenKind::Float(_), TokenKind::Float(_)) => true,
@@ -1302,7 +1338,7 @@ impl Parser {
     /// Parse SIMD vector type from token
     fn parse_simd_vector_type(&self, token_kind: &TokenKind) -> Result<SIMDVectorType> {
         use crate::ast::SIMDVectorType;
-        
+
         let simd_type = match token_kind {
             TokenKind::F32x2 => SIMDVectorType::F32x2,
             TokenKind::F32x4 => SIMDVectorType::F32x4,
@@ -1343,16 +1379,19 @@ impl Parser {
                 ));
             }
         };
-        
+
         Ok(simd_type)
     }
-    
+
     /// Parse a function call expression
     fn parse_function_call(&mut self, name: String) -> Result<Expr> {
-        self.consume(TokenKind::LeftParen, "Expected '(' after function name".to_string())?;
-        
+        self.consume(
+            TokenKind::LeftParen,
+            "Expected '(' after function name".to_string(),
+        )?;
+
         let mut arguments = Vec::new();
-        
+
         if !self.check(&TokenKind::RightParen) {
             loop {
                 arguments.push(self.expression()?);
@@ -1361,82 +1400,108 @@ impl Parser {
                 }
             }
         }
-        
-        self.consume(TokenKind::RightParen, "Expected ')' after arguments".to_string())?;
-        
-        Ok(Expr::Call(
-            Box::new(Expr::Variable(name)),
-            arguments,
-        ))
+
+        self.consume(
+            TokenKind::RightParen,
+            "Expected ')' after arguments".to_string(),
+        )?;
+
+        Ok(Expr::Call(Box::new(Expr::Variable(name)), arguments))
     }
-    
+
     /// Parse a SIMD reduction function call
     fn parse_reduction_function(&mut self, operation: ReductionOp) -> Result<Expr> {
-        self.consume(TokenKind::LeftParen, "Expected '(' after reduction function".to_string())?;
-        
+        self.consume(
+            TokenKind::LeftParen,
+            "Expected '(' after reduction function".to_string(),
+        )?;
+
         let vector = self.expression()?;
-        
-        self.consume(TokenKind::RightParen, "Expected ')' after vector argument".to_string())?;
-        
+
+        self.consume(
+            TokenKind::RightParen,
+            "Expected ')' after vector argument".to_string(),
+        )?;
+
         let position = self.previous().position.clone();
-        
+
         Ok(Expr::SIMD(SIMDExpr::Reduction {
             vector: Box::new(vector),
             operation,
             position,
         }))
     }
-    
+
     /// Parse a SIMD dot product function call
     fn parse_dot_product_function(&mut self) -> Result<Expr> {
-        self.consume(TokenKind::LeftParen, "Expected '(' after dot_product".to_string())?;
-        
+        self.consume(
+            TokenKind::LeftParen,
+            "Expected '(' after dot_product".to_string(),
+        )?;
+
         let left = self.expression()?;
-        
-        self.consume(TokenKind::Comma, "Expected ',' between dot product arguments".to_string())?;
-        
+
+        self.consume(
+            TokenKind::Comma,
+            "Expected ',' between dot product arguments".to_string(),
+        )?;
+
         let right = self.expression()?;
-        
-        self.consume(TokenKind::RightParen, "Expected ')' after dot product arguments".to_string())?;
-        
+
+        self.consume(
+            TokenKind::RightParen,
+            "Expected ')' after dot product arguments".to_string(),
+        )?;
+
         let position = self.previous().position.clone();
-        
+
         Ok(Expr::SIMD(SIMDExpr::DotProduct {
             left: Box::new(left),
             right: Box::new(right),
             position,
         }))
     }
-    
+
     /// Parse load_vector(address, vector_type) function call
     fn parse_load_vector_function(&mut self) -> Result<Expr> {
-        self.consume(TokenKind::LeftParen, "Expected '(' after load_vector".to_string())?;
-        
+        self.consume(
+            TokenKind::LeftParen,
+            "Expected '(' after load_vector".to_string(),
+        )?;
+
         let address = self.expression()?;
-        
-        self.consume(TokenKind::Comma, "Expected ',' between load_vector arguments".to_string())?;
-        
+
+        self.consume(
+            TokenKind::Comma,
+            "Expected ',' between load_vector arguments".to_string(),
+        )?;
+
         // Parse the vector type identifier
-        let vector_type = if let Some(token) = self.match_tokens_and_get(&[TokenKind::Identifier("".to_string())]) {
+        let vector_type = if let Some(token) =
+            self.match_tokens_and_get(&[TokenKind::Identifier("".to_string())])
+        {
             self.parse_simd_vector_type(&token.kind)?
         } else {
             return Err(CompileError::parse_error(
                 "Expected vector type identifier".to_string(),
-                self.peek().position.clone()
+                self.peek().position.clone(),
             ));
         };
-        
+
         // Optional alignment parameter
         let alignment = if self.match_tokens(&[TokenKind::Comma]) {
             Some(self.parse_alignment()?)
         } else {
             None
         };
-        
-        self.consume(TokenKind::RightParen, "Expected ')' after load_vector arguments".to_string())?;
-        
+
+        self.consume(
+            TokenKind::RightParen,
+            "Expected ')' after load_vector arguments".to_string(),
+        )?;
+
         let position = self.previous().position.clone();
-        
+
         Ok(Expr::SIMD(SIMDExpr::VectorLoad {
             address: Box::new(address),
             vector_type,
@@ -1444,28 +1509,37 @@ impl Parser {
             position,
         }))
     }
-    
+
     /// Parse store_vector(address, vector) function call
     fn parse_store_vector_function(&mut self) -> Result<Expr> {
-        self.consume(TokenKind::LeftParen, "Expected '(' after store_vector".to_string())?;
-        
+        self.consume(
+            TokenKind::LeftParen,
+            "Expected '(' after store_vector".to_string(),
+        )?;
+
         let address = self.expression()?;
-        
-        self.consume(TokenKind::Comma, "Expected ',' between store_vector arguments".to_string())?;
-        
+
+        self.consume(
+            TokenKind::Comma,
+            "Expected ',' between store_vector arguments".to_string(),
+        )?;
+
         let vector = self.expression()?;
-        
+
         // Optional alignment parameter
         let alignment = if self.match_tokens(&[TokenKind::Comma]) {
             Some(self.parse_alignment()?)
         } else {
             None
         };
-        
-        self.consume(TokenKind::RightParen, "Expected ')' after store_vector arguments".to_string())?;
-        
+
+        self.consume(
+            TokenKind::RightParen,
+            "Expected ')' after store_vector arguments".to_string(),
+        )?;
+
         let position = self.previous().position.clone();
-        
+
         Ok(Expr::SIMD(SIMDExpr::VectorStore {
             address: Box::new(address),
             vector: Box::new(vector),
@@ -1473,7 +1547,7 @@ impl Parser {
             position,
         }))
     }
-    
+
     /// Parse alignment parameter (expects integer literal)
     fn parse_alignment(&mut self) -> Result<u32> {
         if let Some(token) = self.match_tokens_and_get(&[TokenKind::Integer(0)]) {
@@ -1485,65 +1559,65 @@ impl Parser {
                 } else {
                     Err(CompileError::parse_error(
                         "Alignment must be a power of 2 between 1 and 64".to_string(),
-                        token.position
+                        token.position,
                     ))
                 }
             } else {
                 Err(CompileError::parse_error(
                     "Invalid alignment value".to_string(),
-                    token.position
+                    token.position,
                 ))
             }
         } else {
             Err(CompileError::parse_error(
                 "Expected alignment value".to_string(),
-                self.peek().position.clone()
+                self.peek().position.clone(),
             ))
         }
     }
-    
+
     /// Parse struct literal: StructName { field1: value1, field2: value2 }
     fn parse_struct_literal(&mut self, struct_name: String) -> Result<Expr> {
         self.consume(
             TokenKind::LeftBrace,
             "Expected '{' for struct literal".to_string(),
         )?;
-        
+
         let mut fields = Vec::new();
-        
+
         if !self.check(&TokenKind::RightBrace) {
             loop {
                 let field_name = self.consume_identifier("Expected field name".to_string())?;
-                
+
                 self.consume(
                     TokenKind::Colon,
                     "Expected ':' after field name".to_string(),
                 )?;
-                
+
                 let field_value = self.expression()?;
-                
+
                 fields.push(crate::ast::StructFieldInit {
                     name: field_name,
                     value: field_value,
                 });
-                
+
                 if !self.match_tokens(&[TokenKind::Comma]) {
                     break;
                 }
             }
         }
-        
+
         self.consume(
             TokenKind::RightBrace,
             "Expected '}' after struct fields".to_string(),
         )?;
-        
+
         Ok(Expr::StructLiteral {
             name: struct_name,
             fields,
         })
     }
-    
+
     /// Parse enum literal: EnumName::Variant or EnumName::Variant(args)
     fn parse_enum_literal(&mut self, enum_name: String) -> Result<Expr> {
         // Consume the DoubleColon token directly since check() has issues with it
@@ -1555,52 +1629,48 @@ impl Parser {
                 self.peek().position.clone(),
             ));
         }
-        
+
         let variant_name = self.consume_identifier("Expected variant name".to_string())?;
-        
+
         let mut args = Vec::new();
-        
+
         // Check if variant has arguments
         if self.match_tokens(&[TokenKind::LeftParen]) {
             if !self.check(&TokenKind::RightParen) {
                 loop {
                     args.push(self.expression()?);
-                    
+
                     if !self.match_tokens(&[TokenKind::Comma]) {
                         break;
                     }
                 }
             }
-            
+
             self.consume(
                 TokenKind::RightParen,
                 "Expected ')' after enum variant arguments".to_string(),
             )?;
         }
-        
+
         Ok(Expr::EnumLiteral {
             enum_name,
             variant: variant_name,
             args,
         })
     }
-    
+
     /// Parse a match value (without struct literal lookahead that conflicts with match arms)
     fn match_value(&mut self) -> Result<Expr> {
         self.match_value_logical_or()
     }
-    
+
     /// Logical OR for match values (avoids struct literal parsing)
     fn match_value_logical_or(&mut self) -> Result<Expr> {
         let mut expr = self.match_value_logical_and()?;
 
         while self.match_tokens(&[TokenKind::Or]) {
             let right = self.match_value_logical_and()?;
-            expr = Expr::Binary(
-                Box::new(expr),
-                BinaryOp::Or,
-                Box::new(right),
-            );
+            expr = Expr::Binary(Box::new(expr), BinaryOp::Or, Box::new(right));
         }
 
         Ok(expr)
@@ -1612,11 +1682,7 @@ impl Parser {
 
         while self.match_tokens(&[TokenKind::And]) {
             let right = self.match_value_simd_or()?;
-            expr = Expr::Binary(
-                Box::new(expr),
-                BinaryOp::And,
-                Box::new(right),
-            );
+            expr = Expr::Binary(Box::new(expr), BinaryOp::And, Box::new(right));
         }
 
         Ok(expr)
@@ -1644,12 +1710,14 @@ impl Parser {
         let mut expr = self.match_value_comparison()?;
 
         while self.match_tokens(&[
-            TokenKind::Equal, TokenKind::NotEqual,
-            TokenKind::DotEqual, TokenKind::DotNotEqual
+            TokenKind::Equal,
+            TokenKind::NotEqual,
+            TokenKind::DotEqual,
+            TokenKind::DotNotEqual,
         ]) {
             let operator = self.previous().clone();
             let right = self.match_value_comparison()?;
-            
+
             match operator.kind {
                 TokenKind::Equal => {
                     expr = Expr::Binary(Box::new(expr), BinaryOp::Equal, Box::new(right));
@@ -1685,12 +1753,14 @@ impl Parser {
         let mut expr = self.match_value_primary()?;
 
         while self.match_tokens(&[
-            TokenKind::Greater, TokenKind::GreaterEqual,
-            TokenKind::Less, TokenKind::LessEqual,
+            TokenKind::Greater,
+            TokenKind::GreaterEqual,
+            TokenKind::Less,
+            TokenKind::LessEqual,
         ]) {
             let operator = self.previous().clone();
             let right = self.match_value_primary()?;
-            
+
             let binary_op = match operator.kind {
                 TokenKind::Greater => BinaryOp::Greater,
                 TokenKind::GreaterEqual => BinaryOp::GreaterEqual,
@@ -1698,7 +1768,7 @@ impl Parser {
                 TokenKind::LessEqual => BinaryOp::LessEqual,
                 _ => unreachable!(),
             };
-            
+
             expr = Expr::Binary(Box::new(expr), binary_op, Box::new(right));
         }
 
@@ -1720,7 +1790,8 @@ impl Parser {
             }
         }
 
-        if let Some(token) = self.match_tokens_and_get(&[TokenKind::StringLiteral("".to_string())]) {
+        if let Some(token) = self.match_tokens_and_get(&[TokenKind::StringLiteral("".to_string())])
+        {
             if let TokenKind::StringLiteral(value) = token.kind {
                 return Ok(Expr::Literal(Literal::String(value)));
             }
@@ -1739,13 +1810,14 @@ impl Parser {
             if let TokenKind::Identifier(name) = token.kind {
                 // Check for enum literal with ::
                 if self.match_tokens(&[TokenKind::DoubleColon]) {
-                    let variant_token = self.consume_identifier("Expected variant name after '::'".to_string())?;
-                    
+                    let variant_token =
+                        self.consume_identifier("Expected variant name after '::'".to_string())?;
+
                     // Check for variant with arguments: EnumName::Variant(args)
                     if self.check(&TokenKind::LeftParen) {
                         self.advance();
                         let mut args = Vec::new();
-                        
+
                         if !self.check(&TokenKind::RightParen) {
                             loop {
                                 args.push(self.expression()?);
@@ -1754,9 +1826,12 @@ impl Parser {
                                 }
                             }
                         }
-                        
-                        self.consume(TokenKind::RightParen, "Expected ')' after enum variant arguments".to_string())?;
-                        
+
+                        self.consume(
+                            TokenKind::RightParen,
+                            "Expected ')' after enum variant arguments".to_string(),
+                        )?;
+
                         return Ok(Expr::EnumLiteral {
                             enum_name: name,
                             variant: variant_token,
@@ -1771,14 +1846,14 @@ impl Parser {
                         });
                     }
                 }
-                
+
                 // Check for function call
                 if self.check(&TokenKind::LeftParen) {
                     return self.parse_function_call(name);
                 }
-                
+
                 // NOTE: NO struct literal check here - this is the key difference
-                
+
                 return Ok(Expr::Variable(name));
             }
         }
@@ -1797,14 +1872,14 @@ impl Parser {
         if self.match_tokens(&[TokenKind::Minus, TokenKind::Not, TokenKind::Ampersand]) {
             let operator = self.previous().clone();
             let expr = self.match_value_primary()?;
-            
+
             let unary_op = match operator.kind {
                 TokenKind::Minus => UnaryOp::Negate,
                 TokenKind::Not => UnaryOp::Not,
                 TokenKind::Ampersand => UnaryOp::Reference,
                 _ => unreachable!(),
             };
-            
+
             return Ok(Expr::Unary(unary_op, Box::new(expr)));
         }
 
@@ -1813,30 +1888,33 @@ impl Parser {
             self.peek().position.clone(),
         ))
     }
-    
+
     /// Parse match expression: match value { pattern => expr, ... }
     fn parse_match_expression(&mut self) -> Result<Expr> {
         let value = Box::new(self.match_value()?);
-        
+
         self.consume(
             TokenKind::LeftBrace,
             "Expected '{' after match value".to_string(),
         )?;
-        
+
         let mut arms = Vec::new();
-        
+
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             let pattern = self.parse_pattern()?;
-            
+
             self.consume(
                 TokenKind::FatArrow, // =>
                 "Expected '=>' after pattern".to_string(),
             )?;
-            
+
             let expression = self.expression()?;
-            
-            arms.push(MatchArm { pattern, expression });
-            
+
+            arms.push(MatchArm {
+                pattern,
+                expression,
+            });
+
             // Optional comma between arms
             if self.match_tokens(&[TokenKind::Comma]) {
                 // Allow trailing comma
@@ -1845,15 +1923,15 @@ impl Parser {
                 }
             }
         }
-        
+
         self.consume(
             TokenKind::RightBrace,
             "Expected '}' after match arms".to_string(),
         )?;
-        
+
         Ok(Expr::Match { value, arms })
     }
-    
+
     /// Parse a pattern in a match arm
     fn parse_pattern(&mut self) -> Result<Pattern> {
         // Handle identifier patterns (variable, wildcard, enum variant)
@@ -1863,90 +1941,90 @@ impl Parser {
                 if name == "_" {
                     return Ok(Pattern::Wildcard);
                 }
-                
+
                 // Check if this is an enum variant pattern (Name::Variant)
                 if self.check(&TokenKind::DoubleColon) {
                     return self.parse_enum_variant_pattern(name);
                 }
-                
+
                 // Otherwise, it's a variable pattern
                 return Ok(Pattern::Variable(name));
             }
         }
-        
+
         // Handle literals
         if self.match_tokens(&[TokenKind::True]) {
             return Ok(Pattern::Literal(Literal::Boolean(true)));
         }
-        
+
         if self.match_tokens(&[TokenKind::False]) {
             return Ok(Pattern::Literal(Literal::Boolean(false)));
         }
-        
+
         if let Some(token) = self.match_tokens_and_get(&[TokenKind::Integer(0)]) {
             if let TokenKind::Integer(n) = token.kind {
                 return Ok(Pattern::Literal(Literal::Integer(n)));
             }
         }
-        
-        if let Some(token) = self.match_tokens_and_get(&[TokenKind::StringLiteral("".to_string())]) {
+
+        if let Some(token) = self.match_tokens_and_get(&[TokenKind::StringLiteral("".to_string())])
+        {
             if let TokenKind::StringLiteral(s) = token.kind {
                 return Ok(Pattern::Literal(Literal::String(s)));
             }
         }
-        
-        
+
         Err(CompileError::parse_error(
             "Expected pattern".to_string(),
             self.peek().position.clone(),
         ))
     }
-    
+
     /// Parse a block expression: { statements... }
     fn parse_block_expression(&mut self) -> Result<Expr> {
         let mut statements = Vec::new();
-        
+
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             statements.push(self.declaration()?);
         }
-        
+
         self.consume(
             TokenKind::RightBrace,
             "Expected '}' after block".to_string(),
         )?;
-        
+
         Ok(Expr::Block(statements))
     }
-    
+
     /// Parse enum variant pattern: EnumName::Variant(patterns...)
     fn parse_enum_variant_pattern(&mut self, enum_name: String) -> Result<Pattern> {
         self.consume(
             TokenKind::DoubleColon,
             "Expected '::' for enum variant pattern".to_string(),
         )?;
-        
+
         let variant_name = self.consume_identifier("Expected variant name".to_string())?;
-        
+
         let mut sub_patterns = Vec::new();
-        
+
         // Check if variant has sub-patterns
         if self.match_tokens(&[TokenKind::LeftParen]) {
             if !self.check(&TokenKind::RightParen) {
                 loop {
                     sub_patterns.push(self.parse_pattern()?);
-                    
+
                     if !self.match_tokens(&[TokenKind::Comma]) {
                         break;
                     }
                 }
             }
-            
+
             self.consume(
                 TokenKind::RightParen,
                 "Expected ')' after variant patterns".to_string(),
             )?;
         }
-        
+
         Ok(Pattern::EnumVariant {
             enum_name,
             variant: variant_name,
@@ -1958,8 +2036,8 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::Lexer;
     use crate::ast::{BinaryOp, Expr, Literal, UnaryOp};
+    use crate::lexer::Lexer;
 
     fn parse_expr(source: &str) -> Result<Expr> {
         let mut lexer = Lexer::new(source);
@@ -2004,127 +2082,158 @@ mod tests {
     fn test_parse_unary_expression() {
         let expr1 = parse_expr("-42").unwrap();
         let expr2 = parse_expr("!true").unwrap();
-        
-        assert_eq!(expr1, Expr::Unary(
-            UnaryOp::Negate,
-            Box::new(Expr::Literal(Literal::Integer(42)))
-        ));
-        
-        assert_eq!(expr2, Expr::Unary(
-            UnaryOp::Not,
-            Box::new(Expr::Literal(Literal::Boolean(true)))
-        ));
+
+        assert_eq!(
+            expr1,
+            Expr::Unary(
+                UnaryOp::Negate,
+                Box::new(Expr::Literal(Literal::Integer(42)))
+            )
+        );
+
+        assert_eq!(
+            expr2,
+            Expr::Unary(
+                UnaryOp::Not,
+                Box::new(Expr::Literal(Literal::Boolean(true)))
+            )
+        );
     }
 
     #[test]
     fn test_parse_binary_expression() {
         let expr = parse_expr("1 + 2").unwrap();
-        
-        assert_eq!(expr, Expr::Binary(
-            Box::new(Expr::Literal(Literal::Integer(1))),
-            BinaryOp::Add,
-            Box::new(Expr::Literal(Literal::Integer(2)))
-        ));
+
+        assert_eq!(
+            expr,
+            Expr::Binary(
+                Box::new(Expr::Literal(Literal::Integer(1))),
+                BinaryOp::Add,
+                Box::new(Expr::Literal(Literal::Integer(2)))
+            )
+        );
     }
 
     #[test]
     fn test_parse_complex_expression() {
         let expr = parse_expr("1 + 2 * 3").unwrap();
-        
+
         // Should be parsed as 1 + (2 * 3) due to precedence
-        assert_eq!(expr, Expr::Binary(
-            Box::new(Expr::Literal(Literal::Integer(1))),
-            BinaryOp::Add,
-            Box::new(Expr::Binary(
-                Box::new(Expr::Literal(Literal::Integer(2))),
-                BinaryOp::Multiply,
-                Box::new(Expr::Literal(Literal::Integer(3)))
-            ))
-        ));
+        assert_eq!(
+            expr,
+            Expr::Binary(
+                Box::new(Expr::Literal(Literal::Integer(1))),
+                BinaryOp::Add,
+                Box::new(Expr::Binary(
+                    Box::new(Expr::Literal(Literal::Integer(2))),
+                    BinaryOp::Multiply,
+                    Box::new(Expr::Literal(Literal::Integer(3)))
+                ))
+            )
+        );
     }
 
     #[test]
     fn test_parse_grouping() {
         let expr = parse_expr("(1 + 2) * 3").unwrap();
-        
+
         // Should be parsed as (1 + 2) * 3
-        assert_eq!(expr, Expr::Binary(
-            Box::new(Expr::Grouping(
-                Box::new(Expr::Binary(
+        assert_eq!(
+            expr,
+            Expr::Binary(
+                Box::new(Expr::Grouping(Box::new(Expr::Binary(
                     Box::new(Expr::Literal(Literal::Integer(1))),
                     BinaryOp::Add,
                     Box::new(Expr::Literal(Literal::Integer(2)))
-                ))
-            )),
-            BinaryOp::Multiply,
-            Box::new(Expr::Literal(Literal::Integer(3)))
-        ));
+                )))),
+                BinaryOp::Multiply,
+                Box::new(Expr::Literal(Literal::Integer(3)))
+            )
+        );
     }
 
     #[test]
     fn test_parse_function_call() {
         let expr = parse_expr("foo(1, 2)").unwrap();
-        
-        assert_eq!(expr, Expr::Call(
-            Box::new(Expr::Variable("foo".to_string())),
-            vec![
-                Expr::Literal(Literal::Integer(1)),
-                Expr::Literal(Literal::Integer(2))
-            ]
-        ));
+
+        assert_eq!(
+            expr,
+            Expr::Call(
+                Box::new(Expr::Variable("foo".to_string())),
+                vec![
+                    Expr::Literal(Literal::Integer(1)),
+                    Expr::Literal(Literal::Integer(2))
+                ]
+            )
+        );
     }
 
     #[test]
     fn test_parse_array_indexing() {
         let expr = parse_expr("array[1 + 2]").unwrap();
-        
-        assert_eq!(expr, Expr::Index(
-            Box::new(Expr::Variable("array".to_string())),
-            Box::new(Expr::Binary(
-                Box::new(Expr::Literal(Literal::Integer(1))),
-                BinaryOp::Add,
-                Box::new(Expr::Literal(Literal::Integer(2)))
-            ))
-        ));
+
+        assert_eq!(
+            expr,
+            Expr::Index(
+                Box::new(Expr::Variable("array".to_string())),
+                Box::new(Expr::Binary(
+                    Box::new(Expr::Literal(Literal::Integer(1))),
+                    BinaryOp::Add,
+                    Box::new(Expr::Literal(Literal::Integer(2)))
+                ))
+            )
+        );
     }
 
     #[test]
     fn test_parse_field_access() {
         let expr = parse_expr("object.field").unwrap();
-        
-        assert_eq!(expr, Expr::FieldAccess(
-            Box::new(Expr::Variable("object".to_string())),
-            "field".to_string()
-        ));
+
+        assert_eq!(
+            expr,
+            Expr::FieldAccess(
+                Box::new(Expr::Variable("object".to_string())),
+                "field".to_string()
+            )
+        );
     }
 
     #[test]
     fn test_parse_assignment() {
         let expr = parse_expr("x = 42").unwrap();
-        
-        assert_eq!(expr, Expr::Binary(
-            Box::new(Expr::Variable("x".to_string())),
-            BinaryOp::Assign,
-            Box::new(Expr::Literal(Literal::Integer(42)))
-        ));
+
+        assert_eq!(
+            expr,
+            Expr::Binary(
+                Box::new(Expr::Variable("x".to_string())),
+                BinaryOp::Assign,
+                Box::new(Expr::Literal(Literal::Integer(42)))
+            )
+        );
     }
 
     #[test]
     fn test_parse_compound_assignment() {
         let expr1 = parse_expr("x += 5").unwrap();
         let expr2 = parse_expr("y *= z").unwrap();
-        
-        assert_eq!(expr1, Expr::Binary(
-            Box::new(Expr::Variable("x".to_string())),
-            BinaryOp::PlusAssign,
-            Box::new(Expr::Literal(Literal::Integer(5)))
-        ));
-        
-        assert_eq!(expr2, Expr::Binary(
-            Box::new(Expr::Variable("y".to_string())),
-            BinaryOp::MultiplyAssign,
-            Box::new(Expr::Variable("z".to_string()))
-        ));
+
+        assert_eq!(
+            expr1,
+            Expr::Binary(
+                Box::new(Expr::Variable("x".to_string())),
+                BinaryOp::PlusAssign,
+                Box::new(Expr::Literal(Literal::Integer(5)))
+            )
+        );
+
+        assert_eq!(
+            expr2,
+            Expr::Binary(
+                Box::new(Expr::Variable("y".to_string())),
+                BinaryOp::MultiplyAssign,
+                Box::new(Expr::Variable("z".to_string()))
+            )
+        );
     }
 
     // Helper function to parse a single statement
@@ -2139,14 +2248,16 @@ mod tests {
     fn test_parse_variable_declaration() {
         let source = "let x = 42;";
         let result = parse_statement(source).unwrap();
-        
-        if let Stmt::VarDeclaration { name, type_annotation, initializer } = result {
+
+        if let Stmt::VarDeclaration {
+            name,
+            type_annotation,
+            initializer,
+        } = result
+        {
             assert_eq!(name, "x");
             assert!(type_annotation.is_none());
-            assert_eq!(
-                initializer.unwrap(),
-                Expr::Literal(Literal::Integer(42))
-            );
+            assert_eq!(initializer.unwrap(), Expr::Literal(Literal::Integer(42)));
         } else {
             panic!("Expected variable declaration, got {:?}", result);
         }
@@ -2156,19 +2267,21 @@ mod tests {
     fn test_parse_typed_variable_declaration() {
         let source = "let mut y: i32 = 10;";
         let result = parse_statement(source).unwrap();
-        
-        if let Stmt::VarDeclaration { name, type_annotation, initializer } = result {
+
+        if let Stmt::VarDeclaration {
+            name,
+            type_annotation,
+            initializer,
+        } = result
+        {
             assert_eq!(name, "y");
-            
+
             assert!(type_annotation.is_some());
             let type_ann = type_annotation.unwrap();
             assert_eq!(type_ann.name, "i32");
             assert!(type_ann.is_mutable);
-            
-            assert_eq!(
-                initializer.unwrap(),
-                Expr::Literal(Literal::Integer(10))
-            );
+
+            assert_eq!(initializer.unwrap(), Expr::Literal(Literal::Integer(10)));
         } else {
             panic!("Expected variable declaration, got {:?}", result);
         }
@@ -2178,7 +2291,7 @@ mod tests {
     fn test_parse_expression_statement() {
         let source = "foo(1, 2);";
         let result = parse_statement(source).unwrap();
-        
+
         if let Stmt::Expression(expr) = result {
             if let Expr::Call(callee, args) = expr {
                 assert_eq!(*callee, Expr::Variable("foo".to_string()));
@@ -2197,13 +2310,10 @@ mod tests {
     fn test_parse_return_statement() {
         let source = "return 42;";
         let result = parse_statement(source).unwrap();
-        
+
         if let Stmt::Return(expr) = result {
             assert!(expr.is_some());
-            assert_eq!(
-                expr.unwrap(),
-                Expr::Literal(Literal::Integer(42))
-            );
+            assert_eq!(expr.unwrap(), Expr::Literal(Literal::Integer(42)));
         } else {
             panic!("Expected return statement, got {:?}", result);
         }
@@ -2213,7 +2323,7 @@ mod tests {
     fn test_parse_empty_return_statement() {
         let source = "return;";
         let result = parse_statement(source).unwrap();
-        
+
         if let Stmt::Return(expr) = result {
             assert!(expr.is_none());
         } else {
@@ -2225,16 +2335,16 @@ mod tests {
     fn test_parse_block_statement() {
         let source = "{ let x = 1; let y = 2; }";
         let result = parse_statement(source).unwrap();
-        
+
         if let Stmt::Block(statements) = result {
             assert_eq!(statements.len(), 2);
-            
+
             if let Stmt::VarDeclaration { name, .. } = &statements[0] {
                 assert_eq!(name, "x");
             } else {
                 panic!("Expected variable declaration");
             }
-            
+
             if let Stmt::VarDeclaration { name, .. } = &statements[1] {
                 assert_eq!(name, "y");
             } else {
@@ -2249,11 +2359,16 @@ mod tests {
     fn test_parse_if_statement() {
         let source = "if (x > 10) { return true; } else { return false; }";
         let result = parse_statement(source).unwrap();
-        
-        if let Stmt::If { condition, then_branch, else_branch } = result {
+
+        if let Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        } = result
+        {
             // Check condition
             assert!(matches!(condition, Expr::Binary(_, BinaryOp::Greater, _)));
-            
+
             // Check then branch
             if let Stmt::Block(stmts) = *then_branch {
                 assert_eq!(stmts.len(), 1);
@@ -2261,7 +2376,7 @@ mod tests {
             } else {
                 panic!("Expected block in then branch");
             }
-            
+
             // Check else branch
             assert!(else_branch.is_some());
             if let Stmt::Block(stmts) = *else_branch.unwrap() {
@@ -2279,11 +2394,11 @@ mod tests {
     fn test_parse_while_statement() {
         let source = "while (i < 10) { i += 1; }";
         let result = parse_statement(source).unwrap();
-        
+
         if let Stmt::While { condition, body } = result {
             // Check condition
             assert!(matches!(condition, Expr::Binary(_, BinaryOp::Less, _)));
-            
+
             // Check body
             if let Stmt::Block(stmts) = *body {
                 assert_eq!(stmts.len(), 1);
@@ -2300,20 +2415,32 @@ mod tests {
     fn test_parse_for_statement() {
         let source = "for (let i = 0; i < 10; i += 1) { print(i); }";
         let result = parse_statement(source).unwrap();
-        
-        if let Stmt::For { initializer, condition, increment, body } = result {
+
+        if let Stmt::For {
+            initializer,
+            condition,
+            increment,
+            body,
+        } = result
+        {
             // Check initializer
             assert!(initializer.is_some());
             assert!(matches!(*initializer.unwrap(), Stmt::VarDeclaration { .. }));
-            
+
             // Check condition
             assert!(condition.is_some());
-            assert!(matches!(condition.unwrap(), Expr::Binary(_, BinaryOp::Less, _)));
-            
+            assert!(matches!(
+                condition.unwrap(),
+                Expr::Binary(_, BinaryOp::Less, _)
+            ));
+
             // Check increment
             assert!(increment.is_some());
-            assert!(matches!(increment.unwrap(), Expr::Binary(_, BinaryOp::PlusAssign, _)));
-            
+            assert!(matches!(
+                increment.unwrap(),
+                Expr::Binary(_, BinaryOp::PlusAssign, _)
+            ));
+
             // Check body
             if let Stmt::Block(stmts) = *body {
                 assert_eq!(stmts.len(), 1);
@@ -2330,22 +2457,29 @@ mod tests {
     fn test_parse_function_declaration() {
         let source = "func add(a: i32, b: i32) -> i32 { return a + b; }";
         let result = parse_statement(source).unwrap();
-        
-        if let Stmt::FunctionDeclaration { name, params, return_type, body } = result {
+
+        if let Stmt::FunctionDeclaration {
+            name,
+            params,
+            return_type,
+            body,
+            ..
+        } = result
+        {
             // Check name
             assert_eq!(name, "add");
-            
+
             // Check parameters
             assert_eq!(params.len(), 2);
             assert_eq!(params[0].name, "a");
             assert_eq!(params[0].type_annotation.name, "i32");
             assert_eq!(params[1].name, "b");
             assert_eq!(params[1].type_annotation.name, "i32");
-            
+
             // Check return type
             assert!(return_type.is_some());
             assert_eq!(return_type.unwrap().name, "i32");
-            
+
             // Check body
             if let Stmt::Block(stmts) = *body {
                 assert_eq!(stmts.len(), 1);
@@ -2362,16 +2496,23 @@ mod tests {
     fn test_parse_void_function_declaration() {
         let source = "func greet(name: string) -> () { print(name); return; }";
         let result = parse_statement(source).unwrap();
-        
-        if let Stmt::FunctionDeclaration { name, params, return_type, body } = result {
+
+        if let Stmt::FunctionDeclaration {
+            name,
+            params,
+            return_type,
+            body,
+            ..
+        } = result
+        {
             // Check name
             assert_eq!(name, "greet");
-            
+
             // Check parameters
             assert_eq!(params.len(), 1);
             assert_eq!(params[0].name, "name");
             assert_eq!(params[0].type_annotation.name, "string");
-            
+
             // Check return type (should be unit type '()')
             assert!(return_type.is_some());
             assert_eq!(return_type.unwrap().name, "()");
@@ -2405,22 +2546,22 @@ mod tests {
                 return;
             }
         "#;
-        
+
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize_all().unwrap();
         let mut parser = Parser::new(tokens);
         let program = parser.parse_program().unwrap();
-        
+
         // Check that we have two function declarations
         assert_eq!(program.len(), 2);
         assert!(matches!(program[0], Stmt::FunctionDeclaration { .. }));
         assert!(matches!(program[1], Stmt::FunctionDeclaration { .. }));
-        
+
         // Verify fibonacci function
         if let Stmt::FunctionDeclaration { name, .. } = &program[0] {
             assert_eq!(name, "fibonacci");
         }
-        
+
         // Verify main function
         if let Stmt::FunctionDeclaration { name, .. } = &program[1] {
             assert_eq!(name, "main");
@@ -2433,9 +2574,9 @@ mod tests {
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize_all().expect("Lexing should succeed");
         let mut parser = Parser::new(tokens);
-        
+
         let expr = parser.expression().expect("Parsing should succeed");
-        
+
         // Verify the structure
         match expr {
             Expr::Index(array, index) => {
@@ -2446,18 +2587,22 @@ mod tests {
         }
     }
 
-    #[test] 
+    #[test]
     fn test_simd_vector_literal_parsing() {
         let source = "[1.0, 2.0, 3.0, 4.0]f32x4";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize_all().expect("Lexing should succeed");
         let mut parser = Parser::new(tokens);
-        
+
         let expr = parser.expression().expect("Parsing should succeed");
-        
+
         // Verify SIMD vector literal structure
         match expr {
-            Expr::SIMD(SIMDExpr::VectorLiteral { elements, vector_type, .. }) => {
+            Expr::SIMD(SIMDExpr::VectorLiteral {
+                elements,
+                vector_type,
+                ..
+            }) => {
                 assert_eq!(elements.len(), 4);
                 assert_eq!(vector_type, Some(SIMDVectorType::F32x4));
             }
@@ -2471,11 +2616,14 @@ mod tests {
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize_all().expect("Lexing should succeed");
         let mut parser = Parser::new(tokens);
-        
+
         let expr = parser.expression().expect("Parsing should succeed");
-        
+
         match expr {
-            Expr::Literal(Literal::Vector { elements, vector_type }) => {
+            Expr::Literal(Literal::Vector {
+                elements,
+                vector_type,
+            }) => {
                 assert_eq!(elements.len(), 3);
                 assert_eq!(vector_type, None);
             }
@@ -2489,11 +2637,14 @@ mod tests {
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize_all().expect("Lexing should succeed");
         let mut parser = Parser::new(tokens);
-        
+
         let expr = parser.expression().expect("Parsing should succeed");
-        
+
         match expr {
-            Expr::Literal(Literal::Vector { elements, vector_type }) => {
+            Expr::Literal(Literal::Vector {
+                elements,
+                vector_type,
+            }) => {
                 assert_eq!(elements.len(), 0);
                 assert_eq!(vector_type, None);
             }

@@ -1,6 +1,6 @@
 [package]
 name = "ea-compiler"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A high-performance compiler for the Eä programming language with built-in SIMD support"
 authors = ["Peter Lukka <peter.lukka@gmail.com>"]
@@ -26,7 +26,11 @@ lazy_static = "1.4"
 regex = "1.10"
 
 # LLVM integration - using LLVM 14 on Ubuntu 22.04
-inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm14-0"], optional = true }
+inkwell = { version = "0.4", features = ["llvm14-0"], optional = true }
+
+# System library bindings for JIT symbol resolution
+libc = "0.2"
+libm = "0.2"
 
 [dev-dependencies]
 # Testing
@@ -43,6 +47,14 @@ path = "src/lib.rs"
 [[bin]]
 name = "ea"
 path = "src/main.rs"
+
+[[bench]]
+name = "benchmark"
+harness = false
+
+[[bench]]
+name = "simd_performance_benchmarks"
+harness = false
 
 [features]
 # Enable LLVM by default for development and testing

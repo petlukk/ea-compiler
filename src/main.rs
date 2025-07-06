@@ -1,4 +1,4 @@
-use ea_compiler::{VERSION, NAME};
+use ea_compiler::{NAME, VERSION};
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -6,7 +6,7 @@ use std::process;
 use std::time::Instant;
 
 #[cfg(feature = "llvm")]
-use ea_compiler::{compile_to_llvm, jit_execute};
+use ea_compiler::{compile_to_llvm, diagnose_jit_execution, jit_execute};
 
 /// Command line arguments
 struct Args {
@@ -17,6 +17,7 @@ struct Args {
     emit_llvm: bool,
     emit_llvm_only: bool,
     run: bool,
+    diagnose_jit: bool,
     verbose: bool,
     quiet: bool,
     help: bool,
@@ -35,6 +36,7 @@ impl Args {
             emit_llvm: false,
             emit_llvm_only: false,
             run: false,
+            diagnose_jit: false,
             verbose: false,
             quiet: false,
             help: false,
@@ -54,6 +56,7 @@ impl Args {
                 "--emit-llvm" => parsed.emit_llvm = true,
                 "--emit-llvm-only" => parsed.emit_llvm_only = true,
                 "--run" | "-r" => parsed.run = true,
+                "--diagnose-jit" => parsed.diagnose_jit = true,
                 "--test" => parsed.run_tests = true,
                 "--output" | "-o" => {
                     if i + 1 < args.len() {
@@ -63,11 +66,11 @@ impl Args {
                         eprintln!("Error: --output requires a filename");
                         process::exit(1);
                     }
-                },
+                }
                 arg if arg.starts_with('-') => {
                     eprintln!("Error: Unknown option '{}'", arg);
                     process::exit(1);
-                },
+                }
                 _ => {
                     if parsed.input_file.is_none() {
                         parsed.input_file = Some(args[i].clone());
@@ -75,7 +78,7 @@ impl Args {
                         eprintln!("Error: Multiple input files not supported");
                         process::exit(1);
                     }
-                },
+                }
             }
             i += 1;
         }
@@ -103,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     match args.input_file.as_ref() {
-    Some(filename) => compile_file(filename, &args)?,
+        Some(filename) => compile_file(filename, &args)?,
         None => {
             if env::args().len() == 1 {
                 // No arguments - show usage
@@ -136,6 +139,7 @@ fn print_help() {
     println!("        --emit-ast      Print AST output");
     println!("        --emit-llvm     Print LLVM IR output (with diagnostics)");
     println!("        --emit-llvm-only Print LLVM IR only (clean for piping)");
+    println!("        --diagnose-jit  Diagnose JIT execution issues");
     println!("        --test          Run built-in compiler tests");
     println!();
     println!("EXAMPLES:");
@@ -165,7 +169,7 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
     // Determine output mode
     let show_diagnostics = !args.quiet && !args.emit_llvm_only;
     let verbose_mode = args.verbose && show_diagnostics;
-    
+
     if verbose_mode {
         eprintln!("🚀 {} v{}", NAME, VERSION);
         eprintln!("📁 Compiling: {}", filename);
@@ -180,7 +184,7 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
     // Read source file
     let start_time = Instant::now();
     let source = fs::read_to_string(filename)?;
-    
+
     if verbose_mode {
         eprintln!("📖 Read {} bytes from {}", source.len(), filename);
     }
@@ -191,11 +195,14 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
     }
 
     let tokens = ea_compiler::tokenize(&source)?;
-    
+
     if args.emit_tokens {
         println!("📋 Tokens:");
         for (i, token) in tokens.iter().enumerate() {
-            println!("  {}: {:?} at {}:{}", i, token.kind, token.position.line, token.position.column);
+            println!(
+                "  {}: {:?} at {}:{}",
+                i, token.kind, token.position.line, token.position.column
+            );
         }
         println!();
     }
@@ -206,7 +213,7 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
     }
 
     let program = ea_compiler::parse(&source)?;
-    
+
     if args.emit_ast {
         println!("🌳 Abstract Syntax Tree:");
         for (i, stmt) in program.iter().enumerate() {
@@ -221,7 +228,7 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
     }
 
     let (_program, context) = ea_compiler::compile_to_ast(&source)?;
-    
+
     if verbose_mode {
         eprintln!("✅ Type checking completed");
         eprintln!("   Functions: {}", context.functions.len());
@@ -236,7 +243,9 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
                 eprintln!("⚙️  Generating LLVM IR...");
             }
 
-            let output_name = args.output_file.as_ref()
+            let output_name = args
+                .output_file
+                .as_ref()
                 .map(|s| s.as_str())
                 .unwrap_or_else(|| {
                     Path::new(filename)
@@ -246,11 +255,11 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
                 });
 
             compile_to_llvm(&source, output_name)?;
-            
+
             let ir_file = format!("{}.ll", output_name);
             if Path::new(&ir_file).exists() {
                 let ir_content = fs::read_to_string(&ir_file)?;
-                
+
                 if args.emit_llvm_only {
                     // Clean output for piping - just the IR to stdout
                     print!("{}", ir_content);
@@ -266,8 +275,10 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
             }
         } else if verbose_mode {
             eprintln!("⚙️  Generating LLVM IR...");
-            
-            let output_name = args.output_file.as_ref()
+
+            let output_name = args
+                .output_file
+                .as_ref()
                 .map(|s| s.as_str())
                 .unwrap_or_else(|| {
                     Path::new(filename)
@@ -279,14 +290,45 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
             compile_to_llvm(&source, output_name)?;
             eprintln!("📄 Generated LLVM IR: {}.ll", output_name);
         }
-        
+
+        // Handle JIT diagnostics
+        if args.diagnose_jit {
+            if show_diagnostics {
+                eprintln!("🔍 Diagnosing JIT execution...");
+            }
+
+            let output_name = args
+                .output_file
+                .as_ref()
+                .map(|s| s.as_str())
+                .unwrap_or_else(|| {
+                    Path::new(filename)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("output")
+                });
+
+            match diagnose_jit_execution(&source, output_name) {
+                Ok(diagnostics) => {
+                    println!("🔍 JIT Execution Diagnostics:");
+                    println!("{}", diagnostics);
+                }
+                Err(e) => {
+                    eprintln!("❌ JIT diagnostic error: {}", e);
+                    process::exit(1);
+                }
+            }
+        }
+
         // Handle JIT execution
         if args.run {
             if show_diagnostics {
                 eprintln!("🚀 Executing program...");
             }
-            
-            let output_name = args.output_file.as_ref()
+
+            let output_name = args
+                .output_file
+                .as_ref()
                 .map(|s| s.as_str())
                 .unwrap_or_else(|| {
                     Path::new(filename)
@@ -298,12 +340,15 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
             match jit_execute(&source, output_name) {
                 Ok(exit_code) => {
                     if verbose_mode {
-                        eprintln!("✅ Program executed successfully with exit code: {}", exit_code);
+                        eprintln!(
+                            "✅ Program executed successfully with exit code: {}",
+                            exit_code
+                        );
                     }
                     if exit_code != 0 {
                         process::exit(exit_code);
                     }
-                },
+                }
                 Err(e) => {
                     eprintln!("❌ Runtime error: {}", e);
                     process::exit(1);
@@ -314,15 +359,18 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
 
     #[cfg(not(feature = "llvm"))]
     {
-        if args.emit_llvm || args.emit_llvm_only || args.run {
+        if args.emit_llvm || args.emit_llvm_only || args.run || args.diagnose_jit {
             eprintln!("⚠️  LLVM code generation not available (compile with --features=llvm)");
         }
     }
 
     let elapsed = start_time.elapsed();
-    
+
     if verbose_mode {
-        eprintln!("✅ Compilation completed in {:.2}ms", elapsed.as_secs_f64() * 1000.0);
+        eprintln!(
+            "✅ Compilation completed in {:.2}ms",
+            elapsed.as_secs_f64() * 1000.0
+        );
     } else if show_diagnostics {
         eprintln!("✅ Compiled successfully");
     }

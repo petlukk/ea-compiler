@@ -18,7 +18,11 @@ pub struct Position {
 
 impl Position {
     pub fn new(line: usize, column: usize, offset: usize) -> Self {
-        Self { line, column, offset }
+        Self {
+            line,
+            column,
+            offset,
+        }
     }
 }
 
@@ -32,14 +36,18 @@ pub struct Token {
 
 impl Token {
     pub fn new(kind: TokenKind, lexeme: String, position: Position) -> Self {
-        Self { kind, lexeme, position }
+        Self {
+            kind,
+            lexeme,
+            position,
+        }
     }
 }
 
 /// Token types for the Eä language with SIMD extensions
 /// FIXED: Added custom Hash and Eq implementations for HashMap compatibility
 #[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(skip r"[ \t\r\f]+")]  // Skip whitespace except newlines
+#[logos(skip r"[ \t\r\f]+")] // Skip whitespace except newlines
 pub enum TokenKind {
     // === Core Keywords ===
     #[token("func")]
@@ -172,7 +180,7 @@ pub enum TokenKind {
     #[token("f32x16")]
     F32x16,
 
-    // 64-bit float SIMD types  
+    // 64-bit float SIMD types
     #[token("f64x2")]
     F64x2,
     #[token("f64x4")]
@@ -287,33 +295,33 @@ pub enum TokenKind {
     // === SIMD-specific Operators (NEW) ===
     // Arithmetic
     #[token(".+")]
-    DotAdd,          // Element-wise add
+    DotAdd, // Element-wise add
     #[token(".-")]
-    DotSubtract,     // Element-wise subtract
+    DotSubtract, // Element-wise subtract
     #[token(".*")]
-    DotMultiply,     // Element-wise multiply
+    DotMultiply, // Element-wise multiply
     #[token("./")]
-    DotDivide,       // Element-wise divide
-    
+    DotDivide, // Element-wise divide
+
     // Bitwise
     #[token(".&")]
-    DotAnd,          // Element-wise bitwise AND
+    DotAnd, // Element-wise bitwise AND
     #[token(".|")]
-    DotOr,           // Element-wise bitwise OR
+    DotOr, // Element-wise bitwise OR
     #[token(".^")]
-    DotXor,          // Element-wise bitwise XOR
-    
+    DotXor, // Element-wise bitwise XOR
+
     // Comparison
     #[token(".==")]
-    DotEqual,        // Element-wise equal
+    DotEqual, // Element-wise equal
     #[token(".!=")]
-    DotNotEqual,     // Element-wise not equal
+    DotNotEqual, // Element-wise not equal
     #[token(".<")]
-    DotLess,         // Element-wise less than
+    DotLess, // Element-wise less than
     #[token(".>")]
-    DotGreater,      // Element-wise greater than
+    DotGreater, // Element-wise greater than
     #[token(".<=")]
-    DotLessEqual,    // Element-wise less than or equal
+    DotLessEqual, // Element-wise less than or equal
     #[token(".>=")]
     DotGreaterEqual, // Element-wise greater than or equal
 
@@ -407,7 +415,7 @@ pub enum TokenKind {
 // Custom Eq implementation to handle f64 values
 impl Eq for TokenKind {}
 
-// Custom Hash implementation to handle f64 values  
+// Custom Hash implementation to handle f64 values
 impl std::hash::Hash for TokenKind {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::mem::discriminant(self).hash(state);
@@ -444,13 +452,13 @@ impl fmt::Display for TokenKind {
             TokenKind::In => "in",
             TokenKind::Enum => "enum",
             TokenKind::Match => "match",
-            
+
             // Memory management
             TokenKind::MemRegion => "mem_region",
             TokenKind::Parallel => "parallel",
             TokenKind::Async => "async",
             TokenKind::Await => "await",
-            
+
             // SIMD keywords
             TokenKind::Vectorize => "vectorize",
             TokenKind::SimdWidth => "simd_width",
@@ -467,7 +475,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Splat => "splat",
             TokenKind::Shuffle => "shuffle",
             TokenKind::Lanes => "lanes",
-            
+
             // Hardware features
             TokenKind::SSE => "sse",
             TokenKind::SSE2 => "sse2",
@@ -478,7 +486,7 @@ impl fmt::Display for TokenKind {
             TokenKind::AVX512 => "avx512",
             TokenKind::NEON => "neon",
             TokenKind::AltiVec => "altivec",
-            
+
             // Scalar types
             TokenKind::I8 => "i8",
             TokenKind::I16 => "i16",
@@ -492,7 +500,7 @@ impl fmt::Display for TokenKind {
             TokenKind::F64 => "f64",
             TokenKind::Bool => "bool",
             TokenKind::String => "string",
-            
+
             // SIMD types
             TokenKind::F32x2 => "f32x2",
             TokenKind::F32x4 => "f32x4",
@@ -526,7 +534,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Mask16 => "mask16",
             TokenKind::Mask32 => "mask32",
             TokenKind::Mask64 => "mask64",
-            
+
             // Standard operators
             TokenKind::Plus => "+",
             TokenKind::Minus => "-",
@@ -548,7 +556,7 @@ impl fmt::Display for TokenKind {
             TokenKind::MinusAssign => "-=",
             TokenKind::StarAssign => "*=",
             TokenKind::SlashAssign => "/=",
-            
+
             // SIMD operators
             TokenKind::DotAdd => ".+",
             TokenKind::DotSubtract => ".-",
@@ -563,7 +571,7 @@ impl fmt::Display for TokenKind {
             TokenKind::DotGreater => ".>",
             TokenKind::DotLessEqual => ".<=",
             TokenKind::DotGreaterEqual => ".>=",
-            
+
             // Delimiters
             TokenKind::LeftParen => "(",
             TokenKind::RightParen => ")",
@@ -578,14 +586,14 @@ impl fmt::Display for TokenKind {
             TokenKind::Arrow => "->",
             TokenKind::FatArrow => "=>",
             TokenKind::Dot => ".",
-            
+
             // Literals with values
             TokenKind::Integer(n) => return write!(f, "{}", n),
             TokenKind::Float(n) => return write!(f, "{}", n),
             TokenKind::SimdLiteral(s) => return write!(f, "{}", s),
             TokenKind::StringLiteral(s) => return write!(f, "\"{}\"", s),
             TokenKind::Identifier(s) => return write!(f, "{}", s),
-            
+
             // Special
             TokenKind::Comment => "comment",
             TokenKind::Newline => "\\n",
@@ -635,13 +643,13 @@ impl<'source> Lexer<'source> {
             "in" => Some(TokenKind::In),
             "enum" => Some(TokenKind::Enum),
             "match" => Some(TokenKind::Match),
-            
+
             // Memory management
             "mem_region" => Some(TokenKind::MemRegion),
             "parallel" => Some(TokenKind::Parallel),
             "async" => Some(TokenKind::Async),
             "await" => Some(TokenKind::Await),
-            
+
             // SIMD keywords
             "vectorize" => Some(TokenKind::Vectorize),
             "simd_width" => Some(TokenKind::SimdWidth),
@@ -658,7 +666,7 @@ impl<'source> Lexer<'source> {
             "splat" => Some(TokenKind::Splat),
             "shuffle" => Some(TokenKind::Shuffle),
             "lanes" => Some(TokenKind::Lanes),
-            
+
             // Hardware features
             "sse" => Some(TokenKind::SSE),
             "sse2" => Some(TokenKind::SSE2),
@@ -669,7 +677,7 @@ impl<'source> Lexer<'source> {
             "avx512" => Some(TokenKind::AVX512),
             "neon" => Some(TokenKind::NEON),
             "altivec" => Some(TokenKind::AltiVec),
-            
+
             _ => None,
         }
     }
@@ -682,17 +690,13 @@ impl<'source> Lexer<'source> {
         if text.starts_with('[') && text.contains(']') {
             if let Some(type_start) = text.rfind(']') {
                 let type_part = &text[type_start + 1..];
-                
+
                 // Check if it's a valid SIMD type
                 match type_part {
-                    "f32x2" | "f32x4" | "f32x8" | "f32x16" |
-                    "f64x2" | "f64x4" | "f64x8" |
-                    "i32x2" | "i32x4" | "i32x8" | "i32x16" |
-                    "i64x2" | "i64x4" | "i64x8" |
-                    "i16x4" | "i16x8" | "i16x16" | "i16x32" |
-                    "i8x8" | "i8x16" | "i8x32" | "i8x64" |
-                    "u32x4" | "u32x8" | "u16x8" | "u16x16" |
-                    "u8x16" | "u8x32" => {
+                    "f32x2" | "f32x4" | "f32x8" | "f32x16" | "f64x2" | "f64x4" | "f64x8"
+                    | "i32x2" | "i32x4" | "i32x8" | "i32x16" | "i64x2" | "i64x4" | "i64x8"
+                    | "i16x4" | "i16x8" | "i16x16" | "i16x32" | "i8x8" | "i8x16" | "i8x32"
+                    | "i8x64" | "u32x4" | "u32x8" | "u16x8" | "u16x16" | "u8x16" | "u8x32" => {
                         return Some(TokenKind::SimdLiteral(text.to_string()));
                     }
                     _ => {}
@@ -708,7 +712,7 @@ impl<'source> Lexer<'source> {
                 Some(Ok(token_kind)) => {
                     let lexeme = self.logos_lexer.slice().to_string();
                     let span = self.logos_lexer.span();
-                    
+
                     // Handle newlines specially to track line numbers
                     if token_kind == TokenKind::Newline {
                         self.line += 1;
@@ -716,37 +720,37 @@ impl<'source> Lexer<'source> {
                         // Skip newlines - continue to next token
                         continue;
                     }
-                    
+
                     // Calculate the actual column based on the source position
                     let line_start = self.source[..span.start]
                         .rfind('\n')
                         .map(|pos| pos + 1)
                         .unwrap_or(0);
                     let column = span.start - line_start + 1;
-                    
+
                     let position = Position::new(self.line, column, span.start);
-                    
+
                     // Update column position for next token
                     self.column = column + lexeme.len();
-                    
+
                     return Ok(Token::new(token_kind, lexeme, position));
                 }
                 Some(Err(_)) => {
                     let lexeme = self.logos_lexer.slice().to_string();
                     let span = self.logos_lexer.span();
-                    
+
                     // Calculate the actual column based on the source position
                     let line_start = self.source[..span.start]
                         .rfind('\n')
                         .map(|pos| pos + 1)
                         .unwrap_or(0);
                     let column = span.start - line_start + 1;
-                    
+
                     let position = Position::new(self.line, column, span.start);
-                    
+
                     return Err(CompileError::lex_error(
                         format!("Unexpected character: '{}'", lexeme),
-                        position
+                        position,
                     ));
                 }
                 None => {
@@ -761,17 +765,17 @@ impl<'source> Lexer<'source> {
 
     pub fn tokenize_all(&mut self) -> Result<Vec<Token>, CompileError> {
         let mut tokens = Vec::new();
-        
+
         loop {
             let token = self.next_token()?;
             let is_eof = token.kind == TokenKind::Eof;
             tokens.push(token);
-            
+
             if is_eof {
                 break;
             }
         }
-        
+
         Ok(tokens)
     }
 }
@@ -796,16 +800,16 @@ mod tests {
                 return vec.horizontal_sum();
             }
         "#;
-        
+
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize_all().unwrap();
-        
+
         // Verify we can tokenize a complex SIMD program
         assert!(tokens.len() > 20);
-        
+
         // Find key SIMD tokens
         let token_kinds: Vec<&TokenKind> = tokens.iter().map(|t| &t.kind).collect();
-        
+
         assert!(token_kinds.contains(&&TokenKind::F32x8));
         assert!(token_kinds.contains(&&TokenKind::Vectorize));
         assert!(token_kinds.contains(&&TokenKind::SimdWidth));
@@ -821,25 +825,25 @@ mod tests {
     fn test_mixed_scalar_and_simd_types() {
         let mut lexer = Lexer::new("i32 f32x4 f64 i16x8 bool u8x16");
         let tokens = lexer.tokenize_all().unwrap();
-        
-        assert_eq!(tokens[0].kind, TokenKind::I32);      // scalar
-        assert_eq!(tokens[1].kind, TokenKind::F32x4);    // SIMD
-        assert_eq!(tokens[2].kind, TokenKind::F64);      // scalar
-        assert_eq!(tokens[3].kind, TokenKind::I16x8);    // SIMD
-        assert_eq!(tokens[4].kind, TokenKind::Bool);     // scalar
-        assert_eq!(tokens[5].kind, TokenKind::U8x16);    // SIMD
+
+        assert_eq!(tokens[0].kind, TokenKind::I32); // scalar
+        assert_eq!(tokens[1].kind, TokenKind::F32x4); // SIMD
+        assert_eq!(tokens[2].kind, TokenKind::F64); // scalar
+        assert_eq!(tokens[3].kind, TokenKind::I16x8); // SIMD
+        assert_eq!(tokens[4].kind, TokenKind::Bool); // scalar
+        assert_eq!(tokens[5].kind, TokenKind::U8x16); // SIMD
     }
 
     #[test]
     fn test_simd_position_tracking() {
         let source = "vectorize\nf32x8";
         let mut lexer = Lexer::new(source);
-        
+
         let token1 = lexer.next_token().unwrap();
         assert_eq!(token1.position.line, 1);
         assert_eq!(token1.position.column, 1);
         assert_eq!(token1.lexeme, "vectorize");
-        
+
         let token2 = lexer.next_token().unwrap();
         assert_eq!(token2.position.line, 2);
         assert_eq!(token2.position.column, 1);
@@ -850,7 +854,7 @@ mod tests {
     fn test_simd_error_on_invalid_character() {
         let mut lexer = Lexer::new("vectorize $ f32x4");
         let tokens = lexer.tokenize_all();
-        
+
         assert!(tokens.is_err());
         if let Err(e) = tokens {
             let error_str = e.to_string();
@@ -862,21 +866,16 @@ mod tests {
     #[test]
     fn test_all_simd_vector_widths() {
         let simd_types = [
-            "f32x2", "f32x4", "f32x8", "f32x16",
-            "f64x2", "f64x4", "f64x8",
-            "i32x2", "i32x4", "i32x8", "i32x16",
-            "i64x2", "i64x4", "i64x8",
-            "i16x4", "i16x8", "i16x16", "i16x32",
-            "i8x8", "i8x16", "i8x32", "i8x64",
-            "u32x4", "u32x8", "u16x8", "u16x16",
-            "u8x16", "u8x32",
-            "mask8", "mask16", "mask32", "mask64"
+            "f32x2", "f32x4", "f32x8", "f32x16", "f64x2", "f64x4", "f64x8", "i32x2", "i32x4",
+            "i32x8", "i32x16", "i64x2", "i64x4", "i64x8", "i16x4", "i16x8", "i16x16", "i16x32",
+            "i8x8", "i8x16", "i8x32", "i8x64", "u32x4", "u32x8", "u16x8", "u16x16", "u8x16",
+            "u8x32", "mask8", "mask16", "mask32", "mask64",
         ];
-        
+
         for simd_type in simd_types {
             let mut lexer = Lexer::new(simd_type);
             let tokens = lexer.tokenize_all().unwrap();
-            
+
             // Should have exactly 2 tokens: the SIMD type and EOF
             assert_eq!(tokens.len(), 2);
             assert_ne!(tokens[0].kind, TokenKind::Identifier(simd_type.to_string()));
@@ -888,13 +887,16 @@ mod tests {
     fn test_simd_with_underscores_in_numbers() {
         let mut lexer = Lexer::new("let mask = 0xFF_FF_FF_FF; let vec: f32x4;");
         let tokens = lexer.tokenize_all().unwrap();
-        
+
         // Find the hex literal with underscores
-        let hex_token = tokens.iter().find(|t| matches!(t.kind, TokenKind::Integer(_))).unwrap();
+        let hex_token = tokens
+            .iter()
+            .find(|t| matches!(t.kind, TokenKind::Integer(_)))
+            .unwrap();
         if let TokenKind::Integer(value) = hex_token.kind {
             assert_eq!(value, 0xFFFFFFFF);
         }
-        
+
         // Find the SIMD type
         let simd_token = tokens.iter().find(|t| t.kind == TokenKind::F32x4).unwrap();
         assert_eq!(simd_token.lexeme, "f32x4");
@@ -904,7 +906,7 @@ mod tests {
     fn test_simd_keywords() {
         let mut lexer = Lexer::new("vectorize simd_width simd_auto target_feature");
         let tokens = lexer.tokenize_all().unwrap();
-        
+
         assert_eq!(tokens[0].kind, TokenKind::Vectorize);
         assert_eq!(tokens[1].kind, TokenKind::SimdWidth);
         assert_eq!(tokens[2].kind, TokenKind::SimdAuto);
@@ -916,7 +918,7 @@ mod tests {
     fn test_simd_types() {
         let mut lexer = Lexer::new("f32x4 f64x8 i32x16 u8x32 mask16");
         let tokens = lexer.tokenize_all().unwrap();
-        
+
         assert_eq!(tokens[0].kind, TokenKind::F32x4);
         assert_eq!(tokens[1].kind, TokenKind::F64x8);
         assert_eq!(tokens[2].kind, TokenKind::I32x16);
@@ -929,7 +931,7 @@ mod tests {
     fn test_hardware_features() {
         let mut lexer = Lexer::new("avx2 sse4 neon avx512");
         let tokens = lexer.tokenize_all().unwrap();
-        
+
         assert_eq!(tokens[0].kind, TokenKind::AVX2);
         assert_eq!(tokens[1].kind, TokenKind::SSE4);
         assert_eq!(tokens[2].kind, TokenKind::NEON);
@@ -940,7 +942,7 @@ mod tests {
     fn test_simd_operators() {
         let mut lexer = Lexer::new(".* .+ ./ .& .| .^");
         let tokens = lexer.tokenize_all().unwrap();
-        
+
         assert_eq!(tokens[0].kind, TokenKind::DotMultiply);
         assert_eq!(tokens[1].kind, TokenKind::DotAdd);
         assert_eq!(tokens[2].kind, TokenKind::DotDivide);
@@ -954,7 +956,7 @@ mod tests {
         let input = "[1.0, 2.0, 3.0, 4.0]f32x4";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize_all().unwrap();
-        
+
         // This will be parsed as separate tokens for now: [ 1.0 , 2.0 , 3.0 , 4.0 ] f32x4
         // We'll handle the full SIMD literal parsing in the parser phase
         assert!(tokens.len() > 1);
@@ -966,7 +968,7 @@ mod tests {
     fn test_simd_function_calls() {
         let mut lexer = Lexer::new("horizontal_sum from_slice to_array splat");
         let tokens = lexer.tokenize_all().unwrap();
-        
+
         assert_eq!(tokens[0].kind, TokenKind::HorizontalSum);
         assert_eq!(tokens[1].kind, TokenKind::FromSlice);
         assert_eq!(tokens[2].kind, TokenKind::ToArray);
@@ -977,7 +979,7 @@ mod tests {
     fn test_enum_and_match_keywords() {
         let mut lexer = Lexer::new("enum Option match value");
         let tokens = lexer.tokenize_all().unwrap();
-        
+
         assert_eq!(tokens[0].kind, TokenKind::Enum);
         assert_eq!(tokens[1].kind, TokenKind::Identifier("Option".to_string()));
         assert_eq!(tokens[2].kind, TokenKind::Match);
