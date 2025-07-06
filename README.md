@@ -449,7 +449,6 @@ We welcome contributions! Please see our [Getting Started Guide](docs/getting_st
 ## Documentation
 
 - [Getting Started Guide](docs/getting-started.md)
-- [V0.1 Progress Report](V01_Progress_Report.md) - Complete implementation status
 - [Language Specification](specification-v01.md) - Full language reference
 - [Examples](examples/) - Sample programs demonstrating features
 
