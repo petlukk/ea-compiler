@@ -108,11 +108,310 @@ impl<'ctx> CodeGenerator<'ctx> {
             current_optimization_config: None,
         };
 
-        // Add this line:
+        // Add minimal builtin functions for JIT compatibility
+        codegen.add_minimal_builtin_functions();
+
+        codegen
+    }
+
+    pub fn new_full(context: &'ctx Context, module_name: &str) -> Self {
+        let module = context.create_module(module_name);
+        let builder = context.create_builder();
+
+        let mut codegen = Self {
+            context,
+            module,
+            builder,
+            variables: HashMap::new(),
+            functions: HashMap::new(),
+            struct_types: HashMap::new(),
+            struct_fields: HashMap::new(),
+            optimization_level: OptimizationLevel::Default,
+            current_optimization_config: None,
+        };
+
+        // Add all builtin functions for complete functionality
         codegen.add_builtin_functions();
 
         codegen
     }
+    /// Adds minimal built-in functions for JIT compatibility
+    fn add_minimal_builtin_functions(&mut self) {
+        // Add only the most essential functions for JIT
+        let string_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        
+        // Add external puts function declaration (for println support)
+        let puts_type = self
+            .context
+            .i32_type()
+            .fn_type(&[string_type.into()], false);
+        let puts_function = self.module.add_function("puts", puts_type, None);
+        self.functions.insert("puts".to_string(), puts_function);
+        
+        // Add external printf function declaration
+        let printf_type = self.context.i32_type().fn_type(&[string_type.into()], true); // variadic
+        let printf_function = self.module.add_function("printf", printf_type, None);
+        self.functions.insert("printf".to_string(), printf_function);
+        
+        // Add println function that maps to puts
+        let println_type = self
+            .context
+            .void_type()
+            .fn_type(&[string_type.into()], false);
+        let println_function = self.module.add_function("println", println_type, None);
+        self.functions.insert("println".to_string(), println_function);
+        
+        // Implement println function using puts
+        let println_entry = self.context.append_basic_block(println_function, "entry");
+        let current_block = self.builder.get_insert_block();
+        
+        self.builder.position_at_end(println_entry);
+        let param = println_function.get_nth_param(0).unwrap();
+        
+        // Use puts for string output
+        let _puts_call = self
+            .builder
+            .build_call(
+                puts_function,
+                &[param.into()],
+                "puts_call",
+            );
+        self.builder.build_return(None).unwrap();
+        
+        // Add print_i32 function that maps to printf
+        let i32_type = self.context.i32_type();
+        let print_i32_type = self.context.void_type().fn_type(&[i32_type.into()], false);
+        let print_i32_function = self.module.add_function("print_i32", print_i32_type, None);
+        self.functions.insert("print_i32".to_string(), print_i32_function);
+        
+        // Implement print_i32 function using printf
+        let print_i32_entry = self.context.append_basic_block(print_i32_function, "entry");
+        self.builder.position_at_end(print_i32_entry);
+        
+        let i32_param = print_i32_function.get_nth_param(0).unwrap();
+        let format_str = self
+            .builder
+            .build_global_string_ptr("%d\n", "i32_format")
+            .unwrap();
+        
+        let _printf_call = self.builder.build_call(
+            printf_function,
+            &[format_str.as_pointer_value().into(), i32_param.into()],
+            "printf_call",
+        );
+        self.builder.build_return(None).unwrap();
+        
+        // Add print(string) -> void function
+        let print_type = self
+            .context
+            .void_type()
+            .fn_type(&[string_type.into()], false);
+        let print_function = self.module.add_function("print", print_type, None);
+        self.functions.insert("print".to_string(), print_function);
+        
+        // Implement print(string) function using puts
+        let print_entry = self.context.append_basic_block(print_function, "entry");
+        let current_block_print = self.builder.get_insert_block();
+        
+        self.builder.position_at_end(print_entry);
+        let param = print_function.get_nth_param(0).unwrap();
+        
+        // Use puts for string output (puts automatically adds newline)
+        let _puts_call = self
+            .builder
+            .build_call(
+                puts_function,
+                &[param.into()],
+                "puts_call",
+            );
+        self.builder.build_return(None).unwrap();
+        
+        // Restore builder position if needed
+        if let Some(block) = current_block_print {
+            self.builder.position_at_end(block);
+        }
+        
+        // Add essential I/O functions for production use
+        
+        // Add strlen function declaration first (used by other functions)
+        let strlen_type = self.context.i64_type().fn_type(&[string_type.into()], false);
+        let strlen_function = self.module.add_function("strlen", strlen_type, None);
+        self.functions.insert("strlen".to_string(), strlen_function);
+        
+        // Add file I/O functions - external declarations from C library
+        let fopen_type = self.context.i8_type().ptr_type(AddressSpace::default()).fn_type(
+            &[string_type.into(), string_type.into()], false);
+        let fopen_function = self.module.add_function("fopen", fopen_type, None);
+        self.functions.insert("fopen".to_string(), fopen_function);
+        
+        let fclose_type = self.context.i32_type().fn_type(
+            &[self.context.i8_type().ptr_type(AddressSpace::default()).into()], false);
+        let fclose_function = self.module.add_function("fclose", fclose_type, None);
+        self.functions.insert("fclose".to_string(), fclose_function);
+        
+        let fread_type = self.context.i64_type().fn_type(&[
+            self.context.i8_type().ptr_type(AddressSpace::default()).into(), // ptr
+            self.context.i64_type().into(), // size
+            self.context.i64_type().into(), // nmemb
+            self.context.i8_type().ptr_type(AddressSpace::default()).into(), // stream
+        ], false);
+        let fread_function = self.module.add_function("fread", fread_type, None);
+        self.functions.insert("fread".to_string(), fread_function);
+        
+        let fwrite_type = self.context.i64_type().fn_type(&[
+            self.context.i8_type().ptr_type(AddressSpace::default()).into(), // ptr
+            self.context.i64_type().into(), // size
+            self.context.i64_type().into(), // nmemb
+            self.context.i8_type().ptr_type(AddressSpace::default()).into(), // stream
+        ], false);
+        let fwrite_function = self.module.add_function("fwrite", fwrite_type, None);
+        self.functions.insert("fwrite".to_string(), fwrite_function);
+        
+        // Add malloc and free for memory management
+        let malloc_type = self.context.i8_type().ptr_type(AddressSpace::default()).fn_type(
+            &[self.context.i64_type().into()], false);
+        let malloc_function = self.module.add_function("malloc", malloc_type, None);
+        self.functions.insert("malloc".to_string(), malloc_function);
+        
+        let free_type = self.context.void_type().fn_type(
+            &[self.context.i8_type().ptr_type(AddressSpace::default()).into()], false);
+        let free_function = self.module.add_function("free", free_type, None);
+        self.functions.insert("free".to_string(), free_function);
+        
+        // Implement read_file(string) -> string function
+        let read_file_type = string_type.fn_type(&[string_type.into()], false);
+        let read_file_function = self.module.add_function("read_file", read_file_type, None);
+        self.functions.insert("read_file".to_string(), read_file_function);
+        
+        let read_file_entry = self.context.append_basic_block(read_file_function, "entry");
+        self.builder.position_at_end(read_file_entry);
+        
+        let filename_param = read_file_function.get_nth_param(0).unwrap();
+        let read_mode = self.builder.build_global_string_ptr("r", "read_mode").unwrap();
+        
+        // Open file
+        let file_ptr = self.builder.build_call(
+            fopen_function,
+            &[filename_param.into(), read_mode.as_pointer_value().into()],
+            "file_ptr"
+        ).unwrap().try_as_basic_value().unwrap_left().into_pointer_value();
+        
+        // Check if file opened successfully
+        let null_ptr = string_type.const_null();
+        let file_is_null = self.builder.build_is_null(file_ptr, "file_is_null").unwrap();
+        
+        let file_null_bb = self.context.append_basic_block(read_file_function, "file_null");
+        let file_open_bb = self.context.append_basic_block(read_file_function, "file_open");
+        
+        self.builder.build_conditional_branch(file_is_null, file_null_bb, file_open_bb).unwrap();
+        
+        // File is null - return empty string
+        self.builder.position_at_end(file_null_bb);
+        let empty_string = self.builder.build_global_string_ptr("", "empty_content").unwrap();
+        self.builder.build_return(Some(&empty_string.as_pointer_value())).unwrap();
+        
+        // File opened successfully - read content
+        self.builder.position_at_end(file_open_bb);
+        
+        // Allocate buffer (simplified - 1024 bytes)
+        let buffer_size = self.context.i64_type().const_int(1024, false);
+        let buffer = self.builder.build_call(
+            malloc_function,
+            &[buffer_size.into()],
+            "buffer"
+        ).unwrap().try_as_basic_value().unwrap_left().into_pointer_value();
+        
+        // Read file content
+        let bytes_read = self.builder.build_call(
+            fread_function,
+            &[
+                buffer.into(),
+                self.context.i64_type().const_int(1, false).into(),
+                buffer_size.into(),
+                file_ptr.into()
+            ],
+            "bytes_read"
+        ).unwrap();
+        
+        // Close file
+        self.builder.build_call(
+            fclose_function,
+            &[file_ptr.into()],
+            "close_result"
+        ).unwrap();
+        
+        self.builder.build_return(Some(&buffer)).unwrap();
+        
+        // Implement write_file(string, string) -> void function
+        let write_file_type = self.context.void_type().fn_type(
+            &[string_type.into(), string_type.into()], false);
+        let write_file_function = self.module.add_function("write_file", write_file_type, None);
+        self.functions.insert("write_file".to_string(), write_file_function);
+        
+        let write_file_entry = self.context.append_basic_block(write_file_function, "entry");
+        self.builder.position_at_end(write_file_entry);
+        
+        let write_filename_param = write_file_function.get_nth_param(0).unwrap();
+        let write_content_param = write_file_function.get_nth_param(1).unwrap();
+        let write_mode = self.builder.build_global_string_ptr("w", "write_mode").unwrap();
+        
+        // Open file for writing
+        let write_file_ptr = self.builder.build_call(
+            fopen_function,
+            &[write_filename_param.into(), write_mode.as_pointer_value().into()],
+            "write_file_ptr"
+        ).unwrap().try_as_basic_value().unwrap_left().into_pointer_value();
+        
+        // Check if file opened successfully
+        let write_file_is_null = self.builder.build_is_null(write_file_ptr, "write_file_is_null").unwrap();
+        
+        let write_file_null_bb = self.context.append_basic_block(write_file_function, "write_file_null");
+        let write_file_open_bb = self.context.append_basic_block(write_file_function, "write_file_open");
+        
+        self.builder.build_conditional_branch(write_file_is_null, write_file_null_bb, write_file_open_bb).unwrap();
+        
+        // File is null - return early
+        self.builder.position_at_end(write_file_null_bb);
+        self.builder.build_return(None).unwrap();
+        
+        // File opened successfully - write content
+        self.builder.position_at_end(write_file_open_bb);
+        
+        // Get content length using strlen (we need to get it from the function map)
+        let strlen_fn = self.functions.get("strlen").unwrap().clone();
+        let content_length = self.builder.build_call(
+            strlen_fn,
+            &[write_content_param.into()],
+            "content_length"
+        ).unwrap().try_as_basic_value().unwrap_left().into_int_value();
+        
+        // Write content to file
+        self.builder.build_call(
+            fwrite_function,
+            &[
+                write_content_param.into(),
+                self.context.i64_type().const_int(1, false).into(),
+                content_length.into(),
+                write_file_ptr.into()
+            ],
+            "write_result"
+        ).unwrap();
+        
+        // Close file
+        self.builder.build_call(
+            fclose_function,
+            &[write_file_ptr.into()],
+            "write_close_result"
+        ).unwrap();
+        
+        self.builder.build_return(None).unwrap();
+
+        // Restore builder position
+        if let Some(block) = current_block {
+            self.builder.position_at_end(block);
+        }
+    }
+    
     /// Adds built-in functions to the code generator
     fn add_builtin_functions(&mut self) {
         // Add external printf function declaration
@@ -154,25 +453,20 @@ impl<'ctx> CodeGenerator<'ctx> {
         let print_function = self.module.add_function("print", print_type, None);
         self.functions.insert("print".to_string(), print_function);
 
-        // Implement print(string) function using direct system calls
+        // Implement print(string) function using puts (safer than raw write)
         let print_entry = self.context.append_basic_block(print_function, "entry");
         let current_block = self.builder.get_insert_block();
 
         self.builder.position_at_end(print_entry);
         let param = print_function.get_nth_param(0).unwrap();
 
-        // For debugging: use fixed length first (avoid strlen calls)
-        // This helps us isolate whether the issue is with strlen or write
-        let fixed_len = self.context.i64_type().const_int(5, false); // "hello" = 5 chars
-        
-        // Write to stdout (fd = 1) using system call
-        let stdout_fd = self.context.i32_type().const_int(1, false);
-        let _write_call = self
+        // Use puts for safer string output - puts automatically adds newline
+        let _puts_call = self
             .builder
             .build_call(
-                write_function,
-                &[stdout_fd.into(), param.into(), fixed_len.into()],
-                "write_call",
+                puts_function,
+                &[param.into()],
+                "puts_call",
             );
         self.builder.build_return(None).unwrap();
 

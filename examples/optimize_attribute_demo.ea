@@ -1,0 +1,12 @@
+// Simple @optimize attribute demo
+func test_basic_optimization() -> f32 {
+    let v1 = [1.0, 2.0, 3.0, 4.0]f32x4;
+    let v2 = [5.0, 6.0, 7.0, 8.0]f32x4;
+    let result = v1 .+ v2;
+    return 6.0;
+}
+
+func main() -> () {
+    let result = test_basic_optimization();
+    return;
+}

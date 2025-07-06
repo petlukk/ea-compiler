@@ -71,6 +71,24 @@ pub fn compile_to_llvm(source: &str, module_name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Compile to LLVM IR with minimal standard library for static linking
+#[cfg(feature = "llvm")]
+pub fn compile_to_llvm_minimal(source: &str, module_name: &str) -> Result<()> {
+    use inkwell::context::Context;
+
+    let (program, _type_context) = compile_to_ast(source)?;
+
+    let context = Context::create();
+    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
+    codegen.compile_program(&program)?;
+
+    // Write LLVM IR to file for inspection
+    let ir_filename = format!("{}.ll", module_name);
+    codegen.write_ir_to_file(&ir_filename)?;
+
+    Ok(())
+}
+
 /// Diagnostic information for JIT execution
 #[cfg(feature = "llvm")]
 pub fn diagnose_jit_execution(source: &str, module_name: &str) -> Result<String> {
@@ -190,136 +208,71 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
         })?;
     eprintln!("✅ JIT execution engine created successfully");
 
-    // Enhanced symbol mapping for all potential external functions
-    // Map symbols regardless of whether they exist in the module
+    // Minimal symbol mapping for JIT execution
     unsafe {
-        eprintln!("🔍 Starting comprehensive symbol resolution...");
+        eprintln!("🔍 Starting minimal symbol resolution...");
         
-        // List all functions in the module first
-        eprintln!("📋 Functions in module:");
-        let mut function_count = 0;
-        for func in codegen.get_module().get_functions() {
-            let name = func.get_name().to_str().unwrap_or("unknown");
-            eprintln!("   • {}", name);
-            function_count += 1;
-        }
-        eprintln!("   Total functions: {}", function_count);
-        
-        // Load system libraries explicitly
-        eprintln!("🔗 Loading system libraries...");
-        
-        // Method 1: Try direct libc mapping first
+        // Map only the essential symbols for I/O
         let puts_addr = libc::puts as *const () as usize;
         let printf_addr = libc::printf as *const () as usize;
         
-        eprintln!("📍 Direct libc symbol addresses:");
+        eprintln!("📍 Symbol addresses:");
         eprintln!("   puts: 0x{:x}", puts_addr);
         eprintln!("   printf: 0x{:x}", printf_addr);
 
-        // Method 2: Try dynamic library loading as fallback
-        let mut dynamic_puts_addr = puts_addr;
-        let mut dynamic_printf_addr = printf_addr;
-        
-        #[cfg(target_os = "linux")]
-        {
-            match libloading::os::unix::Library::open(Some("libc.so.6"), libc::RTLD_LAZY) {
-                Ok(lib) => {
-                    eprintln!("✅ Loaded libc.so.6 successfully");
-                    
-                    // Try to get puts symbol from dynamic library
-                    if let Ok(puts_symbol) = lib.get::<libloading::Symbol<unsafe extern "C" fn(*const libc::c_char) -> libc::c_int>>(b"puts") {
-                        dynamic_puts_addr = **puts_symbol as usize;
-                        eprintln!("✅ Found dynamic puts symbol: 0x{:x}", dynamic_puts_addr);
-                    }
-                    
-                    // Try to get printf symbol from dynamic library
-                    if let Ok(printf_symbol) = lib.get::<libloading::Symbol<unsafe extern "C" fn(*const libc::c_char, ...) -> libc::c_int>>(b"printf") {
-                        dynamic_printf_addr = **printf_symbol as usize;
-                        eprintln!("✅ Found dynamic printf symbol: 0x{:x}", dynamic_printf_addr);
-                    }
-                    
-                    // Keep the library loaded
-                    std::mem::forget(lib);
-                }
-                Err(e) => {
-                    eprintln!("⚠️  Failed to load libc.so.6 dynamically: {}", e);
-                    eprintln!("   Falling back to direct libc linking");
-                }
-            }
-        }
-
-        // Map symbols using the best available addresses
+        // Map puts symbol
         if let Some(puts_fn) = codegen.get_module().get_function("puts") {
-            eprintln!("✅ Found puts function in module");
-            execution_engine.add_global_mapping(&puts_fn, dynamic_puts_addr);
-            eprintln!("✅ Mapped puts symbol successfully (addr: 0x{:x})", dynamic_puts_addr);
-        } else {
-            eprintln!("❌ puts function NOT found in module");
+            execution_engine.add_global_mapping(&puts_fn, puts_addr);
+            eprintln!("✅ Mapped puts symbol successfully");
         }
         
+        // Map printf symbol
         if let Some(printf_fn) = codegen.get_module().get_function("printf") {
-            eprintln!("✅ Found printf function in module");
-            execution_engine.add_global_mapping(&printf_fn, dynamic_printf_addr);
-            eprintln!("✅ Mapped printf symbol successfully (addr: 0x{:x})", dynamic_printf_addr);
-        } else {
-            eprintln!("❌ printf function NOT found in module");
+            execution_engine.add_global_mapping(&printf_fn, printf_addr);
+            eprintln!("✅ Mapped printf symbol successfully");
         }
-
-        // Map critical system call functions
-        if let Some(write_fn) = codegen.get_module().get_function("write") {
-            let write_addr = libc::write as *const () as usize;
-            eprintln!("✅ Found write function in module");
-            eprintln!("📍 write syscall address: 0x{:x}", write_addr);
-            execution_engine.add_global_mapping(&write_fn, write_addr);
-            eprintln!("✅ Mapped write syscall successfully");
-        } else {
-            eprintln!("❌ write function NOT found in module");
+        
+        // Map essential file I/O functions
+        if let Some(fopen_fn) = codegen.get_module().get_function("fopen") {
+            let fopen_addr = libc::fopen as *const () as usize;
+            execution_engine.add_global_mapping(&fopen_fn, fopen_addr);
+            eprintln!("✅ Mapped fopen symbol successfully");
         }
-
-        if let Some(strlen_fn) = codegen.get_module().get_function("strlen") {
-            let strlen_addr = libc::strlen as *const () as usize;
-            eprintln!("✅ Found strlen function in module");
-            eprintln!("📍 strlen address: 0x{:x}", strlen_addr);
-            execution_engine.add_global_mapping(&strlen_fn, strlen_addr);
-            eprintln!("✅ Mapped strlen successfully");
-        } else {
-            eprintln!("❌ strlen function NOT found in module");
+        
+        if let Some(fclose_fn) = codegen.get_module().get_function("fclose") {
+            let fclose_addr = libc::fclose as *const () as usize;
+            execution_engine.add_global_mapping(&fclose_fn, fclose_addr);
+            eprintln!("✅ Mapped fclose symbol successfully");
         }
-
-        // Math functions from libm
-        if let Some(sqrt_fn) = codegen.get_module().get_function("sqrt") {
-            let sqrt_addr = libm::sqrt as *const () as usize;
-            execution_engine.add_global_mapping(&sqrt_fn, sqrt_addr);
+        
+        if let Some(fread_fn) = codegen.get_module().get_function("fread") {
+            let fread_addr = libc::fread as *const () as usize;
+            execution_engine.add_global_mapping(&fread_fn, fread_addr);
+            eprintln!("✅ Mapped fread symbol successfully");
         }
-        if let Some(sin_fn) = codegen.get_module().get_function("sin") {
-            let sin_addr = libm::sin as *const () as usize;
-            execution_engine.add_global_mapping(&sin_fn, sin_addr);
+        
+        if let Some(fwrite_fn) = codegen.get_module().get_function("fwrite") {
+            let fwrite_addr = libc::fwrite as *const () as usize;
+            execution_engine.add_global_mapping(&fwrite_fn, fwrite_addr);
+            eprintln!("✅ Mapped fwrite symbol successfully");
         }
-        if let Some(cos_fn) = codegen.get_module().get_function("cos") {
-            let cos_addr = libm::cos as *const () as usize;
-            execution_engine.add_global_mapping(&cos_fn, cos_addr);
-        }
-        if let Some(pow_fn) = codegen.get_module().get_function("pow") {
-            let pow_addr = libm::pow as *const () as usize;
-            execution_engine.add_global_mapping(&pow_fn, pow_addr);
-        }
-        if let Some(log_fn) = codegen.get_module().get_function("log") {
-            let log_addr = libm::log as *const () as usize;
-            execution_engine.add_global_mapping(&log_fn, log_addr);
-        }
-        if let Some(exp_fn) = codegen.get_module().get_function("exp") {
-            let exp_addr = libm::exp as *const () as usize;
-            execution_engine.add_global_mapping(&exp_fn, exp_addr);
-        }
-
-        // Additional standard library functions
+        
         if let Some(malloc_fn) = codegen.get_module().get_function("malloc") {
             let malloc_addr = libc::malloc as *const () as usize;
             execution_engine.add_global_mapping(&malloc_fn, malloc_addr);
+            eprintln!("✅ Mapped malloc symbol successfully");
         }
+        
         if let Some(free_fn) = codegen.get_module().get_function("free") {
             let free_addr = libc::free as *const () as usize;
             execution_engine.add_global_mapping(&free_fn, free_addr);
+            eprintln!("✅ Mapped free symbol successfully");
+        }
+        
+        if let Some(strlen_fn) = codegen.get_module().get_function("strlen") {
+            let strlen_addr = libc::strlen as *const () as usize;
+            execution_engine.add_global_mapping(&strlen_fn, strlen_addr);
+            eprintln!("✅ Mapped strlen symbol successfully");
         }
     }
 

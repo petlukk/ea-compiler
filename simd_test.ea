@@ -1,0 +1,6 @@
+func main() -> () {
+    println("Testing basic program");
+    let x = 42;
+    print_i32(x);
+    return;
+}

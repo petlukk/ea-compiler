@@ -2,6 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Reporting Guidelines
+
+**The reporting style needs to become much more skeptical and evidence-based.** Avoid marketing fluff in technical reports. Focus on:
+
+- Concrete measurements and test results
+- Specific limitations and known issues  
+- Objective comparisons with quantified data
+- Clear distinction between implemented features and aspirational claims
+- Acknowledgment of incomplete functionality
+- Technical trade-offs and constraints
+
 ## Build and Development Commands
 
 ### Core Build Commands
