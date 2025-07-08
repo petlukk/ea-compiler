@@ -25,6 +25,9 @@ simplelog = { version = "0.12", optional = true }
 lazy_static = "1.4"
 regex = "1.10"
 
+# Serialization for package management (always available)
+toml = "0.8"
+
 # LLVM integration - using LLVM 14 on Ubuntu 22.04
 inkwell = { version = "0.4", features = ["llvm14-0"], optional = true }
 
@@ -33,6 +36,16 @@ libc = "0.2"
 libm = "0.2"
 # Dynamic library loading for robust symbol resolution
 libloading = "0.8"
+
+# Serialization (used by both LSP and package management)
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# LSP server dependencies
+tower-lsp = { version = "0.20", optional = true }
+tokio = { version = "1.0", features = ["full"], optional = true }
+dashmap = { version = "5.5", optional = true }
+env_logger = { version = "0.10", optional = true }
 
 [dev-dependencies]
 # Testing
@@ -50,6 +63,11 @@ path = "src/lib.rs"
 name = "ea"
 path = "src/main.rs"
 
+[[bin]]
+name = "ea-lsp"
+path = "src/lsp_main.rs"
+required-features = ["lsp"]
+
 [[bench]]
 name = "benchmark"
 harness = false
@@ -58,12 +76,41 @@ harness = false
 name = "simd_performance_benchmarks"
 harness = false
 
+[[bench]]
+name = "realistic_performance_benchmarks"
+harness = false
+
+[[bench]]
+name = "simple_performance_test"
+harness = false
+
+[[bench]]
+name = "simple_performance_validation"
+harness = false
+
+[[bench]]
+name = "evidence_based_benchmarks"
+harness = false
+
+[[bench]]
+name = "competitive_benchmarks"
+harness = false
+
+[[bench]]
+name = "cross_platform_validation"
+harness = false
+
+[[bench]]
+name = "honest_full_pipeline_benchmarks"
+harness = false
+
 [features]
 # Enable LLVM by default for development and testing
 default = ["llvm"]
 cli = []
 debug-lexer = ["log", "simplelog"]
 llvm = ["inkwell"]  # Enable LLVM code generation with LLVM 14
+lsp = ["tower-lsp", "tokio", "dashmap", "env_logger", "llvm"]  # LSP server with performance analysis
 
 # Profile for testing with full features
 [profile.test]

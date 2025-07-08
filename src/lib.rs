@@ -14,6 +14,25 @@ pub mod type_system;
 #[cfg(feature = "llvm")]
 pub mod codegen;
 
+// Conditionally include LSP module if LSP feature is enabled
+#[cfg(feature = "lsp")]
+pub mod lsp;
+
+// Package management system
+pub mod package;
+
+// Zero-cost memory management system
+pub mod memory;
+
+// Compile-time execution engine
+pub mod comptime;
+
+// Advanced SIMD intrinsics and hardware-specific optimization
+pub mod simd_advanced;
+
+// Standard library with SIMD-accelerated collections
+pub mod stdlib;
+
 // For robust symbol resolution in JIT
 #[cfg(feature = "llvm")]
 extern crate libloading;

@@ -12,19 +12,56 @@ use crate::{
         SIMDOperator, SIMDVectorType, Stmt, TypeAnnotation, UnaryOp,
     }, // Added Pattern and MatchArm imports
     error::{CompileError, Result},
-    lexer::{Token, TokenKind}, // Removed unused Position import
+    lexer::{Token, TokenKind, Position}, // Re-added Position for error recovery
 };
+
+/// Error suggestions for common mistakes
+#[derive(Debug, Clone)]
+pub struct ErrorSuggestion {
+    pub message: String,
+    pub suggested_fix: Option<String>,
+}
+
+/// Recovery action to take after a parse error
+#[derive(Debug, Clone)]
+pub enum RecoveryAction {
+    Skip,           // Skip current token and continue
+    Synchronize,    // Skip to next statement boundary
+    Insert(TokenKind), // Insert missing token
+    Replace(TokenKind), // Replace current token
+}
+
+/// Error context for better error messages
+#[derive(Debug, Clone)]
+pub struct ErrorContext {
+    pub expected: Vec<TokenKind>,
+    pub found: TokenKind,
+    pub position: Position,
+    pub context: String,
+}
 
 /// The parser converts a sequence of tokens into an Abstract Syntax Tree (AST).
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    errors: Vec<CompileError>,     // Collect multiple errors
+    in_recovery: bool,             // Flag to prevent cascading errors
 }
 
 impl Parser {
     /// Creates a new parser for the given tokens.
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, current: 0 }
+        Self { 
+            tokens, 
+            current: 0,
+            errors: Vec::new(),
+            in_recovery: false,
+        }
+    }
+
+    /// Get all collected errors
+    pub fn get_errors(&self) -> &[CompileError] {
+        &self.errors
     }
 
     /// Parses the tokens and returns the resulting program as a list of statements.
@@ -32,7 +69,24 @@ impl Parser {
         let mut statements = Vec::new();
 
         while !self.is_at_end() {
-            statements.push(self.declaration()?);
+            match self.declaration() {
+                Ok(stmt) => {
+                    statements.push(stmt);
+                    self.in_recovery = false; // Reset recovery flag on success
+                }
+                Err(error) => {
+                    self.errors.push(error.clone());
+                    if !self.in_recovery {
+                        self.in_recovery = true;
+                        self.synchronize(); // Try to recover and continue parsing
+                    }
+                }
+            }
+        }
+
+        // Return the first error if any occurred, but we've collected all errors
+        if !self.errors.is_empty() {
+            return Err(self.errors[0].clone());
         }
 
         Ok(statements)
@@ -2030,6 +2084,278 @@ impl Parser {
             variant: variant_name,
             patterns: sub_patterns,
         })
+    }
+
+    // ==================== ERROR RECOVERY METHODS ====================
+
+    /// Synchronize to a statement boundary for error recovery
+    fn synchronize(&mut self) {
+        while !self.is_at_end() {
+            // Skip to next statement boundary
+            if matches!(self.previous().kind, TokenKind::Semicolon) {
+                return;
+            }
+
+            // Or to next declaration keyword
+            if matches!(
+                self.peek().kind,
+                TokenKind::Func
+                    | TokenKind::Let
+                    | TokenKind::Struct
+                    | TokenKind::Enum
+                    | TokenKind::If
+                    | TokenKind::While
+                    | TokenKind::For
+                    | TokenKind::Return
+            ) {
+                return;
+            }
+
+            self.advance();
+        }
+    }
+
+    /// Recover from a parse error with suggestions
+    fn recover_from_parse_error(&mut self, error: CompileError) -> RecoveryAction {
+        let suggestions = self.suggest_fixes(&error);
+        
+        // Log suggestions (in a real implementation, these would be shown to the user)
+        for suggestion in suggestions {
+            eprintln!("💡 Suggestion: {}", suggestion.message);
+            if let Some(fix) = suggestion.suggested_fix {
+                eprintln!("   Try: {}", fix);
+            }
+        }
+
+        // Determine recovery action based on error context
+        match &error {
+            CompileError::ParseError { message, .. } => {
+                if message.contains("Expected ';'") {
+                    RecoveryAction::Insert(TokenKind::Semicolon)
+                } else if message.contains("Expected ')'") {
+                    RecoveryAction::Insert(TokenKind::RightParen)
+                } else if message.contains("Expected '}'") {
+                    RecoveryAction::Insert(TokenKind::RightBrace)
+                } else if message.contains("Expected ']'") {
+                    RecoveryAction::Insert(TokenKind::RightBracket)
+                } else {
+                    RecoveryAction::Synchronize
+                }
+            }
+            _ => RecoveryAction::Synchronize,
+        }
+    }
+
+    /// Generate intelligent error suggestions
+    fn suggest_fixes(&self, error: &CompileError) -> Vec<ErrorSuggestion> {
+        let mut suggestions = Vec::new();
+
+        match error {
+            CompileError::ParseError { message, position: _ } => {
+                // Common typo corrections
+                if message.contains("Expected identifier") {
+                    suggestions.push(ErrorSuggestion {
+                        message: "Check for typos in variable or function names".to_string(),
+                        suggested_fix: None,
+                    });
+                }
+
+                if message.contains("Expected ';'") {
+                    suggestions.push(ErrorSuggestion {
+                        message: "Missing semicolon after statement".to_string(),
+                        suggested_fix: Some("Add ';' at the end of the statement".to_string()),
+                    });
+                }
+
+                if message.contains("Expected ')'") {
+                    suggestions.push(ErrorSuggestion {
+                        message: "Unmatched parenthesis".to_string(),
+                        suggested_fix: Some("Add closing ')' or check for extra opening '('".to_string()),
+                    });
+                }
+
+                if message.contains("Expected '}'") {
+                    suggestions.push(ErrorSuggestion {
+                        message: "Unmatched brace".to_string(),
+                        suggested_fix: Some("Add closing '}' or check for extra opening '{'".to_string()),
+                    });
+                }
+
+                if message.contains("Expected type") {
+                    suggestions.push(ErrorSuggestion {
+                        message: "Type annotation required".to_string(),
+                        suggested_fix: Some("Add type annotation like ': i32' or ': f32'".to_string()),
+                    });
+                }
+
+                // SIMD-specific suggestions
+                if message.contains("SIMD") {
+                    suggestions.push(ErrorSuggestion {
+                        message: "SIMD syntax error".to_string(),
+                        suggested_fix: Some("Use SIMD vector types like f32x4, i32x4, or element-wise operators like .+, .*, .-".to_string()),
+                    });
+                }
+
+                // Function syntax suggestions
+                if message.contains("function") || message.contains("func") {
+                    suggestions.push(ErrorSuggestion {
+                        message: "Function declaration syntax".to_string(),
+                        suggested_fix: Some("Use 'func name(param: type) -> return_type { ... }'".to_string()),
+                    });
+                }
+
+                // Variable declaration suggestions
+                if message.contains("variable") || message.contains("let") {
+                    suggestions.push(ErrorSuggestion {
+                        message: "Variable declaration syntax".to_string(),
+                        suggested_fix: Some("Use 'let name: type = value;' or 'let name = value;'".to_string()),
+                    });
+                }
+
+                // Control flow suggestions
+                if message.contains("if") || message.contains("while") || message.contains("for") {
+                    suggestions.push(ErrorSuggestion {
+                        message: "Control flow syntax".to_string(),
+                        suggested_fix: Some("Check condition syntax and braces: 'if (condition) { ... }'".to_string()),
+                    });
+                }
+            }
+            _ => {}
+        }
+
+        // Add general suggestions if no specific ones found
+        if suggestions.is_empty() {
+            suggestions.push(ErrorSuggestion {
+                message: "Check syntax and refer to Eä language documentation".to_string(),
+                suggested_fix: None,
+            });
+        }
+
+        suggestions
+    }
+
+    /// Attempt to recover and continue parsing after an error
+    fn attempt_recovery(&mut self, expected: &[TokenKind], _context: &str) -> Option<RecoveryAction> {
+        // Try common recovery strategies
+        
+        // 1. Check for missing semicolon
+        if self.check(&TokenKind::Identifier("".to_string())) || 
+           self.check(&TokenKind::Let) || 
+           self.check(&TokenKind::Func) {
+            return Some(RecoveryAction::Insert(TokenKind::Semicolon));
+        }
+
+        // 2. Check for missing closing punctuation
+        for expected_token in expected {
+            if matches!(expected_token, 
+                TokenKind::RightParen | 
+                TokenKind::RightBrace | 
+                TokenKind::RightBracket | 
+                TokenKind::Semicolon) {
+                return Some(RecoveryAction::Insert(expected_token.clone()));
+            }
+        }
+
+        // 3. Check for typos in keywords
+        if let TokenKind::Identifier(name) = &self.peek().kind {
+            let suggestions = self.suggest_keyword_corrections(name);
+            if !suggestions.is_empty() {
+                // For now, just skip the incorrect identifier
+                return Some(RecoveryAction::Skip);
+            }
+        }
+
+        // 4. Default to synchronization
+        Some(RecoveryAction::Synchronize)
+    }
+
+    /// Suggest corrections for mistyped keywords
+    fn suggest_keyword_corrections(&self, identifier: &str) -> Vec<String> {
+        let keywords = vec![
+            "func", "let", "if", "else", "while", "for", "return", "struct", "enum",
+            "match", "true", "false", "vectorize", "unroll", "align", "reduce",
+            "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64",
+            "bool", "string", "f32x4", "i32x4", "f64x2"
+        ];
+        
+        let mut suggestions = Vec::new();
+        
+        for keyword in keywords {
+            if Self::levenshtein_distance(identifier, keyword) <= 2 {
+                suggestions.push(keyword.to_string());
+            }
+        }
+        
+        suggestions
+    }
+
+    /// Calculate Levenshtein distance for typo detection
+    pub fn levenshtein_distance(s1: &str, s2: &str) -> usize {
+        let len1 = s1.len();
+        let len2 = s2.len();
+        let mut matrix = vec![vec![0; len2 + 1]; len1 + 1];
+
+        for i in 0..=len1 {
+            matrix[i][0] = i;
+        }
+        for j in 0..=len2 {
+            matrix[0][j] = j;
+        }
+
+        for (i, c1) in s1.chars().enumerate() {
+            for (j, c2) in s2.chars().enumerate() {
+                let cost = if c1 == c2 { 0 } else { 1 };
+                matrix[i + 1][j + 1] = std::cmp::min(
+                    std::cmp::min(
+                        matrix[i][j + 1] + 1,     // deletion
+                        matrix[i + 1][j] + 1,     // insertion
+                    ),
+                    matrix[i][j] + cost,          // substitution
+                );
+            }
+        }
+
+        matrix[len1][len2]
+    }
+
+    /// Enhanced consume method with better error reporting
+    fn consume_with_recovery(&mut self, expected: TokenKind, message: String, context: &str) -> Result<&Token> {
+        if self.check(&expected) {
+            return Ok(self.advance());
+        }
+
+        // Create detailed error context
+        let _error_context = ErrorContext {
+            expected: vec![expected.clone()],
+            found: self.peek().kind.clone(),
+            position: self.peek().position.clone(),
+            context: context.to_string(),
+        };
+
+        // Try recovery
+        if let Some(recovery_action) = self.attempt_recovery(&[expected.clone()], context) {
+            match recovery_action {
+                RecoveryAction::Insert(token_kind) => {
+                    eprintln!("🔧 Auto-inserting missing {:?}", token_kind);
+                    // Note: In a real implementation, we might insert a synthetic token
+                    // For now, we'll just continue
+                }
+                RecoveryAction::Skip => {
+                    eprintln!("⏭️  Skipping unexpected token: {:?}", self.peek().kind);
+                    self.advance();
+                    return self.consume_with_recovery(expected, message, context);
+                }
+                RecoveryAction::Synchronize => {
+                    self.synchronize();
+                }
+                RecoveryAction::Replace(_) => {
+                    eprintln!("🔄 Replacing token and continuing");
+                    self.advance();
+                }
+            }
+        }
+
+        Err(CompileError::parse_error(message, self.peek().position.clone()))
     }
 }
 

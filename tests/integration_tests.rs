@@ -3,15 +3,8 @@
 
 use ea_compiler::{compile_to_ast, parse, tokenize};
 use std::fs;
-use std::path::Path;
-
 #[cfg(feature = "llvm")]
 use ea_compiler::compile_to_llvm;
-
-/// Test helper to create temporary Eä source files
-fn create_test_file(content: &str, filename: &str) -> std::io::Result<()> {
-    fs::write(filename, content)
-}
 
 /// Test helper to clean up test files
 fn cleanup_test_file(filename: &str) {
@@ -329,9 +322,9 @@ func main() -> () {
     assert_eq!(program.len(), 51, "Should have 50 helper functions + main");
     assert_eq!(
         context.functions.len(),
-        56,
+        79,
         "Should have all functions + built-ins"
-    ); // Updated after memory fix
+    ); // Updated after advanced features implementation
 }
 
 #[test]

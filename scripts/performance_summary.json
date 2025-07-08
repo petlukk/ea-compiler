@@ -1,0 +1,63 @@
+{
+  "timestamp": "2025-07-07T16:11:16.947565",
+  "compiler_version": "0.1.1",
+  "platform": "Linux WSL2",
+  "benchmark_framework": "criterion",
+  "measurements": {
+    "lexer": {
+      "simple_program": {
+        "time_us": 4.13,
+        "throughput_tokens_per_sec": 242000
+      },
+      "fibonacci_program": {
+        "time_us": 5.8,
+        "throughput_tokens_per_sec": 172000
+      },
+      "loop_program": {
+        "time_us": 6.56,
+        "throughput_tokens_per_sec": 152000
+      }
+    },
+    "parser": {
+      "simple_program": {
+        "time_us": 8.89,
+        "slowdown_vs_lexer": 2.15
+      },
+      "fibonacci_program": {
+        "time_us": 13.44,
+        "slowdown_vs_lexer": 2.32
+      },
+      "loop_program": {
+        "time_us": 15.68,
+        "slowdown_vs_lexer": 2.39
+      }
+    },
+    "full_compilation": {
+      "simple_program": {
+        "time_us": 60.37,
+        "throughput_compilations_per_sec": 16500
+      },
+      "fibonacci_program": {
+        "time_us": 73.28,
+        "throughput_compilations_per_sec": 13600
+      }
+    }
+  },
+  "analysis": {
+    "lexer_average_us": 5.5,
+    "parser_average_us": 12.67,
+    "compilation_average_us": 66.83,
+    "parser_overhead_multiplier": 2.29,
+    "compilation_overhead_multiplier": 12.15
+  },
+  "competitive_position": {
+    "status": "needs_validation",
+    "next_steps": [
+      "Direct comparison with rustc",
+      "Direct comparison with g++",
+      "Direct comparison with go build",
+      "Memory usage measurement",
+      "Larger program testing"
+    ]
+  }
+}

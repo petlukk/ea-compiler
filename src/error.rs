@@ -7,7 +7,7 @@ use std::fmt;
 pub type Result<T> = std::result::Result<T, CompileError>;
 
 /// Represents errors that can occur during compilation.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CompileError {
     /// Lexical analysis error
     LexError { message: String, position: Position },

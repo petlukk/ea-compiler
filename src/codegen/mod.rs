@@ -9,7 +9,7 @@ use crate::ast::{
     StructFieldInit, TypeAnnotation, UnaryOp,
 };
 use crate::error::{CompileError, Result};
-use crate::type_system::EaType;
+// use crate::type_system::EaType; // TODO: Remove if not needed
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
