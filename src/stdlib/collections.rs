@@ -6,13 +6,13 @@
 
 use std::alloc::{alloc, dealloc, realloc, Layout};
 use std::collections::HashMap as StdHashMap;
-use std::hash::{Hash, Hasher};
-use std::marker::PhantomData;
+use std::hash::Hash;
+// PhantomData import removed as it's unused
 use std::mem;
 use std::ptr;
 use std::slice;
 
-use super::{StandardLibrary, SIMDFeatures, OptimizationLevel};
+use super::StandardLibrary;
 
 /// SIMD-accelerated dynamic array
 #[derive(Debug, PartialEq)]

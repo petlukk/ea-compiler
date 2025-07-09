@@ -1,0 +1,207 @@
+{
+    "name": "Eä",
+    "scopeName": "source.ea",
+    "fileTypes": ["ea"],
+    "patterns": [
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#simd-types"
+        },
+        {
+            "include": "#types"
+        },
+        {
+            "include": "#functions"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#operators"
+        },
+        {
+            "include": "#punctuation"
+        }
+    ],
+    "repository": {
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.double-slash.ea",
+                    "match": "//.*$"
+                },
+                {
+                    "name": "comment.block.ea",
+                    "begin": "/\\*",
+                    "end": "\\*/"
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.ea",
+                    "match": "\\b(if|else|while|for|loop|break|continue|return|match)\\b"
+                },
+                {
+                    "name": "keyword.declaration.ea",
+                    "match": "\\b(func|let|mut|const|struct|enum|impl|trait|module|use|pub)\\b"
+                },
+                {
+                    "name": "keyword.other.ea",
+                    "match": "\\b(in|as|ref|self|Self|super|crate)\\b"
+                },
+                {
+                    "name": "storage.modifier.ea",
+                    "match": "\\b(static|extern|unsafe|async|await)\\b"
+                }
+            ]
+        },
+        "simd-types": {
+            "patterns": [
+                {
+                    "name": "entity.name.type.simd.ea",
+                    "match": "\\b(f32x4|f32x8|f32x16|f64x2|f64x4|f64x8|i8x16|i8x32|i8x64|i16x8|i16x16|i16x32|i32x4|i32x8|i32x16|i64x2|i64x4|i64x8|u8x16|u8x32|u8x64|u16x8|u16x16|u16x32|u32x4|u32x8|u32x16|u64x2|u64x4|u64x8)\\b"
+                }
+            ]
+        },
+        "types": {
+            "patterns": [
+                {
+                    "name": "entity.name.type.primitive.ea",
+                    "match": "\\b(bool|char|str|i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64|string|void)\\b"
+                },
+                {
+                    "name": "entity.name.type.ea",
+                    "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+                }
+            ]
+        },
+        "functions": {
+            "patterns": [
+                {
+                    "name": "entity.name.function.ea",
+                    "match": "\\b([a-z_][a-zA-Z0-9_]*)\\s*(?=\\()"
+                },
+                {
+                    "name": "support.function.builtin.ea",
+                    "match": "\\b(println|print|print_i32|print_f32|read_line|read_file|write_file|file_exists|string_length|string_concat|string_equals|sqrt|sin|cos|abs|min|max|array_length|array_get)\\b"
+                }
+            ]
+        },
+        "strings": {
+            "patterns": [
+                {
+                    "name": "string.quoted.double.ea",
+                    "begin": "\"",
+                    "end": "\"",
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.ea",
+                            "match": "\\\\."
+                        }
+                    ]
+                },
+                {
+                    "name": "string.quoted.single.ea",
+                    "begin": "'",
+                    "end": "'",
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.ea",
+                            "match": "\\\\."
+                        }
+                    ]
+                }
+            ]
+        },
+        "numbers": {
+            "patterns": [
+                {
+                    "name": "constant.numeric.float.ea",
+                    "match": "\\b\\d+\\.\\d+([eE][+-]?\\d+)?[fF]?\\b"
+                },
+                {
+                    "name": "constant.numeric.integer.ea",
+                    "match": "\\b\\d+([ui](8|16|32|64|128|size))?\\b"
+                },
+                {
+                    "name": "constant.numeric.hex.ea",
+                    "match": "\\b0[xX][0-9a-fA-F]+\\b"
+                },
+                {
+                    "name": "constant.numeric.binary.ea",
+                    "match": "\\b0[bB][01]+\\b"
+                },
+                {
+                    "name": "constant.numeric.octal.ea",
+                    "match": "\\b0[oO][0-7]+\\b"
+                }
+            ]
+        },
+        "operators": {
+            "patterns": [
+                {
+                    "name": "keyword.operator.simd.ea",
+                    "match": "\\.(\\+|\\-|\\*|\\/|&|\\||\\^|<<|>>)"
+                },
+                {
+                    "name": "keyword.operator.comparison.ea",
+                    "match": "(==|!=|<|<=|>|>=)"
+                },
+                {
+                    "name": "keyword.operator.logical.ea",
+                    "match": "(&&|\\|\\||!)"
+                },
+                {
+                    "name": "keyword.operator.arithmetic.ea",
+                    "match": "(\\+|\\-|\\*|\\/|%)"
+                },
+                {
+                    "name": "keyword.operator.bitwise.ea",
+                    "match": "(&|\\||\\^|~|<<|>>)"
+                },
+                {
+                    "name": "keyword.operator.assignment.ea",
+                    "match": "(=|\\+=|\\-=|\\*=|\\/=|%=|&=|\\|=|\\^=|<<=|>>=)"
+                },
+                {
+                    "name": "keyword.operator.range.ea",
+                    "match": "(\\.\\.|\\.\\.=)"
+                },
+                {
+                    "name": "keyword.operator.arrow.ea",
+                    "match": "(->|=>)"
+                }
+            ]
+        },
+        "punctuation": {
+            "patterns": [
+                {
+                    "name": "punctuation.separator.ea",
+                    "match": "[,;]"
+                },
+                {
+                    "name": "punctuation.brackets.ea",
+                    "match": "[\\[\\]{}()]"
+                },
+                {
+                    "name": "punctuation.accessor.ea",
+                    "match": "\\."
+                },
+                {
+                    "name": "punctuation.terminator.ea",
+                    "match": ";"
+                }
+            ]
+        }
+    }
+}

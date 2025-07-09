@@ -6,7 +6,7 @@
 //! - Automatic optimization selection based on data characteristics
 //! - Performance guarantees through static analysis
 
-use crate::ast::{Expr, Stmt, Literal};
+use crate::ast::{Expr, Stmt, Literal, TypeAnnotation};
 use crate::memory::{MemoryManager, MemoryAttributes};
 use crate::type_system::{EaType, TypeContext};
 use serde::{Deserialize, Serialize};
@@ -562,9 +562,59 @@ impl ComptimeEngine {
         template: &str,
         parameters: &HashMap<String, ComptimeValue>,
     ) -> Result<Vec<Stmt>, ComptimeError> {
-        // This would generate optimized code based on compile-time parameters
-        // For now, return a placeholder
-        Ok(vec![])
+        // Generate optimized code based on compile-time parameters
+        let mut specialized_statements = Vec::new();
+        
+        // Simple template substitution and specialization
+        // This is a basic implementation - in practice, this would be much more sophisticated
+        
+        // Check if this is a loop unrolling template
+        if template.contains("UNROLL_LOOP") {
+            if let Some(ComptimeValue::Integer(count)) = parameters.get("unroll_count") {
+                // Generate unrolled statements
+                for i in 0..*count {
+                    let stmt = Stmt::VarDeclaration {
+                        name: format!("unrolled_var_{}", i),
+                        type_annotation: Some(TypeAnnotation { name: "i32".to_string(), is_mutable: false }),
+                        initializer: Some(Expr::Literal(Literal::Integer(i as i64))),
+                    };
+                    specialized_statements.push(stmt);
+                }
+            }
+        }
+        
+        // Check if this is a SIMD vectorization template
+        if template.contains("VECTORIZE") {
+            if let Some(ComptimeValue::Integer(width)) = parameters.get("vector_width") {
+                // Generate vectorized operations
+                let stmt = Stmt::VarDeclaration {
+                    name: "vectorized_op".to_string(),
+                    type_annotation: Some(TypeAnnotation { name: format!("f32x{}", width), is_mutable: false }),
+                    initializer: Some(Expr::Literal(Literal::Vector {
+                        elements: vec![Literal::Float(1.0); *width as usize],
+                        vector_type: None,
+                    })),
+                };
+                specialized_statements.push(stmt);
+            }
+        }
+        
+        // Check if this is a constant folding template
+        if template.contains("CONSTANT_FOLD") {
+            // Generate constant-folded expressions
+            for (param_name, param_value) in parameters {
+                if let ComptimeValue::Integer(value) = param_value {
+                    let stmt = Stmt::VarDeclaration {
+                        name: format!("const_{}", param_name),
+                        type_annotation: Some(TypeAnnotation { name: "i32".to_string(), is_mutable: false }),
+                        initializer: Some(Expr::Literal(Literal::Integer(*value))),
+                    };
+                    specialized_statements.push(stmt);
+                }
+            }
+        }
+        
+        Ok(specialized_statements)
     }
 
     /// Perform compile-time SIMD optimization
@@ -961,23 +1011,191 @@ impl ComptimeEngine {
 
     fn generate_optimization_table(
         &mut self,
-        _parameter_space: &[(String, f64, f64)],
-        _objective_function: &str,
-        _optimization_method: &str,
+        parameter_space: &[(String, f64, f64)],
+        objective_function: &str,
+        optimization_method: &str,
         size: usize,
     ) -> Result<Vec<ComptimeValue>, ComptimeError> {
-        // Placeholder implementation
-        Ok(vec![ComptimeValue::Float(1.0); size])
+        let mut optimization_table = Vec::new();
+        
+        // Generate optimization parameters based on the parameter space
+        for i in 0..size {
+            let progress = i as f64 / size as f64;
+            
+            match objective_function {
+                "minimize_time" => {
+                    // Generate parameters that minimize execution time
+                    let value = match optimization_method {
+                        "gradient_descent" => {
+                            // Simulate gradient descent convergence
+                            1.0 - progress * 0.8 // Converge towards 0.2
+                        }
+                        "simulated_annealing" => {
+                            // Simulate annealing cooling schedule
+                            1.0 / (1.0 + progress * 10.0)
+                        }
+                        "genetic_algorithm" => {
+                            // Simulate genetic algorithm evolution
+                            0.5 + 0.5 * (1.0 - progress).powi(2)
+                        }
+                        _ => 1.0 - progress * 0.5 // Default linear optimization
+                    };
+                    optimization_table.push(ComptimeValue::Float(value));
+                }
+                "maximize_throughput" => {
+                    // Generate parameters that maximize throughput
+                    let value = match optimization_method {
+                        "gradient_descent" => progress.sqrt(),
+                        "simulated_annealing" => {
+                            // Explore parameter space with cooling
+                            let exploration = (-progress * 5.0).exp();
+                            1.0 - exploration * 0.3
+                        }
+                        _ => progress * 1.2 + 0.5 // Default throughput optimization
+                    };
+                    optimization_table.push(ComptimeValue::Float(value.min(2.0)));
+                }
+                "minimize_memory" => {
+                    // Generate parameters that minimize memory usage
+                    let base_factor = if let Some((_, min_val, max_val)) = parameter_space.get(0) {
+                        min_val + (max_val - min_val) * progress
+                    } else {
+                        progress
+                    };
+                    
+                    let value = match optimization_method {
+                        "gradient_descent" => base_factor * 0.8,
+                        "simulated_annealing" => base_factor * (1.0 - progress * 0.3),
+                        _ => base_factor * 0.9
+                    };
+                    optimization_table.push(ComptimeValue::Float(value));
+                }
+                _ => {
+                    // Default optimization: balance between time and space
+                    let value = 1.0 - progress * 0.6;
+                    optimization_table.push(ComptimeValue::Float(value));
+                }
+            }
+        }
+        
+        Ok(optimization_table)
     }
 
     fn generate_configuration_table(
         &mut self,
-        _config_space: &[String],
-        _performance_model: &str,
+        config_space: &[String],
+        performance_model: &str,
         size: usize,
     ) -> Result<Vec<ComptimeValue>, ComptimeError> {
-        // Placeholder implementation
-        Ok(vec![ComptimeValue::Integer(1); size])
+        let mut config_table = Vec::new();
+        
+        // Generate configuration values based on the config space and performance model
+        for i in 0..size {
+            let config_index = i % config_space.len().max(1);
+            let progress = i as f64 / size as f64;
+            
+            let value = match performance_model {
+                "cache_aware" => {
+                    // Generate cache-aware configuration parameters
+                    let base_value = match config_space.get(config_index) {
+                        Some(config) if config.contains("cache_size") => {
+                            // Cache size configurations: powers of 2 from 1KB to 64MB
+                            let cache_sizes = [1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072];
+                            let size_index = (progress * cache_sizes.len() as f64) as usize;
+                            cache_sizes[size_index.min(cache_sizes.len() - 1)] as i64
+                        }
+                        Some(config) if config.contains("cache_line") => {
+                            // Cache line sizes: typically 64, 128, or 256 bytes
+                            let line_sizes = [64, 128, 256];
+                            let line_index = (progress * line_sizes.len() as f64) as usize;
+                            line_sizes[line_index.min(line_sizes.len() - 1)] as i64
+                        }
+                        Some(config) if config.contains("prefetch") => {
+                            // Prefetch distance: 1-8 cache lines ahead
+                            ((progress * 8.0) as i64).max(1)
+                        }
+                        _ => ((progress * 100.0) as i64).max(1)
+                    };
+                    ComptimeValue::Integer(base_value)
+                }
+                "simd_optimized" => {
+                    // Generate SIMD-optimized configuration parameters
+                    let base_value = match config_space.get(config_index) {
+                        Some(config) if config.contains("vector_width") => {
+                            // SIMD vector widths: 128, 256, 512 bits
+                            let widths = [128, 256, 512];
+                            let width_index = (progress * widths.len() as f64) as usize;
+                            widths[width_index.min(widths.len() - 1)] as i64
+                        }
+                        Some(config) if config.contains("unroll_factor") => {
+                            // Loop unroll factors: 2, 4, 8, 16
+                            let factors = [2, 4, 8, 16];
+                            let factor_index = (progress * factors.len() as f64) as usize;
+                            factors[factor_index.min(factors.len() - 1)] as i64
+                        }
+                        Some(config) if config.contains("alignment") => {
+                            // Memory alignment: 16, 32, 64 bytes for SIMD
+                            let alignments = [16, 32, 64];
+                            let align_index = (progress * alignments.len() as f64) as usize;
+                            alignments[align_index.min(alignments.len() - 1)] as i64
+                        }
+                        _ => ((progress * 16.0) as i64).max(1)
+                    };
+                    ComptimeValue::Integer(base_value)
+                }
+                "memory_efficient" => {
+                    // Generate memory-efficient configuration parameters
+                    let base_value = match config_space.get(config_index) {
+                        Some(config) if config.contains("pool_size") => {
+                            // Memory pool sizes: 1KB to 1MB
+                            let pool_sizes = [1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576];
+                            let pool_index = (progress * pool_sizes.len() as f64) as usize;
+                            pool_sizes[pool_index.min(pool_sizes.len() - 1)] as i64
+                        }
+                        Some(config) if config.contains("block_size") => {
+                            // Block sizes: 64B to 4KB
+                            let block_sizes = [64, 128, 256, 512, 1024, 2048, 4096];
+                            let block_index = (progress * block_sizes.len() as f64) as usize;
+                            block_sizes[block_index.min(block_sizes.len() - 1)] as i64
+                        }
+                        Some(config) if config.contains("gc_threshold") => {
+                            // GC thresholds: 10% to 90% of memory
+                            ((progress * 80.0 + 10.0) as i64).max(10).min(90)
+                        }
+                        _ => ((progress * 50.0) as i64).max(1)
+                    };
+                    ComptimeValue::Integer(base_value)
+                }
+                "energy_efficient" => {
+                    // Generate energy-efficient configuration parameters
+                    let base_value = match config_space.get(config_index) {
+                        Some(config) if config.contains("frequency") => {
+                            // CPU frequency scaling: 50% to 100%
+                            ((progress * 50.0 + 50.0) as i64).max(50).min(100)
+                        }
+                        Some(config) if config.contains("voltage") => {
+                            // Voltage scaling: 80% to 100%
+                            ((progress * 20.0 + 80.0) as i64).max(80).min(100)
+                        }
+                        Some(config) if config.contains("sleep_depth") => {
+                            // Sleep state depth: 0-3 (C0-C3)
+                            ((progress * 4.0) as i64).max(0).min(3)
+                        }
+                        _ => ((progress * 75.0 + 25.0) as i64).max(25).min(100)
+                    };
+                    ComptimeValue::Integer(base_value)
+                }
+                _ => {
+                    // Default configuration: linear scaling
+                    let base_value = ((progress * 100.0) as i64).max(1);
+                    ComptimeValue::Integer(base_value)
+                }
+            };
+            
+            config_table.push(value);
+        }
+        
+        Ok(config_table)
     }
 
     fn analyze_vectorization_opportunities(

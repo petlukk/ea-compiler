@@ -1,0 +1,178 @@
+[
+  [
+    7766704281755714918,
+    {
+      "source_hash": 7766704281755714918,
+      "machine_code": [],
+      "main_entry_point": 0,
+      "symbol_table": {
+        "puts": 139627655978576,
+        "fopen": 139627655972400,
+        "fread": 139627655973680,
+        "fwrite": 139627655974688,
+        "strlen": 139627657144288,
+        "malloc": 139627656126624,
+        "free": 139627656127456,
+        "printf": 139627655845616,
+        "fclose": 139627655969904
+      },
+      "compiled_at": 1752095764,
+      "memory_usage": 192,
+      "compilation_time": 189536891,
+      "hit_count": 0
+    }
+  ],
+  [
+    2912179006181948736,
+    {
+      "source_hash": 2912179006181948736,
+      "machine_code": [],
+      "main_entry_point": 0,
+      "symbol_table": {
+        "free": 139874559398880,
+        "printf": 139874559117040,
+        "fread": 139874559245104,
+        "fopen": 139874559243824,
+        "puts": 139874559250000,
+        "fwrite": 139874559246112,
+        "strlen": 139874560415712,
+        "fclose": 139874559241328,
+        "malloc": 139874559398048
+      },
+      "compiled_at": 1752093503,
+      "memory_usage": 192,
+      "compilation_time": 186471942,
+      "hit_count": 0
+    }
+  ],
+  [
+    1264292862468792849,
+    {
+      "source_hash": 1264292862468792849,
+      "machine_code": [],
+      "main_entry_point": 0,
+      "symbol_table": {
+        "malloc": 140620079923360,
+        "puts": 140620079775312,
+        "strlen": 140620080941024,
+        "fread": 140620079770416,
+        "fclose": 140620079766640,
+        "printf": 140620079642352,
+        "free": 140620079924192,
+        "fopen": 140620079769136,
+        "fwrite": 140620079771424
+      },
+      "compiled_at": 1752095169,
+      "memory_usage": 192,
+      "compilation_time": 199836181,
+      "hit_count": 0
+    }
+  ],
+  [
+    3902153287876587117,
+    {
+      "source_hash": 3902153287876587117,
+      "machine_code": [],
+      "main_entry_point": 0,
+      "symbol_table": {
+        "fopen": 140169551287856,
+        "fclose": 140169551285360,
+        "strlen": 140169552459744,
+        "printf": 140169551161072,
+        "puts": 140169551294032,
+        "free": 140169551442912,
+        "fwrite": 140169551290144,
+        "malloc": 140169551442080,
+        "fread": 140169551289136
+      },
+      "compiled_at": 1752095788,
+      "memory_usage": 192,
+      "compilation_time": 144690026,
+      "hit_count": 0
+    }
+  ],
+  [
+    12836419608324735642,
+    {
+      "source_hash": 12836419608324735642,
+      "machine_code": [],
+      "main_entry_point": 0,
+      "symbol_table": {
+        "fwrite": 140656731602720,
+        "malloc": 140656731754656,
+        "fopen": 140656731600432,
+        "fread": 140656731601712,
+        "puts": 140656731606608,
+        "strlen": 140656732772320,
+        "fclose": 140656731597936,
+        "free": 140656731755488,
+        "printf": 140656731473648
+      },
+      "compiled_at": 1752095809,
+      "memory_usage": 192,
+      "compilation_time": 193109498,
+      "hit_count": 0
+    }
+  ],
+  [
+    14402189752926126668,
+    {
+      "source_hash": 14402189752926126668,
+      "machine_code": [
+        144
+      ],
+      "main_entry_point": 4096,
+      "symbol_table": {},
+      "compiled_at": 1752093721,
+      "memory_usage": 512,
+      "compilation_time": 50000000,
+      "hit_count": 0
+    }
+  ],
+  [
+    15688034674431570545,
+    {
+      "source_hash": 15688034674431570545,
+      "machine_code": [],
+      "main_entry_point": 0,
+      "symbol_table": {
+        "fwrite": 139654843281184,
+        "printf": 139654843152112,
+        "free": 139654843433952,
+        "puts": 139654843285072,
+        "fread": 139654843280176,
+        "strlen": 139654844450784,
+        "malloc": 139654843433120,
+        "fopen": 139654843278896,
+        "fclose": 139654843276400
+      },
+      "compiled_at": 1752095610,
+      "memory_usage": 192,
+      "compilation_time": 192861139,
+      "hit_count": 0
+    }
+  ],
+  [
+    13053773716019328743,
+    {
+      "source_hash": 13053773716019328743,
+      "machine_code": [],
+      "main_entry_point": 0,
+      "symbol_table": {
+        "free": 140035113354208,
+        "fopen": 140035113199152,
+        "fread": 140035113200432,
+        "fclose": 140035113196656,
+        "fwrite": 140035113201440,
+        "malloc": 140035113353376,
+        "printf": 140035113072368,
+        "puts": 140035113205328,
+        "strlen": 140035114371040
+      },
+      "compiled_at": 1752095125,
+      "memory_usage": 192,
+      "compilation_time": 191040627,
+      "hit_count": 0
+    }
+  ]
+]

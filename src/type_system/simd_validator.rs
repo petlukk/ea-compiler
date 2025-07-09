@@ -105,6 +105,28 @@ pub enum SIMDValidationError {
         target_type: SIMDVectorType,
         position: Position,
     },
+    
+    /// Invalid number of arguments
+    InvalidArguments {
+        expected: usize,
+        found: usize,
+        position: Position,
+    },
+    
+    /// Incompatible types in operation
+    IncompatibleTypes {
+        left: String,
+        right: String,
+        operation: String,
+        position: Position,
+    },
+    
+    /// Unsupported operation for vector type
+    UnsupportedOperation {
+        operation: String,
+        vector_type: SIMDVectorType,
+        position: Position,
+    },
 }
 
 pub type ValidationResult<T> = Result<T, SIMDValidationError>;
@@ -589,17 +611,128 @@ impl SIMDValidator {
         let left_type = self.validate_expression(left)?;
         let right_type = self.validate_expression(right)?;
         
-        // Simplified: assume compatible types
-        Ok(left_type)
+        match (left_type, right_type) {
+            // SIMD operations
+            (EaType::SIMD(left_vec), EaType::SIMD(right_vec)) => {
+                if left_vec == right_vec {
+                    Ok(EaType::SIMD(left_vec))
+                } else {
+                    Err(SIMDValidationError::TypeMismatch {
+                        expected: left_vec,
+                        found: right_vec,
+                        position: Position { line: 1, column: 1 },
+                    })
+                }
+            }
+            // Scalar operations
+            (EaType::I32, EaType::I32) => Ok(EaType::I32),
+            (EaType::F32, EaType::F32) => Ok(EaType::F32),
+            (EaType::I64, EaType::I64) => Ok(EaType::I64),
+            (EaType::F64, EaType::F64) => Ok(EaType::F64),
+            (EaType::Bool, EaType::Bool) => Ok(EaType::Bool),
+            // Type mismatches
+            (left, right) => Err(SIMDValidationError::IncompatibleTypes {
+                left: format!("{:?}", left),
+                right: format!("{:?}", right),
+                operation: format!("{:?}", op),
+                position: Position { line: 1, column: 1 },
+            })
+        }
     }
     
     fn validate_unary_expr(&self, op: &UnaryOp, expr: &Expr) -> ValidationResult<EaType> {
-        self.validate_expression(expr)
+        let expr_type = self.validate_expression(expr)?;
+        
+        match op {
+            UnaryOp::Negate => {
+                match expr_type {
+                    EaType::I32 | EaType::I64 | EaType::F32 | EaType::F64 => Ok(expr_type),
+                    EaType::SIMD(vec_type) => {
+                        // SIMD negation is supported for numeric vector types
+                        match vec_type {
+                            SIMDVectorType::F32x4 | SIMDVectorType::F64x2 |
+                            SIMDVectorType::I32x4 | SIMDVectorType::I64x2 => Ok(expr_type),
+                            _ => Err(SIMDValidationError::UnsupportedOperation {
+                                operation: "negation".to_string(),
+                                vector_type: vec_type,
+                                position: Position { line: 1, column: 1 },
+                            })
+                        }
+                    }
+                    _ => Err(SIMDValidationError::UnsupportedOperation {
+                        operation: "negation".to_string(),
+                        vector_type: SIMDVectorType::F32x4, // Fallback
+                        position: Position { line: 1, column: 1 },
+                    })
+                }
+            }
+            UnaryOp::Not => {
+                match expr_type {
+                    EaType::Bool => Ok(expr_type),
+                    EaType::SIMD(vec_type) => {
+                        // Logical NOT for boolean vectors
+                        match vec_type {
+                            SIMDVectorType::I32x4 | SIMDVectorType::I64x2 => Ok(expr_type),
+                            _ => Err(SIMDValidationError::UnsupportedOperation {
+                                operation: "logical not".to_string(),
+                                vector_type: vec_type,
+                                position: Position { line: 1, column: 1 },
+                            })
+                        }
+                    }
+                    _ => Err(SIMDValidationError::UnsupportedOperation {
+                        operation: "logical not".to_string(),
+                        vector_type: SIMDVectorType::F32x4, // Fallback
+                        position: Position { line: 1, column: 1 },
+                    })
+                }
+            }
+        }
     }
     
     fn validate_function_call(&self, name: &str, args: &[Expr]) -> ValidationResult<EaType> {
-        // Simplified: return i32 for all function calls
-        Ok(EaType::I32)
+        match name {
+            // Standard I/O functions
+            "println" | "print" => {
+                if args.len() == 1 {
+                    self.validate_expression(&args[0])?;
+                    Ok(EaType::Void)
+                } else {
+                    Err(SIMDValidationError::InvalidArguments {
+                        expected: 1,
+                        found: args.len(),
+                        position: Position { line: 1, column: 1 },
+                    })
+                }
+            }
+            // SIMD functions
+            "simd_add" | "simd_sub" | "simd_mul" | "simd_div" => {
+                if args.len() == 2 {
+                    let left_type = self.validate_expression(&args[0])?;
+                    let right_type = self.validate_expression(&args[1])?;
+                    
+                    match (left_type, right_type) {
+                        (EaType::SIMD(left_vec), EaType::SIMD(right_vec)) if left_vec == right_vec => {
+                            Ok(EaType::SIMD(left_vec))
+                        }
+                        _ => Err(SIMDValidationError::IncompatibleTypes {
+                            left: format!("{:?}", left_type),
+                            right: format!("{:?}", right_type),
+                            operation: name.to_string(),
+                            position: Position { line: 1, column: 1 },
+                        })
+                    }
+                } else {
+                    Err(SIMDValidationError::InvalidArguments {
+                        expected: 2,
+                        found: args.len(),
+                        position: Position { line: 1, column: 1 },
+                    })
+                }
+            }
+            // Other functions return i32 by default
+            _ => Ok(EaType::I32),
+        }
     }
     
     fn validate_index_expr(&self, expr: &Expr, index: &Expr) -> ValidationResult<EaType> {
@@ -612,16 +745,79 @@ impl SIMDValidator {
     }
     
     fn validate_field_access(&self, expr: &Expr, field: &str) -> ValidationResult<EaType> {
-        // Simplified: assume field access returns i32
-        Ok(EaType::I32)
+        let expr_type = self.validate_expression(expr)?;
+        
+        match expr_type {
+            EaType::SIMD(vec_type) => {
+                // SIMD vector element access (e.g., vec.x, vec.y, vec.z, vec.w)
+                match field {
+                    "x" | "y" | "z" | "w" => {
+                        Ok(self.simd_element_type(&vec_type))
+                    }
+                    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" => {
+                        // Numeric index access
+                        let index: usize = field.parse().unwrap_or(0);
+                        let width = self.simd_width(&vec_type);
+                        
+                        if index < width {
+                            Ok(self.simd_element_type(&vec_type))
+                        } else {
+                            Err(SIMDValidationError::InvalidArguments {
+                                expected: width,
+                                found: index + 1,
+                                position: Position { line: 1, column: 1 },
+                            })
+                        }
+                    }
+                    _ => Err(SIMDValidationError::UnsupportedOperation {
+                        operation: format!("field access .{}", field),
+                        vector_type: vec_type,
+                        position: Position { line: 1, column: 1 },
+                    })
+                }
+            }
+            // Struct field access (simplified for now)
+            _ => Ok(EaType::I32)
+        }
     }
     
     fn validate_assignment(&self, target: &Expr, value: &Expr) -> ValidationResult<EaType> {
         let target_type = self.validate_expression(target)?;
         let value_type = self.validate_expression(value)?;
         
-        // Should validate compatibility
-        Ok(target_type)
+        // Validate type compatibility for assignment
+        match (target_type.clone(), value_type) {
+            // Exact type matches
+            (EaType::SIMD(target_vec), EaType::SIMD(value_vec)) if target_vec == value_vec => {
+                Ok(target_type)
+            }
+            (EaType::I32, EaType::I32) |
+            (EaType::F32, EaType::F32) |
+            (EaType::I64, EaType::I64) |
+            (EaType::F64, EaType::F64) |
+            (EaType::Bool, EaType::Bool) => {
+                Ok(target_type)
+            }
+            // Type conversions (implicit)
+            (EaType::F64, EaType::F32) |
+            (EaType::I64, EaType::I32) => {
+                Ok(target_type)
+            }
+            // Incompatible types
+            (target, value) => {
+                Err(SIMDValidationError::TypeMismatch {
+                    expected: match target {
+                        EaType::SIMD(vec_type) => vec_type,
+                        _ => SIMDVectorType::F32x4, // Default fallback
+                    },
+                    found: match value {
+                        EaType::SIMD(vec_type) => vec_type,
+                        _ => SIMDVectorType::F32x4, // Default fallback
+                    },
+                    position: Position { line: 1, column: 1 },
+                })
+            }
+        }
     }
 }
 
@@ -664,6 +860,18 @@ impl std::fmt::Display for SIMDValidationError {
             SIMDValidationError::BroadcastMismatch { source_type, target_type, position } => {
                 write!(f, "Broadcast type mismatch at {}:{}: cannot broadcast {:?} to {}", 
                        position.line, position.column, source_type, target_type)
+            }
+            SIMDValidationError::InvalidArguments { expected, found, position } => {
+                write!(f, "Invalid number of arguments at {}:{}: expected {}, found {}", 
+                       position.line, position.column, expected, found)
+            }
+            SIMDValidationError::IncompatibleTypes { left, right, operation, position } => {
+                write!(f, "Incompatible types at {}:{}: cannot apply '{}' to {} and {}", 
+                       position.line, position.column, operation, left, right)
+            }
+            SIMDValidationError::UnsupportedOperation { operation, vector_type, position } => {
+                write!(f, "Unsupported operation at {}:{}: '{}' not supported for {}", 
+                       position.line, position.column, operation, vector_type)
             }
         }
     }

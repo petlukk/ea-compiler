@@ -1,0 +1,236 @@
+# ea.toml - Performance-aware package management for Eä
+# This is an example configuration demonstrating the performance-first approach
+
+[package]
+name = "ea-compiler"
+version = "0.1.1"
+description = "A high-performance compiler for the Eä programming language with built-in SIMD support"
+authors = ["Peter Lukka <peter.lukka@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/petlukk/ea-compiler-private"
+keywords = ["compiler", "systems", "simd", "performance", "llvm"]
+categories = ["development-tools", "compilers", "performance"]
+
+# Performance target controls optimization level
+performance_target = "extreme"  # options: debug, balanced, performance, extreme
+
+[dependencies]
+# SIMD-accelerated math library with AVX512 support
+simd-math = { version = "2.0", features = ["avx512"], performance_requirements = { max_compile_time_ms = 1000, min_runtime_performance = 4.0 } }
+
+# Async I/O optimized for low latency
+async-io = { version = "1.5", target = "low_latency", performance_requirements = { max_memory_mb = 50 } }
+
+# Optional high-performance graphics library
+graphics = { version = "0.8", optional = true, features = ["simd", "vulkan"], performance_requirements = { required_simd = ["avx2", "sse4.2"] } }
+
+# Development dependencies (not included in release builds)
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+benchmark-suite = { version = "1.0", performance_requirements = { max_compile_time_ms = 500 } }
+
+[build]
+src_dirs = ["src"]
+test_dirs = ["tests"]
+bench_dirs = ["benches"] 
+example_dirs = ["examples"]
+
+# Define multiple build targets with different optimization profiles
+[[build.targets]]
+name = "ea-compiler"
+target_type = "Executable"
+source_files = ["src/main.rs"]
+optimization_level = "Performance"
+target_features = ["avx2", "sse4.2", "fma", "bmi2"]
+
+[[build.targets]]
+name = "ea-lsp"
+target_type = "Executable"
+source_files = ["src/lsp_main.rs"]
+optimization_level = "Performance"
+target_features = ["avx2", "sse4.2"]
+
+[[build.targets]]
+name = "libea"
+target_type = "Library"
+source_files = ["src/lib.rs"]
+optimization_level = "Performance"
+target_features = ["avx2", "sse4.2", "fma"]
+
+[build.hooks]
+pre_build = ["cargo fmt --check", "cargo clippy --all-targets --all-features -- -D warnings"]
+post_build = ["strip target/release/ea", "strip target/release/ea-lsp"]
+pre_test = ["cargo build --release --features=llvm"]
+post_test = ["cargo bench --features=llvm"]
+
+[optimization]
+# Target CPU architecture - 'native' uses the build machine's CPU features
+target_cpu = "native"
+
+# SIMD instruction width preference
+simd_width = "auto"  # options: auto, 128, 256, 512, adaptive
+
+# Memory layout optimization for cache efficiency
+memory_layout = "cache_friendly"  # options: default, cache_friendly, compact, aligned_64
+
+# Compile-time execution aggressiveness
+compile_time_execution = "aggressive"  # options: conservative, aggressive, extreme
+
+# Enable link-time optimization
+lto = true
+
+# Profile-guided optimization configuration
+[optimization.pgo]
+profile_runs = 10
+profile_path = "target/pgo-profiles"
+use_existing = false
+
+[performance]
+# Define performance targets for validation
+[performance.targets.compilation_speed]
+name = "compilation_speed"
+target_value = 743.0  # milliseconds - validated benchmark result
+baseline = "rust_equivalent"
+unit = "ms"
+tolerance_percent = 5.0
+
+[performance.targets.memory_efficiency]
+name = "memory_efficiency"
+target_value = 18.0  # MB - validated benchmark result
+baseline = "cpp_equivalent" 
+unit = "MB"
+tolerance_percent = 10.0
+
+[performance.targets.simd_performance]
+name = "simd_performance"
+target_value = 4.0  # speedup ratio
+baseline = "scalar_equivalent"
+unit = "speedup_ratio"
+tolerance_percent = 15.0
+
+# Benchmark configuration
+[performance.benchmarks]
+timeout_seconds = 300
+iterations = 100
+warmup_iterations = 10
+significance_level = 0.05
+retention_days = 30
+
+# Performance regression detection
+[performance.regression_thresholds]
+max_regression_percent = 5.0
+min_improvement_percent = 2.0
+compilation_time_threshold_ms = 50
+memory_threshold_mb = 2
+
+# Continuous performance monitoring
+[performance.monitoring]
+enabled = true
+frequency = "OnCommit"  # options: OnBuild, Hourly, Daily, Weekly, OnCommit
+
+[performance.monitoring.alerts]
+degradation_threshold_percent = 10.0
+channels = ["slack://performance-alerts", "email://team@ea-lang.org"]
+
+[performance.monitoring.alerts.severity_levels]
+critical = 20.0  # >20% degradation is critical
+warning = 10.0   # >10% degradation is warning
+info = 5.0       # >5% degradation is informational
+
+# Features that can be enabled/disabled
+[features]
+default = ["llvm", "simd"]
+llvm = ["inkwell"]
+simd = ["simd-math"]
+lsp = ["tower-lsp", "tokio", "serde", "serde_json", "dashmap", "env_logger"]
+debug-lexer = ["log", "simplelog"]
+graphics = ["dep:graphics"]
+avx512 = ["simd-math/avx512"]
+
+# Platform-specific optimizations
+[target.'cfg(target_arch = "x86_64")'.optimization]
+target_features = ["avx2", "sse4.2", "fma", "bmi2"]
+simd_width = 256
+
+[target.'cfg(target_arch = "aarch64")'.optimization]  
+target_features = ["neon", "asimd"]
+simd_width = 128
+
+# Development profile (fast compilation, minimal optimization)
+[profile.dev]
+optimization_level = "Debug"
+compile_time_execution = "conservative"
+lto = false
+
+# Release profile (balanced performance and compile time)
+[profile.release]
+optimization_level = "Performance" 
+compile_time_execution = "aggressive"
+lto = true
+
+# Benchmark profile (maximum performance)
+[profile.bench]
+optimization_level = "Performance"
+compile_time_execution = "extreme"
+lto = true
+target_features = ["native"]
+
+# Test profile (optimized but debuggable)
+[profile.test]
+optimization_level = "Release"
+compile_time_execution = "conservative"
+lto = false
+
+# Examples of workspace configuration for large projects
+[workspace]
+members = [
+    "ea-compiler",
+    "ea-std",
+    "ea-simd",
+    "ea-tools",
+    "ea-benchmarks"
+]
+
+# Shared performance requirements across workspace
+[workspace.performance]
+global_compile_time_budget_seconds = 60
+global_memory_budget_mb = 500
+shared_optimization_cache = true
+
+# Cross-compilation targets with performance characteristics
+[cross_compilation]
+[cross_compilation.targets.windows]
+triple = "x86_64-pc-windows-gnu"
+expected_performance_ratio = 0.95  # 5% slower due to different ABI
+
+[cross_compilation.targets.macos]
+triple = "x86_64-apple-darwin"
+expected_performance_ratio = 1.02  # 2% faster due to optimized system libs
+
+[cross_compilation.targets.linux_arm64]
+triple = "aarch64-unknown-linux-gnu"
+expected_performance_ratio = 0.85  # 15% slower due to architecture differences
+
+# Integration with external tools
+[tools]
+formatter = "cargo fmt"
+linter = "cargo clippy"
+benchmarker = "cargo criterion"
+profiler = "perf"
+memory_analyzer = "valgrind"
+
+# Documentation and examples
+[documentation]
+include_performance_guide = true
+include_simd_examples = true
+include_benchmarks = true
+generate_optimization_tips = true
+
+# Package distribution settings
+[distribution]
+# Include performance data in published packages
+include_performance_data = true
+# Validate performance before publishing
+require_performance_validation = true
+# Minimum performance standards for publication
+min_performance_score = 85.0

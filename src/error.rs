@@ -20,6 +20,11 @@ pub enum CompileError {
         message: String,
         position: Option<Position>,
     },
+    /// Memory exhaustion error
+    MemoryExhausted {
+        phase: String,
+        details: String,
+    },
 }
 
 impl CompileError {
@@ -41,6 +46,11 @@ impl CompileError {
     /// Creates a new code generation error
     pub fn codegen_error(message: String, position: Option<Position>) -> Self {
         Self::CodeGenError { message, position }
+    }
+
+    /// Creates a new memory exhaustion error
+    pub fn memory_exhausted(phase: String, details: String) -> Self {
+        Self::MemoryExhausted { phase, details }
     }
 }
 
@@ -78,6 +88,9 @@ impl fmt::Display for CompileError {
                 } else {
                     write!(f, "Code generation error: {}", message)
                 }
+            }
+            CompileError::MemoryExhausted { phase, details } => {
+                write!(f, "Memory exhausted during {}: {}", phase, details)
             }
         }
     }

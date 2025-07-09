@@ -37,11 +37,8 @@ cargo test --features=llvm
 cargo test --features=llvm -- --nocapture
 
 # Run specific test suites
-cargo test --features=llvm integration_tests
-cargo test --features=llvm simd_codegen_tests
-cargo test --features=llvm lexer_tests
-cargo test --features=llvm type_system_tests
-cargo test --features=llvm fibonacci_test
+cargo test --features=llvm compilation_tests
+cargo test --features=llvm core_functionality_tests
 
 # Alternative: Use makefile
 make test           # All tests
@@ -74,8 +71,10 @@ make check-all     # Runs quality-check + bench + doc
 cargo bench --features=llvm
 
 # Specific benchmarks
-cargo bench --features=llvm honest_full_pipeline_benchmarks
-cargo bench --features=llvm simd_performance_benchmarks
+cargo bench --features=llvm compilation_performance
+cargo bench --features=llvm cross_language_comparison
+cargo bench --features=llvm ea_advanced_vs_full_pipeline
+cargo bench --features=llvm frontend_performance
 ```
 
 ### CLI Testing
@@ -190,6 +189,29 @@ The Eä compiler follows a traditional multi-phase compilation pipeline:
 - **VS Code integration**: Complete IDE support with syntax highlighting
 - **Performance dashboard**: Visual performance metrics
 
+##### **Standard Library** (`src/stdlib/`)
+- **SIMD-accelerated collections**: Vec, HashMap, HashSet with 2-4x performance improvement
+- **Hardware feature detection**: Automatic SSE/AVX/AVX2/AVX512/NEON support
+- **Optimized I/O**: High-performance file operations and string processing
+- **Mathematical functions**: Vectorized math operations with fallback support
+- **Configurable optimization**: Debug, Release, and Aggressive optimization levels
+
+##### **JIT Compilation System** (`src/jit_execution.rs`, `src/jit_cache.rs`)
+- **JIT execution engine**: Immediate program execution with symbol mapping
+- **Compilation caching**: Intelligent caching of compiled code with hit/miss statistics
+- **Symbol resolution**: Comprehensive mapping of system functions (libc integration)
+- **Performance tracking**: Detailed execution statistics and memory usage profiling
+- **Fallback handling**: Graceful degradation for complex I/O operations
+
+##### **Performance Infrastructure**
+- **Memory profiler** (`src/memory_profiler.rs`): Real-time memory usage tracking
+- **LLVM optimization** (`src/llvm_optimization.rs`): Advanced optimization passes
+- **Parser optimization** (`src/parser_optimization.rs`): High-performance parsing
+- **Incremental compilation** (`src/incremental_compilation.rs`): Fast recompilation
+- **Parallel compilation** (`src/parallel_compilation.rs`): Multi-threaded compilation
+- **Streaming compiler** (`src/streaming_compiler.rs`): Large file processing
+- **Resource manager** (`src/resource_manager.rs`): Efficient resource cleanup
+
 ### Error Handling Strategy
 - **Positioned errors**: All errors include source location
 - **Phase-specific**: `LexError`, `ParseError`, `TypeError`, `CodeGenError`
@@ -248,24 +270,35 @@ src/
 │   └── mod.rs          # Hardware-specific SIMD optimization
 ├── package/            # Package management system (v0.2)
 │   └── mod.rs          # Performance-aware dependency resolution
-└── lsp/                # Language Server Protocol (v0.2)
-    └── mod.rs          # LSP server with performance analysis
+├── lsp/                # Language Server Protocol (v0.2)
+│   └── mod.rs          # LSP server with performance analysis
+├── stdlib/             # Standard library with SIMD acceleration
+│   ├── mod.rs          # Library initialization and feature detection
+│   ├── collections.rs  # Vec, HashMap, HashSet with SIMD optimization
+│   ├── io.rs           # I/O operations and file handling
+│   ├── math.rs         # Mathematical functions with SIMD support
+│   └── string.rs       # String operations with vectorization
+├── incremental_compilation.rs # Incremental compilation system
+├── jit_cache.rs        # JIT compilation caching
+├── jit_cached.rs       # Cached JIT result structures
+├── jit_execution.rs    # JIT execution engine with symbol mapping
+├── llvm_optimization.rs # LLVM-level optimization passes
+├── memory_profiler.rs  # Memory usage profiling and analysis
+├── parallel_compilation.rs # Parallel compilation infrastructure
+├── parser_optimization.rs # Parser performance optimizations
+├── resource_manager.rs # Resource management and cleanup
+└── streaming_compiler.rs # Streaming compilation for large files
 
 tests/                  # Integration test suite
-├── integration_tests.rs    # End-to-end compilation tests
-├── lexer_tests.rs         # Lexer functionality tests
-├── type_system_tests.rs   # Type system validation tests
-├── simd_codegen_tests.rs  # SIMD code generation tests
-├── simd_integration_tests.rs # SIMD end-to-end tests
-├── simd_lexer_tests.rs    # SIMD lexer tests
-├── fibonacci_test.rs      # Fibonacci algorithm tests
-└── production_stability_tests.rs # Production readiness tests
+├── compilation_tests.rs    # Comprehensive compilation pipeline tests
+└── core_functionality_tests.rs # Core language functionality tests
 
 benches/                # Performance benchmarks
-├── honest_full_pipeline_benchmarks.rs # Fair compiler comparisons
-├── simd_performance_benchmarks.rs # SIMD-specific benchmarks
-├── competitive_benchmarks.rs # Cross-language performance tests
-└── cross_platform_validation.rs # Platform consistency tests
+├── compilation_performance.rs # Compilation speed benchmarks
+├── cross_language_comparison.rs # Cross-language performance tests
+├── ea_advanced_vs_full_pipeline.rs # Advanced vs standard pipeline comparison
+├── frontend_performance.rs # Frontend-specific performance tests
+└── simple_cross_language.rs # Simple cross-language benchmarks
 
 vscode-extension/       # VS Code language support
 ├── package.json        # Extension configuration
@@ -338,17 +371,16 @@ ea --help                       # Show usage help
 ### Test Organization
 - **Unit Tests**: Module-level tests in `src/*/mod.rs` files
 - **Integration Tests**: End-to-end tests in `tests/` directory
-- **SIMD Tests**: Specialized SIMD functionality tests
+- **Compilation Tests**: Comprehensive compilation pipeline validation (`tests/compilation_tests.rs`)
+- **Core Functionality Tests**: Language feature validation (`tests/core_functionality_tests.rs`)
 - **Performance Tests**: Benchmark suite in `benches/`
 - **Production Tests**: Stability and regression tests
 
 ### Running Specific Test Categories
 ```bash
 # Run specific test files
-cargo test --features=llvm integration_tests
-cargo test --features=llvm simd_codegen_tests
-cargo test --features=llvm lexer_tests
-cargo test --features=llvm type_system_tests
+cargo test --features=llvm compilation_tests
+cargo test --features=llvm core_functionality_tests
 
 # Run tests with pattern matching
 cargo test --features=llvm fibonacci

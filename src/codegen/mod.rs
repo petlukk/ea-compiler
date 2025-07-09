@@ -9,6 +9,7 @@ use crate::ast::{
     StructFieldInit, TypeAnnotation, UnaryOp,
 };
 use crate::error::{CompileError, Result};
+use crate::memory_profiler::{record_memory_usage, CompilationPhase, check_memory_limit};
 // use crate::type_system::EaType; // TODO: Remove if not needed
 use inkwell::{
     basic_block::BasicBlock,
@@ -297,7 +298,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         ).unwrap().try_as_basic_value().unwrap_left().into_pointer_value();
         
         // Check if file opened successfully
-        let null_ptr = string_type.const_null();
+        let _null_ptr = string_type.const_null();
         let file_is_null = self.builder.build_is_null(file_ptr, "file_is_null").unwrap();
         
         let file_null_bb = self.context.append_basic_block(read_file_function, "file_null");
@@ -322,7 +323,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         ).unwrap().try_as_basic_value().unwrap_left().into_pointer_value();
         
         // Read file content
-        let bytes_read = self.builder.build_call(
+        let _bytes_read = self.builder.build_call(
             fread_function,
             &[
                 buffer.into(),
@@ -1631,7 +1632,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let i8_type = self.context.i8_type();
         let i32_type = self.context.i32_type();
         let bool_type = self.context.bool_type();
-        let void_type = self.context.void_type();
+        let _void_type = self.context.void_type();
         let string_type = i8_type.ptr_type(AddressSpace::default());
 
         // Create u8x16 vector type for SIMD string operations
@@ -2557,7 +2558,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // Check if ASCII (0x00-0x7F)
         let ascii_bound = self.context.i8_type().const_int(0x7F, false);
-        let is_ascii = self
+        let _is_ascii = self
             .builder
             .build_int_compare(IntPredicate::ULE, byte_val, ascii_bound, "is_ascii")
             .unwrap();
@@ -2833,7 +2834,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(buffered_read_block);
-        let bytes_read = self
+        let _bytes_read = self
             .builder
             .build_call(
                 fread_function,
@@ -3020,7 +3021,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let fwrite_function = self.module.add_function("fwrite", fwrite_type, None);
         let one = self.context.i32_type().const_int(1, false);
 
-        let write_result = self
+        let _write_result = self
             .builder
             .build_call(
                 fwrite_function,
@@ -3034,7 +3035,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             )
             .unwrap();
 
-        let close_result = self
+        let _close_result = self
             .builder
             .build_call(
                 fclose_function,
@@ -3090,7 +3091,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             .unwrap();
 
         // Write in optimal chunks (simplified - in practice would loop)
-        let buffered_write_result = self
+        let _buffered_write_result = self
             .builder
             .build_call(
                 fwrite_function,
@@ -3121,7 +3122,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             )
             .unwrap();
 
-        let buffered_close_result = self
+        let _buffered_close_result = self
             .builder
             .build_call(
                 fclose_function,
@@ -3320,9 +3321,30 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Initialize target for the current machine
         Self::initialize_native_target();
 
+        // Record initial memory usage for code generation
+        let initial_memory = std::mem::size_of::<Module>() + program.len() * std::mem::size_of::<Stmt>();
+        record_memory_usage(CompilationPhase::CodeGeneration, initial_memory, "Started code generation");
+
         // Generate code for each statement in the program
-        for stmt in program {
+        for (i, stmt) in program.iter().enumerate() {
             self.generate_statement(stmt)?;
+            
+            // Check memory usage periodically
+            if i % 25 == 0 {
+                let current_memory = std::mem::size_of::<Module>() + 
+                    self.variables.len() * std::mem::size_of::<PointerValue>() +
+                    self.functions.len() * std::mem::size_of::<FunctionValue>();
+                record_memory_usage(CompilationPhase::CodeGeneration, current_memory, 
+                    &format!("Code generation progress: {}/{} statements", i + 1, program.len()));
+                
+                // Check memory limits
+                if let Err(e) = check_memory_limit() {
+                    return Err(CompileError::MemoryExhausted { 
+                        phase: "code generation".to_string(), 
+                        details: e.to_string() 
+                    });
+                }
+            }
         }
 
         Ok(())
@@ -3543,16 +3565,19 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.builder.position_at_end(loop_body_block);
         self.generate_statement(body)?;
 
-        // Branch back to condition check if body doesn't already terminate
-        if !self.block_has_terminator(loop_body_block) {
-            self.builder
-                .build_unconditional_branch(loop_cond_block)
-                .map_err(|e| {
-                    CompileError::codegen_error(
-                        format!("Failed to build branch back to condition: {:?}", e),
-                        None,
-                    )
-                })?;
+        // Branch back to condition check if the current block doesn't already terminate
+        let current_block = self.builder.get_insert_block();
+        if let Some(block) = current_block {
+            if !self.block_has_terminator(block) {
+                self.builder
+                    .build_unconditional_branch(loop_cond_block)
+                    .map_err(|e| {
+                        CompileError::codegen_error(
+                            format!("Failed to build branch back to condition: {:?}", e),
+                            None,
+                        )
+                    })?;
+            }
         }
 
         // Continue after the loop
@@ -5868,7 +5893,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let array_ptr = array_value.into_pointer_value();
 
         // Calculate slice length
-        let slice_length = self
+        let _slice_length = self
             .builder
             .build_int_sub(end_int, start_int, "slice_length")
             .unwrap();
@@ -6051,7 +6076,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             "f32" | "f64" => {
                 // For float vectors, create a constant vector
                 if let Some(first_val) = element_values.first() {
-                    if let BasicValueEnum::FloatValue(float_val) = first_val {
+                    if let BasicValueEnum::FloatValue(_float_val) = first_val {
                         let const_vals: Vec<_> = element_values
                             .iter()
                             .filter_map(|v| {
@@ -6087,7 +6112,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             _ => {
                 // For integer and boolean vectors
                 if let Some(first_val) = element_values.first() {
-                    if let BasicValueEnum::IntValue(int_val) = first_val {
+                    if let BasicValueEnum::IntValue(_int_val) = first_val {
                         let const_vals: Vec<_> = element_values
                             .iter()
                             .filter_map(|v| {
@@ -6345,7 +6370,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
                 // Create vector by broadcasting scalar
                 let vector_width = target_type.width();
-                let vector_vals = vec![scalar_val; vector_width];
+                let _vector_vals = vec![scalar_val; vector_width];
 
                 // Create constant vector
                 match scalar_val {
@@ -7386,7 +7411,7 @@ impl<'ctx> CodeGenerator<'ctx> {
     /// Enables auto-vectorization optimization for the module.
     pub fn enable_auto_vectorization(&mut self) -> Result<()> {
         // Add global metadata to enable LLVM's auto-vectorization
-        let context = self.context;
+        let _context = self.context;
 
         // Enable loop vectorization through module flags
         // Note: These are global hints that affect the LLVM optimizer behavior

@@ -1,0 +1,56 @@
+Eä Compiler Benchmark Summary
+=============================
+Benchmark run: Wed Jul  9 19:08:52 CEST 2025
+Timestamp: 20250709_190502
+
+Results Summary:
+✅ Completed: 3
+❌ Failed: 13
+⏰ Timeout: 0
+
+Failed Benchmarks:
+  - all_benchmarks_comprehensive
+  - competitive_benchmarks
+  - competitive_performance_validation
+  - compilation_performance
+  - compilation_speed_medium
+  - compilation_speed_small
+  - cross_language_advanced
+  - cross_language_full_pipeline
+  - dev_cycle_benchmark
+  - ea_advanced_vs_full_pipeline
+  - frontend_performance
+  - honest_full_pipeline
+  - simd_performance
+
+Performance Highlights:
+======================
+bench_compile_check: warning: unused import: `std::time::Instant`
+build_release: warning: unused import: `std::time::Instant`
+
+Detailed Results:
+=================
+all_benchmarks_comprehensive: RESULT: FAILED (exit code: 101)
+bench_compile_check: RESULT: COMPLETED
+benchmark_run: 
+build_release: RESULT: COMPLETED
+competitive_benchmarks: RESULT: FAILED (exit code: 101)
+competitive_performance_validation: RESULT: FAILED (exit code: 101)
+compilation_performance: RESULT: FAILED (exit code: 101)
+compilation_speed_medium: RESULT: FAILED (exit code: 1)
+compilation_speed_small: RESULT: FAILED (exit code: 1)
+cross_language_advanced: RESULT: FAILED (exit code: 101)
+cross_language_full_pipeline: RESULT: FAILED (exit code: 101)
+dev_cycle_benchmark: RESULT: FAILED (exit code: 1)
+ea_advanced_vs_full_pipeline: RESULT: FAILED (exit code: 101)
+frontend_performance: RESULT: FAILED (exit code: 101)
+honest_full_pipeline: RESULT: FAILED (exit code: 101)
+memory_usage_large_program: RESULT: COMPLETED
+simd_performance: RESULT: FAILED (exit code: 101)
+
+Analysis & Recommendations:
+===========================
+1. Review failed benchmarks for compilation or runtime issues
+2. Compare performance metrics against baseline measurements
+3. Investigate timeout benchmarks for optimization opportunities
+4. Use detailed logs for performance regression analysis

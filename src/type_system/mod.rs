@@ -7,6 +7,7 @@
 use crate::ast::{BinaryOp, Expr, Literal, Stmt, TypeAnnotation, UnaryOp};
 use crate::error::{CompileError, Result};
 use crate::lexer::Position;
+use crate::memory_profiler::{record_memory_usage, CompilationPhase, check_memory_limit};
 pub mod types;
 use std::collections::HashMap;
 use std::fmt;
@@ -613,13 +614,41 @@ impl TypeChecker {
 
     /// Type checks a complete program.
     pub fn check_program(&mut self, program: &[Stmt]) -> Result<TypeContext> {
-        for stmt in program {
+        // Record initial memory usage for type checking
+        let initial_memory = std::mem::size_of::<TypeContext>() + program.len() * std::mem::size_of::<Stmt>();
+        record_memory_usage(CompilationPhase::TypeChecking, initial_memory, "Started type checking");
+        
+        for (i, stmt) in program.iter().enumerate() {
             self.check_statement(stmt)?;
+            
+            // Check memory usage periodically
+            if i % 50 == 0 {
+                let current_memory = std::mem::size_of::<TypeContext>() + 
+                    self.context.functions.len() * std::mem::size_of::<EaType>() +
+                    self.context.variables.len() * std::mem::size_of::<EaType>();
+                record_memory_usage(CompilationPhase::TypeChecking, current_memory, 
+                    &format!("Type checking progress: {}/{} statements", i + 1, program.len()));
+                
+                // Check memory limits
+                if let Err(e) = check_memory_limit() {
+                    return Err(CompileError::MemoryExhausted { 
+                        phase: "type checking".to_string(), 
+                        details: e.to_string() 
+                    });
+                }
+            }
         }
+        
         Ok(self.context.clone())
     }
 
-    fn check_statement(&mut self, stmt: &Stmt) -> Result<()> {
+    /// Get the current type context (for streaming compilation)
+    pub fn get_context(&self) -> &TypeContext {
+        &self.context
+    }
+
+    /// Check a single statement (made public for streaming compilation)
+    pub fn check_statement(&mut self, stmt: &Stmt) -> Result<()> {
         match stmt {
             Stmt::FunctionDeclaration {
                 name,

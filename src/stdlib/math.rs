@@ -3,7 +3,7 @@
 //! High-performance mathematical functions with automatic SIMD vectorization
 //! for common operations like trigonometry, exponentials, and linear algebra.
 
-use std::f32::consts::{E, PI};
+use std::f32::consts::PI;
 
 /// SIMD-accelerated mathematical functions
 pub mod simd_math {

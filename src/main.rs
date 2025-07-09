@@ -6,7 +6,16 @@ use std::process;
 use std::time::Instant;
 
 #[cfg(feature = "llvm")]
-use ea_compiler::{compile_to_llvm, diagnose_jit_execution, jit_execute};
+use ea_compiler::{compile_to_llvm, diagnose_jit_execution};
+use ea_compiler::jit_cache::initialize_default_jit_cache;
+use ea_compiler::jit_cached::jit_execute_cached;
+use ea_compiler::llvm_optimization::{initialize_default_llvm_optimizer, apply_fast_optimization_preset, apply_production_optimization_preset, apply_emit_llvm_preset, initialize_llvm_optimizer};
+use ea_compiler::incremental_compilation::initialize_default_incremental_compiler;
+use ea_compiler::parallel_compilation::initialize_default_parallel_compiler;
+
+use ea_compiler::memory_profiler::{set_memory_limit, reset_profiler, generate_memory_report};
+use ea_compiler::resource_manager;
+use ea_compiler::parser_optimization;
 
 /// Command line arguments
 struct Args {
@@ -23,6 +32,14 @@ struct Args {
     help: bool,
     version: bool,
     run_tests: bool,
+    memory_profile: bool,
+    streaming: bool,
+    resource_limits: bool,
+    parser_optimization: bool,
+    llvm_optimization: bool,
+    incremental_compilation: bool,
+    parallel_compilation: bool,
+    optimization_preset: Option<String>,
 }
 
 impl Args {
@@ -42,6 +59,14 @@ impl Args {
             help: false,
             version: false,
             run_tests: false,
+            memory_profile: false,
+            streaming: false,
+            resource_limits: false,
+            parser_optimization: false,
+            llvm_optimization: false,
+            incremental_compilation: false,
+            parallel_compilation: false,
+            optimization_preset: None,
         };
 
         let mut i = 1;
@@ -58,6 +83,19 @@ impl Args {
                 "--run" | "-r" => parsed.run = true,
                 "--diagnose-jit" => parsed.diagnose_jit = true,
                 "--test" => parsed.run_tests = true,
+                "--memory-profile" => parsed.memory_profile = true,
+                "--streaming" => parsed.streaming = true,
+                "--resource-limits" => parsed.resource_limits = true,
+                "--parser-optimization" => parsed.parser_optimization = true,
+                "--llvm-optimization" => parsed.llvm_optimization = true,
+                "--incremental-compilation" => parsed.incremental_compilation = true,
+                "--parallel-compilation" => parsed.parallel_compilation = true,
+                "--optimization-preset" => {
+                    i += 1;
+                    if i < args.len() {
+                        parsed.optimization_preset = Some(args[i].clone());
+                    }
+                }
                 "--output" | "-o" => {
                     if i + 1 < args.len() {
                         parsed.output_file = Some(args[i + 1].clone());
@@ -89,6 +127,71 @@ impl Args {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+
+    // Initialize JIT cache for better performance
+    initialize_default_jit_cache();
+    println!("JIT compilation caching enabled");
+
+    // Initialize memory profiling if requested
+    if args.memory_profile {
+        set_memory_limit(1024 * 1024 * 1024); // 1GB limit
+        reset_profiler();
+        println!("Memory profiling enabled (1GB limit)");
+    }
+
+    // Initialize resource limits if requested
+    if args.resource_limits {
+        let limits = resource_manager::ResourceLimits::default();
+        resource_manager::initialize_resource_manager(limits);
+        println!("Resource limit monitoring enabled");
+    }
+
+    // Initialize parser optimization if requested
+    if args.parser_optimization {
+        parser_optimization::initialize_parser_optimizer();
+        println!("Parser performance optimization enabled");
+    }
+
+    // Initialize emit-llvm optimization (safe mode) - must be first
+    if args.emit_llvm || args.emit_llvm_only {
+        initialize_llvm_optimizer(apply_emit_llvm_preset());
+        println!("LLVM emit-llvm mode enabled (safe optimization)");
+    }
+    // Initialize LLVM optimization if requested (only if not already initialized)
+    else if args.llvm_optimization {
+        initialize_default_llvm_optimizer();
+        println!("LLVM optimization enabled");
+    }
+
+    // Initialize incremental compilation if requested
+    if args.incremental_compilation {
+        initialize_default_incremental_compiler();
+        println!("Incremental compilation enabled");
+    }
+
+    // Initialize parallel compilation if requested
+    if args.parallel_compilation {
+        initialize_default_parallel_compiler();
+        println!("Parallel compilation enabled");
+    }
+
+    // Apply optimization preset if specified
+    if let Some(preset) = &args.optimization_preset {
+        match preset.as_str() {
+            "fast" => {
+                let _config = apply_fast_optimization_preset();
+                println!("Applied fast optimization preset");
+            }
+            "production" => {
+                let _config = apply_production_optimization_preset();
+                println!("Applied production optimization preset");
+            }
+            _ => {
+                eprintln!("Unknown optimization preset: {}", preset);
+                eprintln!("Available presets: fast, production");
+            }
+        }
+    }
 
     if args.help {
         print_help();
@@ -141,6 +244,14 @@ fn print_help() {
     println!("        --emit-llvm-only Print LLVM IR only (clean for piping)");
     println!("        --diagnose-jit  Diagnose JIT execution issues");
     println!("        --test          Run built-in compiler tests");
+    println!("        --memory-profile Enable memory profiling (1GB limit)");
+    println!("        --streaming     Use streaming compilation for large programs");
+    println!("        --resource-limits Enable resource limit monitoring");
+    println!("        --parser-optimization Enable parser performance optimization");
+    println!("        --llvm-optimization Enable LLVM IR optimization");
+    println!("        --incremental-compilation Enable incremental compilation");
+    println!("        --parallel-compilation Enable parallel compilation");
+    println!("        --optimization-preset PRESET Apply optimization preset (fast, production)");
     println!();
     println!("EXAMPLES:");
     println!("    ea hello.ea                         # Compile hello.ea");
@@ -227,7 +338,19 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
         eprintln!("🎯 Type checking...");
     }
 
-    let (_program, context) = ea_compiler::compile_to_ast(&source)?;
+    let (_program, context) = if args.streaming {
+        if verbose_mode {
+            eprintln!("🌊 Using streaming compilation for large program...");
+        }
+        let (context, stats) = ea_compiler::compile_to_ast_streaming(&source)?;
+        if verbose_mode {
+            eprintln!("📊 Streaming stats: {} statements, {} tokens processed", 
+                stats.total_statements_processed, stats.total_tokens_processed);
+        }
+        (Vec::new(), context) // Return empty program vector for streaming
+    } else {
+        ea_compiler::compile_to_ast(&source)?
+    };
 
     if verbose_mode {
         eprintln!("✅ Type checking completed");
@@ -337,7 +460,7 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
                         .unwrap_or("output")
                 });
 
-            match jit_execute(&source, output_name) {
+            match jit_execute_cached(&source, output_name) {
                 Ok(exit_code) => {
                     if verbose_mode {
                         eprintln!(
@@ -375,6 +498,21 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
         eprintln!("✅ Compiled successfully");
     }
     // If emit_llvm_only, don't print any success message to keep output clean
+
+    // Generate memory report if profiling is enabled
+    if args.memory_profile {
+        eprintln!("\n{}", generate_memory_report());
+    }
+
+    // Generate resource report if limits are enabled
+    if args.resource_limits {
+        eprintln!("\n{}", resource_manager::generate_resource_report());
+    }
+
+    // Generate parser optimization report if enabled
+    if args.parser_optimization {
+        eprintln!("\n{}", parser_optimization::generate_parser_performance_report());
+    }
 
     Ok(())
 }

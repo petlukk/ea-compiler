@@ -461,7 +461,7 @@ impl PackageManager {
         let mut build_metrics = BuildMetrics::new();
         
         for target in &build_config.targets {
-            let target_result = self.build_target(target, &mut build_metrics)?;
+            let _target_result = self.build_target(target, &mut build_metrics)?;
             // Update performance database
             self.performance_db.record_build_metrics(&target.name, &build_metrics);
         }
@@ -812,7 +812,7 @@ impl PackageManager {
         let mut available_simd_instructions = std::collections::HashSet::new();
 
         // Aggregate performance metrics from all dependencies
-        for (dep_name, version) in &resolution.dependencies {
+        for (_dep_name, version) in &resolution.dependencies {
             let metrics = &version.performance_metrics;
             
             total_compile_time += metrics.compilation_time.mean_ms;

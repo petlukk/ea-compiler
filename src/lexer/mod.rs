@@ -7,6 +7,7 @@ use std::fmt;
 pub mod tokens;
 
 use crate::error::CompileError;
+use crate::memory_profiler::{record_memory_usage, CompilationPhase, check_memory_limit};
 
 /// Position information for tokens
 #[derive(Debug, Clone, PartialEq)]
@@ -764,6 +765,10 @@ impl<'source> Lexer<'source> {
     }
 
     pub fn tokenize_all(&mut self) -> Result<Vec<Token>, CompileError> {
+        // Record initial memory usage
+        let initial_memory = std::mem::size_of::<Vec<Token>>();
+        record_memory_usage(CompilationPhase::Lexing, initial_memory, "Started lexing");
+
         let mut tokens = Vec::new();
 
         loop {
@@ -771,10 +776,30 @@ impl<'source> Lexer<'source> {
             let is_eof = token.kind == TokenKind::Eof;
             tokens.push(token);
 
+            // Check memory limits periodically
+            if tokens.len() % 1000 == 0 {
+                let current_memory = tokens.len() * std::mem::size_of::<Token>();
+                record_memory_usage(CompilationPhase::Lexing, current_memory, 
+                    &format!("Lexing progress: {} tokens", tokens.len()));
+                
+                // Check if we're exceeding memory limits
+                if let Err(e) = check_memory_limit() {
+                    return Err(CompileError::MemoryExhausted { 
+                        phase: "lexing".to_string(), 
+                        details: e.to_string() 
+                    });
+                }
+            }
+
             if is_eof {
                 break;
             }
         }
+
+        // Record final memory usage
+        let final_memory = tokens.len() * std::mem::size_of::<Token>();
+        record_memory_usage(CompilationPhase::Lexing, final_memory, 
+            &format!("Completed lexing: {} tokens", tokens.len()));
 
         Ok(tokens)
     }

@@ -30,6 +30,36 @@ pub mod comptime;
 // Advanced SIMD intrinsics and hardware-specific optimization
 pub mod simd_advanced;
 
+// Memory profiling and resource management
+pub mod memory_profiler;
+
+// Streaming compilation system
+pub mod streaming_compiler;
+
+// Resource management system
+pub mod resource_manager;
+
+// Parser performance optimization
+pub mod parser_optimization;
+
+// JIT compilation caching system
+pub mod jit_cache;
+
+// Enhanced JIT execution system
+pub mod jit_execution;
+
+// Cached JIT execution implementation
+pub mod jit_cached;
+
+// LLVM IR optimization system
+pub mod llvm_optimization;
+
+// Incremental compilation system
+pub mod incremental_compilation;
+
+// Parallel compilation system
+pub mod parallel_compilation;
+
 // Standard library with SIMD-accelerated collections
 pub mod stdlib;
 
@@ -41,6 +71,10 @@ extern crate libloading;
 pub use error::{CompileError, Result};
 pub use lexer::{Lexer, Position, Token, TokenKind};
 pub use type_system::{EaType, FunctionType, TypeChecker, TypeContext};
+
+// Re-export JIT cache functionality
+pub use jit_cache::{initialize_default_jit_cache, get_jit_cache, JITCacheConfig, JITCacheStats};
+pub use jit_cached::jit_execute_cached;
 
 /// Compiler version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -72,6 +106,11 @@ pub fn compile_to_ast(source: &str) -> Result<(Vec<ast::Stmt>, TypeContext)> {
     Ok((program, type_context))
 }
 
+/// Streaming compilation pipeline for large programs
+pub fn compile_to_ast_streaming(source: &str) -> Result<(TypeContext, streaming_compiler::StreamingStats)> {
+    streaming_compiler::stream_compile_source(source)
+}
+
 /// Complete compilation pipeline with LLVM code generation (if feature enabled)
 #[cfg(feature = "llvm")]
 pub fn compile_to_llvm(source: &str, module_name: &str) -> Result<()> {
@@ -83,7 +122,11 @@ pub fn compile_to_llvm(source: &str, module_name: &str) -> Result<()> {
     let mut codegen = codegen::CodeGenerator::new(&context, module_name);
     codegen.compile_program(&program)?;
 
-    // Write LLVM IR to file for inspection
+    // Apply LLVM optimization
+    let mut optimizer = llvm_optimization::LLVMOptimizer::new();
+    optimizer.optimize_module(codegen.get_module())?;
+
+    // Write optimized LLVM IR to file for inspection
     let ir_filename = format!("{}.ll", module_name);
     codegen.write_ir_to_file(&ir_filename)?;
 
@@ -200,12 +243,28 @@ pub fn diagnose_jit_execution(source: &str, module_name: &str) -> Result<String>
     Ok(diagnostics)
 }
 
-/// JIT compile and execute a program immediately
+/// JIT compile and execute a program immediately with caching
 #[cfg(feature = "llvm")]
 pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
     use inkwell::context::Context;
     use inkwell::execution_engine::JitFunction;
     use inkwell::OptimizationLevel;
+    use std::time::Instant;
+
+    // Check JIT cache first
+    let cache = jit_cache::get_jit_cache();
+    if let Some(cached_jit) = cache.get(source) {
+        eprintln!("🚀 Cache hit! Using cached JIT compilation (hit count: {})", cached_jit.hit_count);
+        eprintln!("   Saved compilation time: {:?}", cached_jit.compilation_time);
+        eprintln!("   Saved memory usage: {} bytes", cached_jit.memory_usage);
+        
+        // Execute cached machine code directly
+        return jit_execution::execute_cached_jit(cached_jit);
+    }
+
+    eprintln!("🔧 Cache miss - compiling from source...");
+    let compilation_start = Instant::now();
+    let memory_start = memory_profiler::get_current_memory_usage();
 
     let (program, _type_context) = compile_to_ast(source)?;
 

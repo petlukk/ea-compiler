@@ -896,7 +896,7 @@ impl AdvancedSIMDCodegen {
 
     fn generate_avx2_matmul(
         &self,
-        m: usize, n: usize, k: usize,
+        _m: usize, _n: usize, _k: usize,
         block_m: usize, block_n: usize, block_k: usize,
     ) -> Result<Vec<GeneratedInstruction>, SIMDError> {
         let mut instructions = Vec::new();
@@ -905,7 +905,7 @@ impl AdvancedSIMDCodegen {
         // 8x8 blocking for optimal register usage
         
         for i in 0..(block_m/8) {
-            for j in 0..(block_n/8) {
+            for _j in 0..(block_n/8) {
                 // Initialize accumulators to zero
                 for acc in 0..8 {
                     instructions.push(GeneratedInstruction {
@@ -1225,7 +1225,7 @@ impl AdvancedSIMDCodegen {
             _ => "ymm",
         };
 
-        let mask_reg = mask.as_deref().unwrap_or("k1");
+        let _mask_reg = mask.as_deref().unwrap_or("k1");
 
         Ok(vec![GeneratedInstruction {
             mnemonic: mnemonic.to_string(),
@@ -1249,7 +1249,7 @@ impl AdvancedSIMDCodegen {
         vector_type: &SIMDVectorType,
         instruction_set: &SIMDInstructionSet,
         _indices: &[usize],
-        mask: &Option<String>,
+        _mask: &Option<String>,
     ) -> Result<Vec<GeneratedInstruction>, SIMDError> {
         if !matches!(instruction_set, SIMDInstructionSet::AVX512F) {
             return Err(SIMDError::UnsupportedOperation("Scatter requires AVX512".to_string()));
@@ -1700,7 +1700,7 @@ impl AdaptiveVectorizer {
     fn analyze_code_patterns(&self, code: &str) -> Result<CodeAnalysis, SIMDError> {
         let mut loops = Vec::new();
         let mut memory_access_patterns = Vec::new();
-        let mut data_dependencies = Vec::new();
+        let data_dependencies = Vec::new();
         let mut arithmetic_intensity = 0.0;
 
         // Simple pattern analysis (in real implementation, use proper AST analysis)

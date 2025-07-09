@@ -25,6 +25,11 @@ simplelog = { version = "0.12", optional = true }
 lazy_static = "1.4"
 regex = "1.10"
 
+# Parallel processing
+rayon = "1.8"
+crossbeam-channel = "0.5"
+num_cpus = "1.16"
+
 # Serialization for package management (always available)
 toml = "0.8"
 
@@ -52,6 +57,7 @@ env_logger = { version = "0.10", optional = true }
 rstest = "0.18"
 assert_matches = "1.5"
 pretty_assertions = "1.4"
+tempfile = "3.8"
 # Benchmarking
 criterion = { version = "0.5", features = ["html_reports"] }
 
@@ -69,39 +75,23 @@ path = "src/lsp_main.rs"
 required-features = ["lsp"]
 
 [[bench]]
-name = "benchmark"
+name = "frontend_performance"
 harness = false
 
 [[bench]]
-name = "simd_performance_benchmarks"
+name = "compilation_performance"
 harness = false
 
 [[bench]]
-name = "realistic_performance_benchmarks"
+name = "cross_language_comparison"
 harness = false
 
 [[bench]]
-name = "simple_performance_test"
+name = "ea_advanced_vs_full_pipeline"
 harness = false
 
 [[bench]]
-name = "simple_performance_validation"
-harness = false
-
-[[bench]]
-name = "evidence_based_benchmarks"
-harness = false
-
-[[bench]]
-name = "competitive_benchmarks"
-harness = false
-
-[[bench]]
-name = "cross_platform_validation"
-harness = false
-
-[[bench]]
-name = "honest_full_pipeline_benchmarks"
+name = "simple_cross_language"
 harness = false
 
 [features]

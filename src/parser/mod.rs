@@ -13,6 +13,8 @@ use crate::{
     }, // Added Pattern and MatchArm imports
     error::{CompileError, Result},
     lexer::{Token, TokenKind, Position}, // Re-added Position for error recovery
+    memory_profiler::{record_memory_usage, CompilationPhase, check_memory_limit},
+    parser_optimization::{enter_parse_recursion, exit_parse_recursion, time_parsing_operation},
 };
 
 /// Error suggestions for common mistakes
@@ -66,6 +68,10 @@ impl Parser {
 
     /// Parses the tokens and returns the resulting program as a list of statements.
     pub fn parse_program(&mut self) -> Result<Vec<Stmt>> {
+        // Record initial memory usage for parsing
+        let initial_memory = std::mem::size_of::<Vec<Stmt>>();
+        record_memory_usage(CompilationPhase::Parsing, initial_memory, "Started parsing");
+
         let mut statements = Vec::new();
 
         while !self.is_at_end() {
@@ -73,6 +79,21 @@ impl Parser {
                 Ok(stmt) => {
                     statements.push(stmt);
                     self.in_recovery = false; // Reset recovery flag on success
+                    
+                    // Check memory usage periodically
+                    if statements.len() % 100 == 0 {
+                        let current_memory = statements.len() * std::mem::size_of::<Stmt>();
+                        record_memory_usage(CompilationPhase::Parsing, current_memory, 
+                            &format!("Parsing progress: {} statements", statements.len()));
+                        
+                        // Check memory limits
+                        if let Err(e) = check_memory_limit() {
+                            return Err(CompileError::MemoryExhausted { 
+                                phase: "parsing".to_string(), 
+                                details: e.to_string() 
+                            });
+                        }
+                    }
                 }
                 Err(error) => {
                     self.errors.push(error.clone());
@@ -83,6 +104,11 @@ impl Parser {
                 }
             }
         }
+
+        // Record final memory usage
+        let final_memory = statements.len() * std::mem::size_of::<Stmt>();
+        record_memory_usage(CompilationPhase::Parsing, final_memory, 
+            &format!("Completed parsing: {} statements", statements.len()));
 
         // Return the first error if any occurred, but we've collected all errors
         if !self.errors.is_empty() {
@@ -545,7 +571,10 @@ impl Parser {
 
     /// Parses an expression.
     fn expression(&mut self) -> Result<Expr> {
-        self.match_expression()
+        enter_parse_recursion()?;
+        let result = time_parsing_operation(|| self.match_expression());
+        exit_parse_recursion();
+        result
     }
 
     /// Parse match expressions or delegate to assignment
@@ -559,6 +588,7 @@ impl Parser {
 
     /// Parses an assignment expression.
     fn assignment(&mut self) -> Result<Expr> {
+        enter_parse_recursion()?;
         let expr = self.logical_or()?;
 
         if self.match_tokens(&[
@@ -569,7 +599,7 @@ impl Parser {
             TokenKind::SlashAssign,
         ]) {
             let operator = self.previous().clone();
-            let value = self.assignment()?;
+            let value = time_parsing_operation(|| self.assignment())?;
 
             // Only variables can be assigned to
             if let Expr::Variable(name) = expr {
@@ -590,12 +620,14 @@ impl Parser {
             }
 
             // If we get here, the left side wasn't a valid assignment target
+            exit_parse_recursion();
             return Err(CompileError::parse_error(
                 "Invalid assignment target".to_string(),
                 operator.position,
             ));
         }
 
+        exit_parse_recursion();
         Ok(expr)
     }
 
@@ -809,9 +841,10 @@ impl Parser {
                 if self.check(&TokenKind::Colon) {
                     self.advance(); // consume ':'
                     let end_expr = self.expression()?;
-                    let _ = self.consume(
+                    let _ = self.consume_with_recovery(
                         TokenKind::RightBracket,
                         "Expected ']' after slice end".to_string(),
+                        "slice_close",
                     )?;
                     expr = Expr::Slice {
                         array: Box::new(expr),
@@ -820,9 +853,10 @@ impl Parser {
                     };
                 } else {
                     // Regular indexing
-                    let _ = self.consume(
+                    let _ = self.consume_with_recovery(
                         TokenKind::RightBracket,
                         "Expected ']' after array index".to_string(),
+                        "array_index_close",
                     )?;
                     expr = Expr::Index(Box::new(expr), Box::new(first_expr));
                 }
@@ -1252,14 +1286,66 @@ impl Parser {
         self.peek().kind == TokenKind::Eof
     }
 
+    /// Parse a single statement for streaming compilation
+    pub fn parse_statement(&mut self) -> Result<Option<Stmt>> {
+        if self.is_at_end() {
+            return Ok(None);
+        }
+        
+        match self.declaration() {
+            Ok(stmt) => {
+                self.in_recovery = false;
+                Ok(Some(stmt))
+            }
+            Err(error) => {
+                self.errors.push(error.clone());
+                if !self.in_recovery {
+                    self.in_recovery = true;
+                    self.synchronize();
+                }
+                // Return the error for streaming compiler to handle
+                Err(error)
+            }
+        }
+    }
+
+    /// Get remaining tokens for streaming compilation
+    pub fn get_remaining_tokens(&self) -> Vec<Token> {
+        if self.current < self.tokens.len() {
+            self.tokens[self.current..].to_vec()
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Check if parser has more tokens to process
+    pub fn has_more_tokens(&self) -> bool {
+        self.current < self.tokens.len() && !self.is_at_end()
+    }
+
     /// Returns the current token without consuming it.
     fn peek(&self) -> &Token {
-        &self.tokens[self.current]
+        if self.current < self.tokens.len() {
+            &self.tokens[self.current]
+        } else if !self.tokens.is_empty() {
+            // Return the last token if we're at the end
+            &self.tokens[self.tokens.len() - 1]
+        } else {
+            // This should never happen but add a fallback
+            panic!("Parser: No tokens available")
+        }
     }
 
     /// Returns the previous token.
     fn previous(&self) -> &Token {
-        &self.tokens[self.current - 1]
+        if self.current > 0 && self.current <= self.tokens.len() {
+            &self.tokens[self.current - 1]
+        } else if !self.tokens.is_empty() {
+            &self.tokens[0]
+        } else {
+            // This should never happen but add a fallback
+            panic!("Parser: No tokens available")
+        }
     }
 
     /// Parse array literals or SIMD vector literals starting with [
@@ -1284,9 +1370,10 @@ impl Parser {
             }
         }
 
-        self.consume(
+        self.consume_with_recovery(
             TokenKind::RightBracket,
             "Expected ']' after array elements".to_string(),
+            "array_literal_close",
         )?;
 
         // Check if this is a SIMD vector literal with type annotation
@@ -1439,9 +1526,10 @@ impl Parser {
 
     /// Parse a function call expression
     fn parse_function_call(&mut self, name: String) -> Result<Expr> {
-        self.consume(
+        self.consume_with_recovery(
             TokenKind::LeftParen,
             "Expected '(' after function name".to_string(),
+            "function_call_open",
         )?;
 
         let mut arguments = Vec::new();
@@ -1455,9 +1543,10 @@ impl Parser {
             }
         }
 
-        self.consume(
+        self.consume_with_recovery(
             TokenKind::RightParen,
             "Expected ')' after arguments".to_string(),
+            "function_call_close",
         )?;
 
         Ok(Expr::Call(Box::new(Expr::Variable(name)), arguments))
@@ -1465,16 +1554,18 @@ impl Parser {
 
     /// Parse a SIMD reduction function call
     fn parse_reduction_function(&mut self, operation: ReductionOp) -> Result<Expr> {
-        self.consume(
+        self.consume_with_recovery(
             TokenKind::LeftParen,
             "Expected '(' after reduction function".to_string(),
+            "reduction_function_open",
         )?;
 
         let vector = self.expression()?;
 
-        self.consume(
+        self.consume_with_recovery(
             TokenKind::RightParen,
             "Expected ')' after vector argument".to_string(),
+            "reduction_function_close",
         )?;
 
         let position = self.previous().position.clone();

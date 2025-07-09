@@ -1,0 +1,165 @@
+{
+  "name": "ea-language-support",
+  "displayName": "Eä Language Support",
+  "description": "Language support for Eä programming language with performance analysis",
+  "version": "0.1.1",
+  "publisher": "ea-lang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/petlukk/ea-compiler-private"
+  },
+  "engines": {
+    "vscode": "^1.78.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "ea",
+    "systems programming",
+    "simd",
+    "performance",
+    "llvm"
+  ],
+  "activationEvents": [
+    "onLanguage:ea"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "ea",
+        "aliases": [
+          "Eä",
+          "ea"
+        ],
+        "extensions": [
+          ".ea"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "ea",
+        "scopeName": "source.ea",
+        "path": "./syntaxes/ea.tmGrammar.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Eä",
+      "properties": {
+        "ea.lspPath": {
+          "type": "string",
+          "default": "ea-lsp",
+          "description": "Path to the Eä language server binary"
+        },
+        "ea.enablePerformanceAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable real-time performance analysis"
+        },
+        "ea.enableSIMDOptimizations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show SIMD optimization suggestions"
+        },
+        "ea.maxErrorsShown": {
+          "type": "number",
+          "default": 100,
+          "description": "Maximum number of errors to show"
+        },
+        "ea.compilationTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "description": "Compilation timeout in milliseconds"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "ea.compileFile",
+        "title": "Compile File",
+        "category": "Eä"
+      },
+      {
+        "command": "ea.runFile",
+        "title": "Run File (JIT)",
+        "category": "Eä"
+      },
+      {
+        "command": "ea.showPerformanceAnalysis",
+        "title": "Show Performance Analysis",
+        "category": "Eä"
+      },
+      {
+        "command": "ea.optimizeSIMD",
+        "title": "Optimize SIMD Code",
+        "category": "Eä"
+      },
+      {
+        "command": "ea.restartLanguageServer",
+        "title": "Restart Language Server",
+        "category": "Eä"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "ea.compileFile",
+        "key": "ctrl+shift+b",
+        "when": "editorTextFocus && resourceExtname == .ea"
+      },
+      {
+        "command": "ea.runFile",
+        "key": "ctrl+f5",
+        "when": "editorTextFocus && resourceExtname == .ea"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "resourceExtname == .ea",
+          "command": "ea.compileFile",
+          "group": "ea@1"
+        },
+        {
+          "when": "resourceExtname == .ea",
+          "command": "ea.runFile",
+          "group": "ea@2"
+        },
+        {
+          "when": "resourceExtname == .ea",
+          "command": "ea.showPerformanceAnalysis",
+          "group": "ea@3"
+        }
+      ]
+    },
+    "snippets": [
+      {
+        "language": "ea",
+        "path": "./snippets/ea.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^18.x",
+    "@types/vscode": "^1.78.0",
+    "@typescript-eslint/eslint-plugin": "^5.59.0",
+    "@typescript-eslint/parser": "^5.59.0",
+    "eslint": "^8.40.0",
+    "typescript": "^5.0.4"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}
