@@ -301,11 +301,13 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
     }
 
     // Tokenization
+    eprintln!("🔍 Starting tokenization...");
     if verbose_mode || args.emit_tokens {
         eprintln!("🔍 Tokenizing...");
     }
 
     let tokens = ea_compiler::tokenize(&source)?;
+    eprintln!("✅ Tokenization completed, got {} tokens", tokens.len());
 
     if args.emit_tokens {
         println!("📋 Tokens:");
@@ -319,11 +321,13 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
     }
 
     // Parsing
+    eprintln!("🌳 Starting parsing...");
     if verbose_mode {
         eprintln!("🌳 Parsing...");
     }
 
     let program = ea_compiler::parse(&source)?;
+    eprintln!("✅ Parsing completed, got {} statements", program.len());
 
     if args.emit_ast {
         println!("🌳 Abstract Syntax Tree:");
@@ -334,6 +338,7 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
     }
 
     // Type checking
+    eprintln!("🎯 Starting type checking...");
     if verbose_mode {
         eprintln!("🎯 Type checking...");
     }
@@ -351,6 +356,7 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
     } else {
         ea_compiler::compile_to_ast(&source)?
     };
+    eprintln!("✅ Type checking completed");
 
     if verbose_mode {
         eprintln!("✅ Type checking completed");
@@ -410,7 +416,9 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
                         .unwrap_or("output")
                 });
 
+            eprintln!("🔧 Starting LLVM code generation...");
             compile_to_llvm(&source, output_name)?;
+            eprintln!("✅ LLVM code generation completed");
             eprintln!("📄 Generated LLVM IR: {}.ll", output_name);
         }
 

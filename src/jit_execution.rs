@@ -113,6 +113,103 @@ pub fn map_essential_symbols(
             symbol_table.insert("strlen".to_string(), strlen_addr);
             eprintln!("✅ Mapped strlen symbol successfully");
         }
+        
+        // Map Vec runtime symbols (CRITICAL for Vec functionality)
+        eprintln!("🔍 Mapping Vec runtime symbols...");
+        
+        // Define Vec runtime functions directly in Rust for JIT execution
+        extern "C" fn vec_new_impl() -> *mut std::ffi::c_void {
+            let vec = Box::new(Vec::<i32>::new());
+            Box::into_raw(vec) as *mut std::ffi::c_void
+        }
+        
+        extern "C" fn vec_push_impl(vec_ptr: *mut std::ffi::c_void, item: i32) -> i32 {
+            if vec_ptr.is_null() { return 0; }
+            unsafe {
+                let vec = &mut *(vec_ptr as *mut Vec<i32>);
+                vec.push(item);
+                1 // Success
+            }
+        }
+        
+        extern "C" fn vec_len_impl(vec_ptr: *mut std::ffi::c_void) -> u64 {
+            if vec_ptr.is_null() { return 0; }
+            unsafe {
+                let vec = &*(vec_ptr as *const Vec<i32>);
+                vec.len() as u64
+            }
+        }
+        
+        extern "C" fn vec_get_impl(vec_ptr: *mut std::ffi::c_void, index: u64) -> *mut std::ffi::c_void {
+            if vec_ptr.is_null() { return std::ptr::null_mut(); }
+            unsafe {
+                let vec = &*(vec_ptr as *const Vec<i32>);
+                if index < vec.len() as u64 {
+                    // Return pointer to element - this is a bit tricky since we need a stable address
+                    // For simplicity, we'll store the value on the heap and return it
+                    let value = vec[index as usize];
+                    let boxed_value = Box::new(value);
+                    Box::into_raw(boxed_value) as *mut std::ffi::c_void
+                } else {
+                    std::ptr::null_mut()
+                }
+            }
+        }
+        
+        extern "C" fn vec_pop_impl(vec_ptr: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
+            if vec_ptr.is_null() { return std::ptr::null_mut(); }
+            unsafe {
+                let vec = &mut *(vec_ptr as *mut Vec<i32>);
+                if let Some(value) = vec.pop() {
+                    let boxed_value = Box::new(value);
+                    Box::into_raw(boxed_value) as *mut std::ffi::c_void
+                } else {
+                    std::ptr::null_mut()
+                }
+            }
+        }
+        
+        // Map vec_new
+        if let Some(vec_new_fn) = codegen.get_module().get_function("vec_new") {
+            let vec_new_addr = vec_new_impl as *const () as usize;
+            execution_engine.add_global_mapping(&vec_new_fn, vec_new_addr);
+            symbol_table.insert("vec_new".to_string(), vec_new_addr);
+            eprintln!("✅ Mapped vec_new symbol successfully");
+        } else {
+            eprintln!("❌ vec_new function not found in module");
+        }
+        
+        // Map vec_push
+        if let Some(vec_push_fn) = codegen.get_module().get_function("vec_push") {
+            let vec_push_addr = vec_push_impl as *const () as usize;
+            execution_engine.add_global_mapping(&vec_push_fn, vec_push_addr);
+            symbol_table.insert("vec_push".to_string(), vec_push_addr);
+            eprintln!("✅ Mapped vec_push symbol successfully");
+        }
+        
+        // Map vec_len
+        if let Some(vec_len_fn) = codegen.get_module().get_function("vec_len") {
+            let vec_len_addr = vec_len_impl as *const () as usize;
+            execution_engine.add_global_mapping(&vec_len_fn, vec_len_addr);
+            symbol_table.insert("vec_len".to_string(), vec_len_addr);
+            eprintln!("✅ Mapped vec_len symbol successfully");
+        }
+        
+        // Map vec_get
+        if let Some(vec_get_fn) = codegen.get_module().get_function("vec_get") {
+            let vec_get_addr = vec_get_impl as *const () as usize;
+            execution_engine.add_global_mapping(&vec_get_fn, vec_get_addr);
+            symbol_table.insert("vec_get".to_string(), vec_get_addr);
+            eprintln!("✅ Mapped vec_get symbol successfully");
+        }
+        
+        // Map vec_pop
+        if let Some(vec_pop_fn) = codegen.get_module().get_function("vec_pop") {
+            let vec_pop_addr = vec_pop_impl as *const () as usize;
+            execution_engine.add_global_mapping(&vec_pop_fn, vec_pop_addr);
+            symbol_table.insert("vec_pop".to_string(), vec_pop_addr);
+            eprintln!("✅ Mapped vec_pop symbol successfully");
+        }
     }
     
     eprintln!("✅ Symbol resolution complete - {} symbols mapped", symbol_table.len());

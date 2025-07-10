@@ -68,15 +68,32 @@ impl Parser {
 
     /// Parses the tokens and returns the resulting program as a list of statements.
     pub fn parse_program(&mut self) -> Result<Vec<Stmt>> {
+        eprintln!("🏗️ Starting parse_program...");
+        
         // Record initial memory usage for parsing
         let initial_memory = std::mem::size_of::<Vec<Stmt>>();
         record_memory_usage(CompilationPhase::Parsing, initial_memory, "Started parsing");
 
         let mut statements = Vec::new();
+        let mut loop_count = 0;
 
+        eprintln!("🔄 Starting parsing loop...");
         while !self.is_at_end() {
+            loop_count += 1;
+            eprintln!("🔄 Parse loop iteration {}, current position: {:?}", loop_count, self.current);
+            
+            if loop_count > 100 {
+                eprintln!("❌ Parse loop detected (over 1000 iterations), breaking");
+                return Err(CompileError::ParseError {
+                    message: "Infinite loop detected in parser".to_string(),
+                    position: self.tokens[self.current].position.clone(),
+                });
+            }
+            
+            eprintln!("🔄 Calling declaration()...");
             match self.declaration() {
                 Ok(stmt) => {
+                    eprintln!("✅ Declaration successful, got statement");
                     statements.push(stmt);
                     self.in_recovery = false; // Reset recovery flag on success
                     
@@ -96,6 +113,7 @@ impl Parser {
                     }
                 }
                 Err(error) => {
+                    eprintln!("❌ Declaration failed: {:?}", error);
                     self.errors.push(error.clone());
                     if !self.in_recovery {
                         self.in_recovery = true;
@@ -922,6 +940,55 @@ impl Parser {
             if let TokenKind::StringLiteral(s) = token.kind {
                 return Ok(Expr::Literal(Literal::String(s)));
             }
+        }
+
+        // Handle built-in functions (print, etc.)
+        if !self.is_at_end() && matches!(self.peek().kind, TokenKind::Print) {
+            let token = self.advance().clone();
+            let func_name = "print";
+            
+            // This should be a function call
+            if self.check(&TokenKind::LeftParen) {
+                let var_expr = Expr::Variable(func_name.to_string());
+                self.advance(); // consume '('
+                return self.finish_call(var_expr);
+            }
+            
+            // If not a function call, treat as variable reference  
+            return Ok(Expr::Variable(func_name.to_string()));
+        }
+
+        // Handle standard library types (Vec, HashMap, etc.)
+        if !self.is_at_end() && matches!(self.peek().kind, 
+            TokenKind::VecType | TokenKind::HashMapType | TokenKind::HashSetType | 
+            TokenKind::StringType | TokenKind::FileType) {
+            let token = self.advance().clone();
+            let type_name = match &token.kind {
+                TokenKind::VecType => "Vec",
+                TokenKind::HashMapType => "HashMap", 
+                TokenKind::HashSetType => "HashSet",
+                TokenKind::StringType => "String",
+                TokenKind::FileType => "File",
+                _ => unreachable!(),
+            };
+            
+            // Check if this is a module-scoped call (Vec::new())
+            if !self.is_at_end() && matches!(self.peek().kind, TokenKind::DoubleColon) {
+                self.advance(); // consume '::'
+                let second_name = self.consume_identifier("Expected identifier after '::'".to_string())?;
+                
+                // Check if this is a function call (Vec::new())
+                if self.check(&TokenKind::LeftParen) {
+                    // This is a module-scoped function call like Vec::new()
+                    let module_expr = Expr::Variable(type_name.to_string());
+                    let field_access = Expr::FieldAccess(Box::new(module_expr), second_name);
+                    self.advance(); // consume '('
+                    return self.finish_call(field_access);
+                }
+            }
+            
+            // If not a static method call, treat as type literal
+            return Ok(Expr::Variable(type_name.to_string()));
         }
 
         // Handle identifiers (variables, function calls, struct literals, enum literals)

@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Please follow our DEVELOPMENT_PROCESS.md exactly. 
+Focus on creating real, working implementations that pass external validation.
+
 ## Reporting Guidelines
 
 **Maintain evidence-based, honest technical reporting.** Focus on:

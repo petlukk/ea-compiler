@@ -410,6 +410,42 @@ impl<'ctx> CodeGenerator<'ctx> {
         
         self.builder.build_return(None).unwrap();
 
+        // Add basic Vec runtime function declarations for Vec functionality
+        let opaque_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i32_type = self.context.i32_type();
+        let i64_type = self.context.i64_type();
+        let void_type = self.context.void_type();
+        
+        // External vec_new() -> *Vec
+        let vec_new_type = opaque_ptr_type.fn_type(&[], false);
+        let vec_new_function = self.module.add_function("vec_new", vec_new_type, None);
+        self.functions.insert("vec_new".to_string(), vec_new_function);
+        
+        // External vec_push(vec: *Vec, item: i32) -> i32 (success indicator)
+        let vec_push_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let vec_push_function = self.module.add_function("vec_push", vec_push_type, None);
+        self.functions.insert("vec_push".to_string(), vec_push_function);
+        
+        // External vec_len(vec: *Vec) -> i64
+        let vec_len_type = i64_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_len_function = self.module.add_function("vec_len", vec_len_type, None);
+        self.functions.insert("vec_len".to_string(), vec_len_function);
+        
+        // External vec_get(vec: *Vec, index: i64) -> *i32 (pointer to element or null)
+        let vec_get_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), i64_type.into()], false);
+        let vec_get_function = self.module.add_function("vec_get", vec_get_type, None);
+        self.functions.insert("vec_get".to_string(), vec_get_function);
+        
+        // External vec_pop(vec: *Vec) -> *i32 (pointer to popped element or null)
+        let vec_pop_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_pop_function = self.module.add_function("vec_pop", vec_pop_type, None);
+        self.functions.insert("vec_pop".to_string(), vec_pop_function);
+        
+        // External vec_free(vec: *Vec) -> void
+        let vec_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_free_function = self.module.add_function("vec_free", vec_free_type, None);
+        self.functions.insert("vec_free".to_string(), vec_free_function);
+
         // Restore builder position
         if let Some(block) = current_block {
             self.builder.position_at_end(block);
@@ -1671,57 +1707,27 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Vec<T> Standard Library Functions
         // ========================
 
-        // Vec::new() -> *Vec (opaque pointer to Vec structure)
+        // Vec::new() -> *Vec (calls external C runtime)
         let vec_new_type = opaque_ptr_type.fn_type(&[], false);
         let vec_new_function = self.module.add_function("Vec::new", vec_new_type, None);
         self.functions.insert("Vec::new".to_string(), vec_new_function);
 
-        // Implement Vec::new - allocates memory for Vec structure
+        // Add external vec_new runtime function
+        let vec_new_runtime_type = opaque_ptr_type.fn_type(&[], false);
+        let vec_new_runtime_function = self.module.add_function("vec_new", vec_new_runtime_type, None);
+        self.functions.insert("vec_new".to_string(), vec_new_runtime_function);
+
+        // Implement Vec::new - calls runtime vec_new
         let vec_new_entry = self.context.append_basic_block(vec_new_function, "entry");
         self.builder.position_at_end(vec_new_entry);
 
-        // Allocate memory for Vec structure (simplified: 24 bytes for ptr + len + capacity)
-        let vec_size = i64_type.const_int(24, false);
-        if let Some(&malloc_fn) = self.functions.get("malloc") {
-            let vec_ptr = self.builder.build_call(
-                malloc_fn,
-                &[vec_size.into()],
-                "vec_alloc",
-            ).unwrap().try_as_basic_value().unwrap_left();
-            
-            // Initialize Vec structure (zero out memory)
-            let zero = i64_type.const_int(0, false);
-            
-            // Set data pointer to null
-            let data_ptr_addr = self.builder.build_struct_gep(
-                vec_ptr.into_pointer_value(),
-                0,
-                "data_ptr_addr",
-            ).unwrap();
-            self.builder.build_store(data_ptr_addr, zero).unwrap();
-            
-            // Set length to 0
-            let len_addr = self.builder.build_struct_gep(
-                vec_ptr.into_pointer_value(),
-                1,
-                "len_addr",
-            ).unwrap();
-            self.builder.build_store(len_addr, zero).unwrap();
-            
-            // Set capacity to 0
-            let cap_addr = self.builder.build_struct_gep(
-                vec_ptr.into_pointer_value(),
-                2,
-                "cap_addr",
-            ).unwrap();
-            self.builder.build_store(cap_addr, zero).unwrap();
-            
-            self.builder.build_return(Some(&vec_ptr)).unwrap();
-        } else {
-            // Fallback: return null pointer
-            let null_ptr = opaque_ptr_type.const_null();
-            self.builder.build_return(Some(&null_ptr)).unwrap();
-        }
+        let runtime_result = self.builder.build_call(
+            vec_new_runtime_function,
+            &[],
+            "vec_new_call",
+        ).unwrap().try_as_basic_value().unwrap_left();
+        
+        self.builder.build_return(Some(&runtime_result)).unwrap();
 
         // Vec::push(vec: *Vec, item: T) -> void
         let vec_push_type = void_type.fn_type(&[
@@ -1731,9 +1737,27 @@ impl<'ctx> CodeGenerator<'ctx> {
         let vec_push_function = self.module.add_function("Vec::push", vec_push_type, None);
         self.functions.insert("Vec::push".to_string(), vec_push_function);
 
-        // Simplified Vec::push implementation (placeholder)
+        // Add external vec_push runtime function
+        let vec_push_runtime_type = i32_type.fn_type(&[
+            opaque_ptr_type.into(),
+            i32_type.into(),
+        ], false);
+        let vec_push_runtime_function = self.module.add_function("vec_push", vec_push_runtime_type, None);
+        self.functions.insert("vec_push".to_string(), vec_push_runtime_function);
+
+        // Implement Vec::push - calls runtime vec_push
         let vec_push_entry = self.context.append_basic_block(vec_push_function, "entry");
         self.builder.position_at_end(vec_push_entry);
+        
+        let vec_param = vec_push_function.get_nth_param(0).unwrap();
+        let item_param = vec_push_function.get_nth_param(1).unwrap();
+        
+        let _runtime_result = self.builder.build_call(
+            vec_push_runtime_function,
+            &[vec_param.into(), item_param.into()],
+            "vec_push_call",
+        ).unwrap();
+        
         self.builder.build_return(None).unwrap();
 
         // Vec::len(vec: *Vec) -> i32
@@ -1741,26 +1765,277 @@ impl<'ctx> CodeGenerator<'ctx> {
         let vec_len_function = self.module.add_function("Vec::len", vec_len_type, None);
         self.functions.insert("Vec::len".to_string(), vec_len_function);
 
-        // Implement Vec::len - return the length field
+        // Add external vec_len runtime function
+        let vec_len_runtime_type = i64_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_len_runtime_function = self.module.add_function("vec_len", vec_len_runtime_type, None);
+        self.functions.insert("vec_len".to_string(), vec_len_runtime_function);
+
+        // Implement Vec::len - calls runtime vec_len
         let vec_len_entry = self.context.append_basic_block(vec_len_function, "entry");
         self.builder.position_at_end(vec_len_entry);
         
-        let vec_param = vec_len_function.get_nth_param(0).unwrap().into_pointer_value();
-        let len_addr = self.builder.build_struct_gep(
-            vec_param,
-            1,
-            "len_addr",
-        ).unwrap();
-        let len_val = self.builder.build_load(len_addr, "len").unwrap();
+        let vec_param = vec_len_function.get_nth_param(0).unwrap();
+        
+        let len_result = self.builder.build_call(
+            vec_len_runtime_function,
+            &[vec_param.into()],
+            "vec_len_call",
+        ).unwrap().try_as_basic_value().unwrap_left();
         
         // Convert i64 to i32
         let len_i32 = self.builder.build_int_truncate(
-            len_val.into_int_value(),
+            len_result.into_int_value(),
             i32_type,
             "len_i32",
         ).unwrap();
         
         self.builder.build_return(Some(&len_i32)).unwrap();
+
+        // Vec::get(vec: *Vec, index: i32) -> i32 (returns value or 0 if out of bounds)
+        let vec_get_type = i32_type.fn_type(&[
+            opaque_ptr_type.into(),
+            i32_type.into(),
+        ], false);
+        let vec_get_function = self.module.add_function("Vec::get", vec_get_type, None);
+        self.functions.insert("Vec::get".to_string(), vec_get_function);
+
+        // Add external vec_get runtime function (returns pointer)
+        let vec_get_runtime_type = opaque_ptr_type.fn_type(&[
+            opaque_ptr_type.into(),
+            i64_type.into(),
+        ], false);
+        let vec_get_runtime_function = self.module.add_function("vec_get", vec_get_runtime_type, None);
+        self.functions.insert("vec_get".to_string(), vec_get_runtime_function);
+
+        // Implement Vec::get
+        let vec_get_entry = self.context.append_basic_block(vec_get_function, "entry");
+        self.builder.position_at_end(vec_get_entry);
+        
+        let vec_param = vec_get_function.get_nth_param(0).unwrap();
+        let index_param = vec_get_function.get_nth_param(1).unwrap();
+        
+        // Convert index to i64
+        let index_i64 = self.builder.build_int_z_extend(
+            index_param.into_int_value(),
+            i64_type,
+            "index_i64",
+        ).unwrap();
+        
+        let ptr_result = self.builder.build_call(
+            vec_get_runtime_function,
+            &[vec_param.into(), index_i64.into()],
+            "vec_get_call",
+        ).unwrap().try_as_basic_value().unwrap_left();
+        
+        // Check if pointer is null
+        let null_ptr = opaque_ptr_type.const_null();
+        let is_null = self.builder.build_int_compare(
+            IntPredicate::EQ,
+            ptr_result.into_pointer_value(),
+            null_ptr,
+            "is_null",
+        ).unwrap();
+        
+        // Return 0 if null, otherwise dereference and return value
+        let then_block = self.context.append_basic_block(vec_get_function, "then");
+        let else_block = self.context.append_basic_block(vec_get_function, "else");
+        let merge_block = self.context.append_basic_block(vec_get_function, "merge");
+        
+        self.builder.build_conditional_branch(is_null, then_block, else_block).unwrap();
+        
+        // Then block (null pointer)
+        self.builder.position_at_end(then_block);
+        let zero = i32_type.const_int(0, false);
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        
+        // Else block (valid pointer)
+        self.builder.position_at_end(else_block);
+        let value = self.builder.build_load(ptr_result.into_pointer_value(), "value").unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        
+        // Merge block
+        self.builder.position_at_end(merge_block);
+        let phi = self.builder.build_phi(i32_type, "result").unwrap();
+        phi.add_incoming(&[(&zero, then_block), (&value, else_block)]);
+        
+        self.builder.build_return(Some(&phi.as_basic_value())).unwrap();
+
+        // Vec::pop(vec: *Vec) -> i32 (returns popped value or 0 if empty)
+        let vec_pop_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_pop_function = self.module.add_function("Vec::pop", vec_pop_type, None);
+        self.functions.insert("Vec::pop".to_string(), vec_pop_function);
+
+        // Add external vec_pop runtime function
+        let vec_pop_runtime_type = i32_type.fn_type(&[
+            opaque_ptr_type.into(),
+            opaque_ptr_type.into(), // out_item pointer
+        ], false);
+        let vec_pop_runtime_function = self.module.add_function("vec_pop", vec_pop_runtime_type, None);
+        self.functions.insert("vec_pop".to_string(), vec_pop_runtime_function);
+
+        // Implement Vec::pop
+        let vec_pop_entry = self.context.append_basic_block(vec_pop_function, "entry");
+        self.builder.position_at_end(vec_pop_entry);
+        
+        let vec_param = vec_pop_function.get_nth_param(0).unwrap();
+        
+        // Allocate space for out_item
+        let out_item = self.builder.build_alloca(i32_type, "out_item").unwrap();
+        
+        let pop_result = self.builder.build_call(
+            vec_pop_runtime_function,
+            &[vec_param.into(), out_item.into()],
+            "vec_pop_call",
+        ).unwrap().try_as_basic_value().unwrap_left();
+        
+        // Check if pop succeeded (returns 1 for success, 0 for failure)
+        let one = i32_type.const_int(1, false);
+        let pop_succeeded = self.builder.build_int_compare(
+            IntPredicate::EQ,
+            pop_result.into_int_value(),
+            one,
+            "pop_succeeded",
+        ).unwrap();
+        
+        let success_block = self.context.append_basic_block(vec_pop_function, "success");
+        let fail_block = self.context.append_basic_block(vec_pop_function, "fail");
+        let pop_merge_block = self.context.append_basic_block(vec_pop_function, "pop_merge");
+        
+        self.builder.build_conditional_branch(pop_succeeded, success_block, fail_block).unwrap();
+        
+        // Success block
+        self.builder.position_at_end(success_block);
+        let popped_value = self.builder.build_load(out_item, "popped_value").unwrap();
+        self.builder.build_unconditional_branch(pop_merge_block).unwrap();
+        
+        // Fail block
+        self.builder.position_at_end(fail_block);
+        let zero_pop = i32_type.const_int(0, false);
+        self.builder.build_unconditional_branch(pop_merge_block).unwrap();
+        
+        // Merge block
+        self.builder.position_at_end(pop_merge_block);
+        let pop_phi = self.builder.build_phi(i32_type, "pop_result").unwrap();
+        pop_phi.add_incoming(&[(&popped_value, success_block), (&zero_pop, fail_block)]);
+        
+        self.builder.build_return(Some(&pop_phi.as_basic_value())).unwrap();
+
+        // Vec::is_empty(vec: *Vec) -> bool
+        let vec_is_empty_type = bool_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_is_empty_function = self.module.add_function("Vec::is_empty", vec_is_empty_type, None);
+        self.functions.insert("Vec::is_empty".to_string(), vec_is_empty_function);
+
+        // Add external vec_is_empty runtime function
+        let vec_is_empty_runtime_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_is_empty_runtime_function = self.module.add_function("vec_is_empty", vec_is_empty_runtime_type, None);
+        self.functions.insert("vec_is_empty".to_string(), vec_is_empty_runtime_function);
+
+        // Implement Vec::is_empty
+        let vec_is_empty_entry = self.context.append_basic_block(vec_is_empty_function, "entry");
+        self.builder.position_at_end(vec_is_empty_entry);
+        
+        let vec_param = vec_is_empty_function.get_nth_param(0).unwrap();
+        
+        let empty_result = self.builder.build_call(
+            vec_is_empty_runtime_function,
+            &[vec_param.into()],
+            "vec_is_empty_call",
+        ).unwrap().try_as_basic_value().unwrap_left();
+        
+        // Convert i32 to bool
+        let bool_result = self.builder.build_int_truncate(
+            empty_result.into_int_value(),
+            bool_type,
+            "bool_result",
+        ).unwrap();
+        
+        self.builder.build_return(Some(&bool_result)).unwrap();
+
+        // Vec::capacity(vec: *Vec) -> i32
+        let vec_capacity_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_capacity_function = self.module.add_function("Vec::capacity", vec_capacity_type, None);
+        self.functions.insert("Vec::capacity".to_string(), vec_capacity_function);
+
+        // Add external vec_capacity runtime function
+        let vec_capacity_runtime_type = i64_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_capacity_runtime_function = self.module.add_function("vec_capacity", vec_capacity_runtime_type, None);
+        self.functions.insert("vec_capacity".to_string(), vec_capacity_runtime_function);
+
+        // Implement Vec::capacity
+        let vec_capacity_entry = self.context.append_basic_block(vec_capacity_function, "entry");
+        self.builder.position_at_end(vec_capacity_entry);
+        
+        let vec_param = vec_capacity_function.get_nth_param(0).unwrap();
+        
+        let capacity_result = self.builder.build_call(
+            vec_capacity_runtime_function,
+            &[vec_param.into()],
+            "vec_capacity_call",
+        ).unwrap().try_as_basic_value().unwrap_left();
+        
+        // Convert i64 to i32
+        let capacity_i32 = self.builder.build_int_truncate(
+            capacity_result.into_int_value(),
+            i32_type,
+            "capacity_i32",
+        ).unwrap();
+        
+        self.builder.build_return(Some(&capacity_i32)).unwrap();
+
+        // Vec::clear(vec: *Vec) -> void
+        let vec_clear_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_clear_function = self.module.add_function("Vec::clear", vec_clear_type, None);
+        self.functions.insert("Vec::clear".to_string(), vec_clear_function);
+
+        // Add external vec_clear runtime function
+        let vec_clear_runtime_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_clear_runtime_function = self.module.add_function("vec_clear", vec_clear_runtime_type, None);
+        self.functions.insert("vec_clear".to_string(), vec_clear_runtime_function);
+
+        // Implement Vec::clear
+        let vec_clear_entry = self.context.append_basic_block(vec_clear_function, "entry");
+        self.builder.position_at_end(vec_clear_entry);
+        
+        let vec_param = vec_clear_function.get_nth_param(0).unwrap();
+        
+        let _clear_result = self.builder.build_call(
+            vec_clear_runtime_function,
+            &[vec_param.into()],
+            "vec_clear_call",
+        ).unwrap();
+        
+        self.builder.build_return(None).unwrap();
+
+        // Vec::with_capacity(capacity: i32) -> *Vec
+        let vec_with_capacity_type = opaque_ptr_type.fn_type(&[i32_type.into()], false);
+        let vec_with_capacity_function = self.module.add_function("Vec::with_capacity", vec_with_capacity_type, None);
+        self.functions.insert("Vec::with_capacity".to_string(), vec_with_capacity_function);
+
+        // Add external vec_with_capacity runtime function
+        let vec_with_capacity_runtime_type = opaque_ptr_type.fn_type(&[i64_type.into()], false);
+        let vec_with_capacity_runtime_function = self.module.add_function("vec_with_capacity", vec_with_capacity_runtime_type, None);
+        self.functions.insert("vec_with_capacity".to_string(), vec_with_capacity_runtime_function);
+
+        // Implement Vec::with_capacity
+        let vec_with_capacity_entry = self.context.append_basic_block(vec_with_capacity_function, "entry");
+        self.builder.position_at_end(vec_with_capacity_entry);
+        
+        let capacity_param = vec_with_capacity_function.get_nth_param(0).unwrap();
+        
+        // Convert capacity to i64
+        let capacity_i64 = self.builder.build_int_z_extend(
+            capacity_param.into_int_value(),
+            i64_type,
+            "capacity_i64",
+        ).unwrap();
+        
+        let vec_result = self.builder.build_call(
+            vec_with_capacity_runtime_function,
+            &[capacity_i64.into()],
+            "vec_with_capacity_call",
+        ).unwrap().try_as_basic_value().unwrap_left();
+        
+        self.builder.build_return(Some(&vec_result)).unwrap();
 
         // ========================
         // HashMap<K, V> Standard Library Functions
@@ -5945,11 +6220,130 @@ impl<'ctx> CodeGenerator<'ctx> {
                         )),
                     }
                 } else {
-                    // If we have mixed types or other types, we'll return an error for now
-                    Err(CompileError::codegen_error(
-                        "Mixed types in binary operation not yet supported".to_string(),
-                        None,
-                    ))
+                    // Handle mixed integer types with coercion
+                    if let (BasicValueEnum::IntValue(left_int), BasicValueEnum::IntValue(right_int)) = 
+                        (left_value, right_value) {
+                        // Get the types and promote to larger type if needed
+                        let left_type = left_int.get_type();
+                        let right_type = right_int.get_type();
+                        
+                        let (coerced_left, coerced_right) = if left_type.get_bit_width() != right_type.get_bit_width() {
+                            // Promote to the larger type
+                            if left_type.get_bit_width() > right_type.get_bit_width() {
+                                // Promote right to left's type
+                                let coerced_right = if left_type.get_bit_width() == 64 && right_type.get_bit_width() == 32 {
+                                    self.builder.build_int_z_extend(right_int, left_type, "promote_right")
+                                        .map_err(|e| CompileError::codegen_error(
+                                            format!("Failed to promote integer: {:?}", e), None))?
+                                } else {
+                                    self.builder.build_int_truncate(right_int, left_type, "truncate_right")
+                                        .map_err(|e| CompileError::codegen_error(
+                                            format!("Failed to truncate integer: {:?}", e), None))?
+                                };
+                                (left_int, coerced_right)
+                            } else {
+                                // Promote left to right's type
+                                let coerced_left = if right_type.get_bit_width() == 64 && left_type.get_bit_width() == 32 {
+                                    self.builder.build_int_z_extend(left_int, right_type, "promote_left")
+                                        .map_err(|e| CompileError::codegen_error(
+                                            format!("Failed to promote integer: {:?}", e), None))?
+                                } else {
+                                    self.builder.build_int_truncate(left_int, right_type, "truncate_left")
+                                        .map_err(|e| CompileError::codegen_error(
+                                            format!("Failed to truncate integer: {:?}", e), None))?
+                                };
+                                (coerced_left, right_int)
+                            }
+                        } else {
+                            (left_int, right_int)
+                        };
+                        
+                        // Now perform the operation with coerced types
+                        match op {
+                            BinaryOp::Equal => {
+                                let result = self.builder.build_int_compare(
+                                    IntPredicate::EQ, coerced_left, coerced_right, "cmp_eq")
+                                    .map_err(|e| CompileError::codegen_error(
+                                        format!("Failed to build comparison: {:?}", e), None))?;
+                                Ok(result.into())
+                            }
+                            BinaryOp::NotEqual => {
+                                let result = self.builder.build_int_compare(
+                                    IntPredicate::NE, coerced_left, coerced_right, "cmp_ne")
+                                    .map_err(|e| CompileError::codegen_error(
+                                        format!("Failed to build comparison: {:?}", e), None))?;
+                                Ok(result.into())
+                            }
+                            BinaryOp::Less => {
+                                let result = self.builder.build_int_compare(
+                                    IntPredicate::SLT, coerced_left, coerced_right, "cmp_lt")
+                                    .map_err(|e| CompileError::codegen_error(
+                                        format!("Failed to build comparison: {:?}", e), None))?;
+                                Ok(result.into())
+                            }
+                            BinaryOp::LessEqual => {
+                                let result = self.builder.build_int_compare(
+                                    IntPredicate::SLE, coerced_left, coerced_right, "cmp_le")
+                                    .map_err(|e| CompileError::codegen_error(
+                                        format!("Failed to build comparison: {:?}", e), None))?;
+                                Ok(result.into())
+                            }
+                            BinaryOp::Greater => {
+                                let result = self.builder.build_int_compare(
+                                    IntPredicate::SGT, coerced_left, coerced_right, "cmp_gt")
+                                    .map_err(|e| CompileError::codegen_error(
+                                        format!("Failed to build comparison: {:?}", e), None))?;
+                                Ok(result.into())
+                            }
+                            BinaryOp::GreaterEqual => {
+                                let result = self.builder.build_int_compare(
+                                    IntPredicate::SGE, coerced_left, coerced_right, "cmp_ge")
+                                    .map_err(|e| CompileError::codegen_error(
+                                        format!("Failed to build comparison: {:?}", e), None))?;
+                                Ok(result.into())
+                            }
+                            BinaryOp::Add => {
+                                let result = self.builder.build_int_add(coerced_left, coerced_right, "add")
+                                    .map_err(|e| CompileError::codegen_error(
+                                        format!("Failed to build add: {:?}", e), None))?;
+                                Ok(result.into())
+                            }
+                            BinaryOp::Subtract => {
+                                let result = self.builder.build_int_sub(coerced_left, coerced_right, "sub")
+                                    .map_err(|e| CompileError::codegen_error(
+                                        format!("Failed to build sub: {:?}", e), None))?;
+                                Ok(result.into())
+                            }
+                            BinaryOp::Multiply => {
+                                let result = self.builder.build_int_mul(coerced_left, coerced_right, "mul")
+                                    .map_err(|e| CompileError::codegen_error(
+                                        format!("Failed to build mul: {:?}", e), None))?;
+                                Ok(result.into())
+                            }
+                            BinaryOp::Divide => {
+                                let result = self.builder.build_int_signed_div(coerced_left, coerced_right, "div")
+                                    .map_err(|e| CompileError::codegen_error(
+                                        format!("Failed to build div: {:?}", e), None))?;
+                                Ok(result.into())
+                            }
+                            BinaryOp::Modulo => {
+                                let result = self.builder.build_int_signed_rem(coerced_left, coerced_right, "rem")
+                                    .map_err(|e| CompileError::codegen_error(
+                                        format!("Failed to build rem: {:?}", e), None))?;
+                                Ok(result.into())
+                            }
+                            _ => Err(CompileError::codegen_error(
+                                format!("Binary operation {:?} not yet implemented for mixed integers", op),
+                                None,
+                            ))
+                        }
+                    } else {
+                        // Truly mixed types (e.g., int and float)
+                        Err(CompileError::codegen_error(
+                            "Mixed types in binary operation not yet supported".to_string(),
+                            None,
+                        ))
+                    }
                 }
             }
         }
@@ -6021,13 +6415,143 @@ impl<'ctx> CodeGenerator<'ctx> {
             Expr::Variable(func_name) => func_name.clone(),
             
             // Module-scoped function call: Vec::new(), HashMap::new()
-            Expr::FieldAccess(module_expr, method_name) => {
-                if let Expr::Variable(module_name) = &**module_expr {
-                    // Construct the full function name: "Vec::new", "HashMap::new", etc.
-                    format!("{}::{}", module_name, method_name)
+            // OR method call on instance: vec.push(), vec.len()
+            Expr::FieldAccess(base_expr, method_name) => {
+                if let Expr::Variable(module_name) = &**base_expr {
+                    // Check if this is a static method call (Vec::new) or instance method call (vec.push)
+                    // Static calls have uppercase first letter, instance calls have lowercase
+                    if module_name.chars().next().unwrap().is_uppercase() {
+                        // Static method call: Vec::new(), HashMap::new()
+                        // Map to runtime function names
+                        match (module_name.as_str(), method_name.as_str()) {
+                            ("Vec", "new") => "vec_new".to_string(),
+                            ("HashMap", "new") => "hashmap_new".to_string(),
+                            _ => format!("{}::{}", module_name, method_name)
+                        }
+                    } else {
+                        // Instance method call: vec.push(), vec.len()
+                        // Generate the object value and pass it as first argument
+                        let object_value = self.generate_expression(base_expr)?;
+                        
+                        // Get the method function
+                        // Map Vec method names to runtime function names
+                        let method_func_name = match method_name.as_str() {
+                            "push" => "vec_push".to_string(),
+                            "len" => "vec_len".to_string(),
+                            "get" => "vec_get".to_string(),
+                            "pop" => "vec_pop".to_string(),
+                            "capacity" => "vec_capacity".to_string(),
+                            "is_empty" => "vec_is_empty".to_string(),
+                            "clear" => "vec_clear".to_string(),
+                            _ => format!("Vec::{}", method_name)
+                        };
+                        if let Some(&function) = self.functions.get(&method_func_name) {
+                            // Generate arguments, with object as first argument
+                            let mut arg_values = vec![object_value.into()];
+                            for arg in args {
+                                let arg_value = self.generate_expression(arg)?;
+                                arg_values.push(arg_value.into());
+                            }
+
+                            // Build the method call
+                            let call = self
+                                .builder
+                                .build_call(function, &arg_values, "method_call")
+                                .map_err(|e| {
+                                    CompileError::codegen_error(
+                                        format!("Failed to build method call: {:?}", e),
+                                        None,
+                                    )
+                                })?;
+
+                            // Handle special return value processing for Vec methods
+                            if let Some(return_value) = call.try_as_basic_value().left() {
+                                match method_name.as_str() {
+                                    "len" => {
+                                        // vec_len returns i64, convert to i32
+                                        if let BasicValueEnum::IntValue(len_i64) = return_value {
+                                            let len_i32 = self.builder.build_int_truncate(
+                                                len_i64,
+                                                self.context.i32_type(),
+                                                "len_i32"
+                                            ).map_err(|e| CompileError::codegen_error(
+                                                format!("Failed to convert len to i32: {:?}", e), None))?;
+                                            return Ok(len_i32.into());
+                                        }
+                                        return Ok(return_value);
+                                    }
+                                    "get" => {
+                                        // vec_get returns pointer, dereference to get value
+                                        if let BasicValueEnum::PointerValue(ptr) = return_value {
+                                            // Check if pointer is null first
+                                            let null_ptr = self.context.i8_type().ptr_type(AddressSpace::default()).const_null();
+                                            let is_null = self.builder.build_int_compare(
+                                                IntPredicate::EQ,
+                                                ptr,
+                                                null_ptr,
+                                                "is_null"
+                                            ).map_err(|e| CompileError::codegen_error(
+                                                format!("Failed to check null pointer: {:?}", e), None))?;
+                                            
+                                            // Create conditional to return 0 if null, otherwise dereference
+                                            let current_function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                                            let then_block = self.context.append_basic_block(current_function, "null_case");
+                                            let else_block = self.context.append_basic_block(current_function, "valid_case");
+                                            let merge_block = self.context.append_basic_block(current_function, "merge");
+                                            
+                                            self.builder.build_conditional_branch(is_null, then_block, else_block)
+                                                .map_err(|e| CompileError::codegen_error(
+                                                    format!("Failed to build conditional: {:?}", e), None))?;
+                                            
+                                            // Null case: return 0
+                                            self.builder.position_at_end(then_block);
+                                            let zero = self.context.i32_type().const_int(0, false);
+                                            self.builder.build_unconditional_branch(merge_block)
+                                                .map_err(|e| CompileError::codegen_error(
+                                                    format!("Failed to build branch: {:?}", e), None))?;
+                                            
+                                            // Valid case: dereference pointer
+                                            self.builder.position_at_end(else_block);
+                                            let value = self.builder.build_load(ptr, "deref_value")
+                                                .map_err(|e| CompileError::codegen_error(
+                                                    format!("Failed to dereference pointer: {:?}", e), None))?;
+                                            self.builder.build_unconditional_branch(merge_block)
+                                                .map_err(|e| CompileError::codegen_error(
+                                                    format!("Failed to build branch: {:?}", e), None))?;
+                                            
+                                            // Merge block: PHI node to select result
+                                            self.builder.position_at_end(merge_block);
+                                            let phi = self.builder.build_phi(self.context.i32_type(), "get_result")
+                                                .map_err(|e| CompileError::codegen_error(
+                                                    format!("Failed to build phi: {:?}", e), None))?;
+                                            phi.add_incoming(&[(&zero, then_block), (&value, else_block)]);
+                                            
+                                            return Ok(phi.as_basic_value());
+                                        }
+                                        return Ok(return_value);
+                                    }
+                                    "push" => {
+                                        // vec_push returns i32 success indicator, which is fine
+                                        return Ok(return_value);
+                                    }
+                                    _ => {
+                                        return Ok(return_value);
+                                    }
+                                }
+                            } else {
+                                let dummy_value = self.context.i32_type().const_int(0, false);
+                                return Ok(dummy_value.into());
+                            }
+                        } else {
+                            return Err(CompileError::codegen_error(
+                                format!("Method '{}' not found on Vec", method_name),
+                                None,
+                            ));
+                        }
+                    }
                 } else {
                     return Err(CompileError::codegen_error(
-                        "Complex module expressions not supported".to_string(),
+                        "Complex expressions not supported in method calls".to_string(),
                         None,
                     ));
                 }

@@ -94,6 +94,10 @@ harness = false
 name = "simple_cross_language"
 harness = false
 
+[build-dependencies]
+# Build dependencies for compiling C runtime
+cc = "1.0"
+
 [features]
 # Enable LLVM by default for development and testing
 default = ["llvm"]

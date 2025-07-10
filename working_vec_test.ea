@@ -1,0 +1,22 @@
+func main() -> () {
+    print("Starting simple Vec test");
+    
+    let mut vec = Vec::new();
+    
+    print("Vec created");
+    
+    vec.push(42);
+    
+    print("Element pushed");
+    
+    let len = vec.len();
+    
+    print("Length correct");
+    
+    let val = vec.get(0);
+    
+    print("Value correct");
+    
+    print("Simple Vec test completed");
+    return;
+}

@@ -1127,51 +1127,202 @@ impl TypeChecker {
     }
 
     fn check_function_call(&mut self, callee: &Box<Expr>, args: &[Expr]) -> Result<EaType> {
-        if let Expr::Variable(func_name) = &**callee {
-            // Clone the function type to avoid borrowing issues
-            if let Some(func_type) = self.context.get_function_type(func_name).cloned() {
-                if args.len() != func_type.params.len() {
+        match &**callee {
+            // Direct function call: func_name(args)
+            Expr::Variable(func_name) => {
+                self.check_direct_function_call(func_name, args)
+            }
+            // Method call: object.method(args) or Type::method(args)
+            Expr::FieldAccess(base, method_name) => {
+                self.check_method_call(base, method_name, args)
+            }
+            _ => {
+                Err(CompileError::type_error(
+                    "Only direct function calls and method calls are supported".to_string(),
+                    Position::new(0, 0, 0),
+                ))
+            }
+        }
+    }
+
+    fn check_direct_function_call(&mut self, func_name: &str, args: &[Expr]) -> Result<EaType> {
+        // Clone the function type to avoid borrowing issues
+        if let Some(func_type) = self.context.get_function_type(func_name).cloned() {
+            if args.len() != func_type.params.len() {
+                return Err(CompileError::type_error(
+                    format!(
+                        "Function '{}' expects {} arguments, got {}",
+                        func_name,
+                        func_type.params.len(),
+                        args.len()
+                    ),
+                    Position::new(0, 0, 0),
+                ));
+            }
+
+            for (i, (arg, expected_type)) in
+                args.iter().zip(func_type.params.iter()).enumerate()
+            {
+                let arg_type = self.check_expression(arg)?;
+                if !self.types_compatible(expected_type, &arg_type) {
                     return Err(CompileError::type_error(
                         format!(
-                            "Function '{}' expects {} arguments, got {}",
+                            "Argument {} of function '{}': expected {:?}, got {:?}",
+                            i + 1,
                             func_name,
-                            func_type.params.len(),
-                            args.len()
+                            expected_type,
+                            arg_type
                         ),
                         Position::new(0, 0, 0),
                     ));
                 }
+            }
 
-                for (i, (arg, expected_type)) in
-                    args.iter().zip(func_type.params.iter()).enumerate()
-                {
-                    let arg_type = self.check_expression(arg)?;
-                    if !self.types_compatible(expected_type, &arg_type) {
-                        return Err(CompileError::type_error(
-                            format!(
-                                "Argument {} of function '{}': expected {:?}, got {:?}",
-                                i + 1,
-                                func_name,
-                                expected_type,
-                                arg_type
-                            ),
-                            Position::new(0, 0, 0),
-                        ));
-                    }
+            Ok(*func_type.return_type.clone())
+        } else {
+            Err(CompileError::type_error(
+                format!("Function '{}' not found", func_name),
+                Position::new(0, 0, 0),
+            ))
+        }
+    }
+
+    fn check_method_call(&mut self, base: &Box<Expr>, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match &**base {
+            // Static method call: Vec::new(), HashMap::new(), etc.
+            Expr::Variable(type_name) if type_name == "Vec" => {
+                self.check_vec_static_method(method_name, args)
+            }
+            // Instance method call: vec.push(), vec.len(), etc.
+            _ => {
+                let base_type = self.check_expression(base)?;
+                self.check_instance_method(&base_type, method_name, args)
+            }
+        }
+    }
+
+    fn check_vec_static_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "new" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "Vec::new() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
                 }
-
-                Ok(*func_type.return_type.clone())
-            } else {
+                // Return Vec<i32> type for now (we can extend this for generics later)
+                Ok(EaType::Custom("Vec".to_string()))
+            }
+            _ => {
                 Err(CompileError::type_error(
-                    format!("Function '{}' not found", func_name),
+                    format!("Unknown static method 'Vec::{}'", method_name),
                     Position::new(0, 0, 0),
                 ))
             }
-        } else {
-            Err(CompileError::type_error(
-                "Only direct function calls by name are supported".to_string(),
-                Position::new(0, 0, 0),
-            ))
+        }
+    }
+
+    fn check_instance_method(&mut self, base_type: &EaType, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match base_type {
+            EaType::Custom(type_name) if type_name == "Vec" => {
+                self.check_vec_instance_method(method_name, args)
+            }
+            _ => {
+                Err(CompileError::type_error(
+                    format!("Type {:?} has no method '{}'", base_type, method_name),
+                    Position::new(0, 0, 0),
+                ))
+            }
+        }
+    }
+
+    fn check_vec_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "push" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "Vec::push() takes exactly 1 argument".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Check that the argument type is compatible with Vec element type
+                let arg_type = self.check_expression(&args[0])?;
+                // For now, assume Vec<i32>
+                if !self.types_compatible(&EaType::I32, &arg_type) {
+                    return Err(CompileError::type_error(
+                        format!("Vec::push() expects i32, got {:?}", arg_type),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit) // push returns void
+            }
+            "len" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "Vec::len() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32) // len returns i32
+            }
+            "get" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "Vec::get() takes exactly 1 argument".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let arg_type = self.check_expression(&args[0])?;
+                if !self.types_compatible(&EaType::I32, &arg_type) {
+                    return Err(CompileError::type_error(
+                        format!("Vec::get() expects i32 index, got {:?}", arg_type),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32) // get returns i32 (Vec element type)
+            }
+            "pop" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "Vec::pop() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32) // pop returns i32 (Vec element type)
+            }
+            "capacity" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "Vec::capacity() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32) // capacity returns i32
+            }
+            "is_empty" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "Vec::is_empty() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Bool) // is_empty returns bool
+            }
+            "clear" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "Vec::clear() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit) // clear returns void
+            }
+            _ => {
+                Err(CompileError::type_error(
+                    format!("Unknown Vec method '{}'", method_name),
+                    Position::new(0, 0, 0),
+                ))
+            }
         }
     }
 

@@ -82,27 +82,66 @@ pub const NAME: &str = "Eä Compiler";
 
 /// Tokenize a source string into a vector of tokens
 pub fn tokenize(source: &str) -> Result<Vec<Token>> {
+    eprintln!("🔍 Starting tokenize...");
+    
+    eprintln!("🏗️ Creating lexer...");
     let mut lexer = Lexer::new(source);
-    lexer.tokenize_all()
+    eprintln!("✅ Lexer created");
+    
+    eprintln!("🏗️ Calling tokenize_all...");
+    let result = lexer.tokenize_all();
+    eprintln!("✅ tokenize_all completed");
+    
+    result
 }
 
 /// Parse a source string into an AST
 pub fn parse(source: &str) -> Result<Vec<ast::Stmt>> {
+    eprintln!("🌳 Starting parse...");
+    
+    eprintln!("🔍 Calling tokenize...");
     let tokens = tokenize(source)?;
+    eprintln!("✅ Tokenize completed, got {} tokens", tokens.len());
+    
+    eprintln!("🏗️ Creating parser...");
     let mut parser = parser::Parser::new(tokens);
-    parser.parse_program()
+    eprintln!("✅ Parser created");
+    
+    eprintln!("🏗️ Calling parse_program...");
+    let result = parser.parse_program();
+    eprintln!("✅ parse_program completed");
+    
+    result
 }
 
 /// Type check a parsed AST
 pub fn type_check(program: &[ast::Stmt]) -> Result<TypeContext> {
+    eprintln!("🎯 Starting type_check...");
+    
+    eprintln!("🏗️ Creating type checker...");
     let mut type_checker = TypeChecker::new();
-    type_checker.check_program(program)
+    eprintln!("✅ Type checker created");
+    
+    eprintln!("🏗️ Calling check_program...");
+    let result = type_checker.check_program(program);
+    eprintln!("✅ check_program completed");
+    
+    result
 }
 
 /// Complete compilation pipeline: source -> tokens -> AST -> type checking
 pub fn compile_to_ast(source: &str) -> Result<(Vec<ast::Stmt>, TypeContext)> {
+    eprintln!("🎯 Starting compile_to_ast...");
+    
+    eprintln!("🌳 Calling parse...");
     let program = parse(source)?;
+    eprintln!("✅ Parse completed, got {} statements", program.len());
+    
+    eprintln!("🎯 Calling type_check...");
     let type_context = type_check(&program)?;
+    eprintln!("✅ Type check completed");
+    
+    eprintln!("✅ compile_to_ast completed successfully");
     Ok((program, type_context))
 }
 
@@ -116,20 +155,40 @@ pub fn compile_to_ast_streaming(source: &str) -> Result<(TypeContext, streaming_
 pub fn compile_to_llvm(source: &str, module_name: &str) -> Result<()> {
     use inkwell::context::Context;
 
+    eprintln!("🔧 Starting LLVM compilation for module: {}", module_name);
+
+    eprintln!("🎯 Calling compile_to_ast...");
     let (program, _type_context) = compile_to_ast(source)?;
+    eprintln!("✅ compile_to_ast completed successfully");
 
+    eprintln!("🏗️ Creating LLVM context...");
     let context = Context::create();
-    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
-    codegen.compile_program(&program)?;
+    eprintln!("✅ LLVM context created");
 
+    eprintln!("🏗️ Creating CodeGenerator...");
+    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
+    eprintln!("✅ CodeGenerator created");
+
+    eprintln!("🏗️ Compiling program to LLVM IR...");
+    codegen.compile_program(&program)?;
+    eprintln!("✅ Program compiled to LLVM IR");
+
+    eprintln!("🔧 Creating LLVM optimizer...");
     // Apply LLVM optimization
     let mut optimizer = llvm_optimization::LLVMOptimizer::new();
-    optimizer.optimize_module(codegen.get_module())?;
+    eprintln!("✅ LLVM optimizer created");
 
+    eprintln!("🔧 Optimizing LLVM module...");
+    optimizer.optimize_module(codegen.get_module())?;
+    eprintln!("✅ LLVM module optimized");
+
+    eprintln!("📝 Writing LLVM IR to file...");
     // Write optimized LLVM IR to file for inspection
     let ir_filename = format!("{}.ll", module_name);
     codegen.write_ir_to_file(&ir_filename)?;
+    eprintln!("✅ LLVM IR written to {}", ir_filename);
 
+    eprintln!("🎉 LLVM compilation completed successfully");
     Ok(())
 }
 
