@@ -928,9 +928,42 @@ impl Parser {
         if !self.is_at_end() && matches!(self.peek().kind, TokenKind::Identifier(_)) {
             let token = self.advance().clone();
             if let TokenKind::Identifier(name) = token.kind {
-                // Check if this is an enum literal (Name::Variant)
+                // Check if this is a module-scoped call or enum literal (Name::Something)
                 if !self.is_at_end() && matches!(self.peek().kind, TokenKind::DoubleColon) {
-                    return self.parse_enum_literal(name);
+                    self.advance(); // consume '::'
+                    let second_name = self.consume_identifier("Expected identifier after '::'".to_string())?;
+                    
+                    // Check if this is a function call (Vec::new() or HashMap::new())
+                    if self.check(&TokenKind::LeftParen) {
+                        // This is a module-scoped function call like Vec::new()
+                        let module_expr = Expr::Variable(name);
+                        let field_access = Expr::FieldAccess(Box::new(module_expr), second_name);
+                        self.advance(); // consume '('
+                        return self.finish_call(field_access);
+                    } else {
+                        // This is an enum literal (EnumName::Variant) - parse it without backtracking
+                        let mut args = Vec::new();
+                        if self.check(&TokenKind::LeftParen) {
+                            self.advance(); // consume '('
+                            if !self.check(&TokenKind::RightParen) {
+                                loop {
+                                    args.push(self.expression()?);
+                                    if !self.match_tokens(&[TokenKind::Comma]) {
+                                        break;
+                                    }
+                                }
+                            }
+                            self.consume(
+                                TokenKind::RightParen,
+                                "Expected ')' after enum variant arguments".to_string(),
+                            )?;
+                        }
+                        return Ok(Expr::EnumLiteral {
+                            enum_name: name,
+                            variant: second_name,
+                            args,
+                        });
+                    }
                 }
 
                 // Check if this is a function call
@@ -1247,6 +1280,12 @@ impl Parser {
             TokenKind::F64,
             TokenKind::Bool,
             TokenKind::String,
+            // Standard library types
+            TokenKind::VecType,
+            TokenKind::HashMapType,
+            TokenKind::HashSetType,
+            TokenKind::StringType,
+            TokenKind::FileType,
         ]) {
             let token = self.previous();
             let type_name = match &token.kind {
@@ -1262,6 +1301,12 @@ impl Parser {
                 TokenKind::F64 => "f64",
                 TokenKind::Bool => "bool",
                 TokenKind::String => "string",
+                // Standard library types
+                TokenKind::VecType => "Vec",
+                TokenKind::HashMapType => "HashMap",
+                TokenKind::HashSetType => "HashSet",
+                TokenKind::StringType => "String",
+                TokenKind::FileType => "File",
                 _ => unreachable!(),
             };
             return Ok(type_name.to_string());

@@ -1544,6 +1544,16 @@ impl TypeChecker {
             "bool" => Ok(EaType::Bool),
             "string" => Ok(EaType::String),
             "()" => Ok(EaType::Unit),
+            // Standard library collection types
+            "Vec" => {
+                // For now, treat Vec as a generic type - proper generics will be implemented later
+                // This is a placeholder until we have full generic type support
+                Ok(EaType::Custom("Vec".to_string()))
+            },
+            "HashMap" => Ok(EaType::Custom("HashMap".to_string())),
+            "HashSet" => Ok(EaType::Custom("HashSet".to_string())),
+            "String" => Ok(EaType::Custom("String".to_string())), // Eä String type (different from primitive string)
+            "File" => Ok(EaType::Custom("File".to_string())),
             // Common type aliases that might help with parsing issues
             "int" => Ok(EaType::I32),
             "float" => Ok(EaType::F64),

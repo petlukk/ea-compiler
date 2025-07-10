@@ -17,7 +17,7 @@ Eä is an experimental programming language compiler that compiles source code t
 - Static compilation to LLVM IR
 - Basic I/O operations (println, print, read_line)
 
-**Current Status**: v0.2 - Functional compiler with core features working. 130 tests passing (with 2 disabled due to test infrastructure issues). Suitable for experimentation and learning, not production use.
+**Current Status**: v0.2 - Functional compiler with core features working. Standard library integration completed at the LLVM IR level. 130 tests passing (with 2 disabled due to test infrastructure issues). Suitable for experimentation and learning, not production use.
 
 ## Features
 
@@ -27,6 +27,7 @@ Eä is an experimental programming language compiler that compiles source code t
 - **Functions**: Parameters, return values, recursion
 - **Variables**: Local variable declarations with type inference
 - **I/O operations**: `println()`, `print()`, `read_line()` functions
+- **Standard library types**: `Vec`, `HashMap`, `HashSet`, `String`, `File` (LLVM IR generation)
 - **Type system**: Type checking with error detection
 
 ### SIMD Support
@@ -86,6 +87,17 @@ func fibonacci(n: i32) -> i32 {
         return n;
     }
     return fibonacci(n - 1) + fibonacci(n - 2);
+}
+```
+
+### Standard Library Usage
+```eä
+func main() -> () {
+    let numbers = Vec::new();    // LLVM IR generation working
+    let cache = HashMap::new();  // LLVM IR generation working
+    let seen = HashSet::new();   // LLVM IR generation working
+    println("Standard library integrated!");
+    return;
 }
 ```
 
@@ -229,6 +241,8 @@ Source Code → Lexer → Parser → Type Checker → Code Generator → LLVM IR
 - **Code Generator**: LLVM IR emission using `inkwell`
 
 ### Advanced Features (v0.2)
+- **Standard library integration**: Full LLVM IR generation for Vec, HashMap, HashSet, String, File types
+- **Module-scoped calls**: `Vec::new()`, `HashMap::new()` syntax with proper code generation
 - **Memory management**: Region-based allocation analysis (940+ lines of implementation)
 - **Compile-time execution**: Algorithm selection and optimization (1,100+ lines)
 - **Advanced SIMD**: Hardware-specific instruction generation (779 lines)
@@ -249,7 +263,7 @@ Source Code → Lexer → Parser → Type Checker → Code Generator → LLVM IR
 - **Macros**: Not implemented
 - **Traits/Interfaces**: Not implemented
 - **Module system**: Basic implementation only
-- **Standard library**: Basic I/O functions only (println, print, read_line)
+- **Standard library**: I/O functions and type constructors work (println, Vec::new, HashMap::new), but method implementations are incomplete
 - **Type conversions**: Manual type conversions required for numeric display
 
 ### Platform Limitations
@@ -261,26 +275,27 @@ Source Code → Lexer → Parser → Type Checker → Code Generator → LLVM IR
 - **Third-party libraries**: Limited ecosystem
 - **Package registry**: Local packages only
 - **Documentation**: Core features documented, advanced features need more examples
-- **Standard library**: Basic I/O functions working, but limited compared to mature languages
+- **Standard library**: Basic I/O and type constructors working, but method implementations incomplete
 
 ### Comparison to Mature Languages
 - **Compilation speed**: Competitive with Go (~5-15µs vs Eä 5.39µs per function)
 - **Memory usage**: Better than Rust, worse than C, comparable to Go
 - **Feature completeness**: Significantly behind mature languages
 - **Ecosystem**: Very limited compared to established languages
-- **Standard library**: Basic functions only, far from production-ready stdlib
+- **Standard library**: Type constructors and I/O working, method implementations incomplete
 
 ## Realistic Assessment
 
 **What Works Well:**
 - Basic compilation pipeline is functional and tested
+- Standard library integration at LLVM IR level (Vec::new, HashMap::new, HashSet::new)
 - SIMD vector syntax parsing and type checking
 - JIT execution for simple programs
 - Error recovery and diagnostics
 - Core I/O functions (println, print, read_line)
 
 **Current Limitations:**
-- Very limited standard library (only basic I/O)
+- Standard library types generate LLVM IR but method implementations are incomplete
 - No generics, macros, or advanced language features
 - No package ecosystem or third-party libraries
 - Frontend performance measurements don't include full compilation

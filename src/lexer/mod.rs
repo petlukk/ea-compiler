@@ -409,6 +409,44 @@ pub enum TokenKind {
     #[token("@")]
     At,
 
+    // === Standard Library Imports ===
+    #[token("import")]
+    Import,
+    #[token("use")]
+    Use,
+    #[token("from")]
+    From,
+    #[token("as")]
+    As,
+    #[token("stdlib")]
+    Stdlib,
+
+    // === Standard Library Collection Types ===
+    #[token("Vec")]
+    VecType,
+    #[token("HashMap")]
+    HashMapType,
+    #[token("HashSet")]
+    HashSetType,
+    #[token("String")]
+    StringType,
+
+    // === Standard Library I/O Functions ===
+    #[token("print")]
+    Print,
+    #[token("println")]
+    Println,
+    #[token("read_line")]
+    ReadLine,
+    #[token("File")]
+    FileType,
+
+    // === Standard Library Math Functions ===
+    #[token("simd_math")]
+    SIMDMath,
+    #[token("MathError")]
+    MathErrorType,
+
     // Special tokens
     Eof,
 }
@@ -594,6 +632,29 @@ impl fmt::Display for TokenKind {
             TokenKind::SimdLiteral(s) => return write!(f, "{}", s),
             TokenKind::StringLiteral(s) => return write!(f, "\"{}\"", s),
             TokenKind::Identifier(s) => return write!(f, "{}", s),
+
+            // Standard library imports
+            TokenKind::Import => "import",
+            TokenKind::Use => "use",
+            TokenKind::From => "from",
+            TokenKind::As => "as",
+            TokenKind::Stdlib => "stdlib",
+
+            // Standard library collection types
+            TokenKind::VecType => "Vec",
+            TokenKind::HashMapType => "HashMap",
+            TokenKind::HashSetType => "HashSet",
+            TokenKind::StringType => "String",
+
+            // Standard library I/O functions
+            TokenKind::Print => "print",
+            TokenKind::Println => "println",
+            TokenKind::ReadLine => "read_line",
+            TokenKind::FileType => "File",
+
+            // Standard library math functions
+            TokenKind::SIMDMath => "simd_math",
+            TokenKind::MathErrorType => "MathError",
 
             // Special
             TokenKind::Comment => "comment",

@@ -120,6 +120,14 @@ run_cargo_test "simd_lexer_tests" "simd_lexer_tests" ""
 run_cargo_test "simd_codegen_tests" "simd_codegen_tests" ""
 run_cargo_test "simd_integration_tests" "simd_integration_tests" ""
 
+# Standard Library Integration tests
+run_cargo_test "stdlib_integration_tests" "stdlib_integration_tests" ""
+run_cargo_test "stdlib_tokenization_test" "test_stdlib_tokenization" ""
+run_cargo_test "stdlib_parsing_test" "test_stdlib_parsing" ""
+run_cargo_test "stdlib_type_checking_test" "test_stdlib_type_checking" ""
+run_cargo_test "println_tokenization_test" "test_println_tokenization" ""
+run_cargo_test "basic_stdlib_program_test" "test_basic_stdlib_program" ""
+
 # Validation tests
 run_cargo_test "final_validation_test" "final_validation_test" ""
 run_cargo_test "implementation_validation_tests" "implementation_validation_tests" ""

@@ -62,6 +62,13 @@ pub enum EaType {
     // Function type (separate from FunctionType for expression typing)
     Function(Box<FunctionType>),
 
+    // Standard Library Collection Types
+    StdVec(Box<EaType>),                        // Vec<T>
+    StdHashMap(Box<EaType>, Box<EaType>),       // HashMap<K, V>
+    StdHashSet(Box<EaType>),                    // HashSet<T>
+    StdString,                                  // String (Eä string type)
+    StdFile,                                    // File handle type
+
     // Custom/user-defined types (structs - for future)
     Custom(String),
 
@@ -98,6 +105,11 @@ impl fmt::Display for EaType {
             EaType::SIMDVector { vector_type, .. } => write!(f, "{}", vector_type),
             EaType::Reference(inner_type) => write!(f, "&{}", inner_type),
             EaType::Function(func_type) => write!(f, "{}", func_type),
+            EaType::StdVec(elem_type) => write!(f, "Vec<{}>", elem_type),
+            EaType::StdHashMap(key_type, value_type) => write!(f, "HashMap<{}, {}>", key_type, value_type),
+            EaType::StdHashSet(elem_type) => write!(f, "HashSet<{}>", elem_type),
+            EaType::StdString => write!(f, "String"),
+            EaType::StdFile => write!(f, "File"),
             EaType::Custom(name) => write!(f, "{}", name),
             EaType::Enum { name, .. } => write!(f, "{}", name),
             EaType::Generic(name) => write!(f, "{}", name),
@@ -155,6 +167,8 @@ impl EaType {
                 | EaType::String
                 | EaType::Unit
                 | EaType::SIMDVector { .. }
+                | EaType::StdString
+                | EaType::StdFile
         )
     }
 
