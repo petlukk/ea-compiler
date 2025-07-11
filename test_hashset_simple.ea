@@ -1,0 +1,40 @@
+func main() -> () {
+    println("Testing HashSet functionality");
+    let mut set = HashSet::new();
+    
+    // Test insertion
+    set.insert(1);
+    set.insert(2);
+    set.insert(3);
+    
+    if (set.len() != 3) {
+        println("FAILURE: HashSet should have length 3");
+        return;
+    }
+    
+    // Test contains
+    if (!set.contains(1)) {
+        println("FAILURE: HashSet should contain 1");
+        return;
+    }
+    
+    if (!set.contains(2)) {
+        println("FAILURE: HashSet should contain 2");
+        return;
+    }
+    
+    // Test remove
+    set.remove(2);
+    
+    if (set.len() != 2) {
+        println("FAILURE: HashSet should have length 2 after removal");
+        return;
+    }
+    
+    if (set.contains(2)) {
+        println("FAILURE: HashSet should not contain 2 after removal");
+        return;
+    }
+    
+    println("SUCCESS: HashSet test passed!");
+}

@@ -311,6 +311,245 @@ pub fn map_essential_symbols(
         }
     }
     
+    // Map String runtime functions if they exist
+    if codegen.get_module().get_function("string_new").is_some() ||
+       codegen.get_module().get_function("string_len").is_some() {
+        eprintln!("🔍 Mapping String runtime symbols...");
+        
+        // Define String runtime functions directly in Rust for JIT execution
+        extern "C" fn string_new_impl() -> *mut std::ffi::c_void {
+            let string = Box::new(String::new());
+            Box::into_raw(string) as *mut std::ffi::c_void
+        }
+        
+        extern "C" fn string_len_impl(string_ptr: *mut std::ffi::c_void) -> i32 {
+            if string_ptr.is_null() { return 0; }
+            unsafe {
+                let string_ref = &*(string_ptr as *const String);
+                string_ref.len() as i32
+            }
+        }
+        
+        extern "C" fn string_from_impl(literal: *const std::ffi::c_char) -> *mut std::ffi::c_void {
+            if literal.is_null() { return string_new_impl(); }
+            unsafe {
+                let c_str = std::ffi::CStr::from_ptr(literal);
+                if let Ok(rust_str) = c_str.to_str() {
+                    let string = Box::new(String::from(rust_str));
+                    Box::into_raw(string) as *mut std::ffi::c_void
+                } else {
+                    string_new_impl()
+                }
+            }
+        }
+        
+        extern "C" fn string_as_str_impl(string_ptr: *mut std::ffi::c_void) -> *const std::ffi::c_char {
+            if string_ptr.is_null() { 
+                return b"\0".as_ptr() as *const std::ffi::c_char; 
+            }
+            unsafe {
+                let string_ref = &*(string_ptr as *const String);
+                string_ref.as_ptr() as *const std::ffi::c_char
+            }
+        }
+        
+        extern "C" fn string_clone_impl(string_ptr: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
+            if string_ptr.is_null() { return string_new_impl(); }
+            unsafe {
+                let string_ref = &*(string_ptr as *const String);
+                let cloned = Box::new(string_ref.clone());
+                Box::into_raw(cloned) as *mut std::ffi::c_void
+            }
+        }
+        
+        extern "C" fn string_free_impl(string_ptr: *mut std::ffi::c_void) {
+            if string_ptr.is_null() { return; }
+            unsafe {
+                let _ = Box::from_raw(string_ptr as *mut String);
+            }
+        }
+        
+        // Map string_new
+        if let Some(string_new_fn) = codegen.get_module().get_function("string_new") {
+            let string_new_addr = string_new_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_new_fn, string_new_addr);
+            symbol_table.insert("string_new".to_string(), string_new_addr);
+            eprintln!("✅ Mapped string_new symbol successfully");
+        }
+        
+        // Map string_len
+        if let Some(string_len_fn) = codegen.get_module().get_function("string_len") {
+            let string_len_addr = string_len_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_len_fn, string_len_addr);
+            symbol_table.insert("string_len".to_string(), string_len_addr);
+            eprintln!("✅ Mapped string_len symbol successfully");
+        }
+        
+        // Map string_from
+        if let Some(string_from_fn) = codegen.get_module().get_function("string_from") {
+            let string_from_addr = string_from_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_from_fn, string_from_addr);
+            symbol_table.insert("string_from".to_string(), string_from_addr);
+            eprintln!("✅ Mapped string_from symbol successfully");
+        }
+        
+        // Map string_as_str
+        if let Some(string_as_str_fn) = codegen.get_module().get_function("string_as_str") {
+            let string_as_str_addr = string_as_str_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_as_str_fn, string_as_str_addr);
+            symbol_table.insert("string_as_str".to_string(), string_as_str_addr);
+            eprintln!("✅ Mapped string_as_str symbol successfully");
+        }
+        
+        // Map string_clone
+        if let Some(string_clone_fn) = codegen.get_module().get_function("string_clone") {
+            let string_clone_addr = string_clone_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_clone_fn, string_clone_addr);
+            symbol_table.insert("string_clone".to_string(), string_clone_addr);
+            eprintln!("✅ Mapped string_clone symbol successfully");
+        }
+        
+        // Map string_free
+        if let Some(string_free_fn) = codegen.get_module().get_function("string_free") {
+            let string_free_addr = string_free_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_free_fn, string_free_addr);
+            symbol_table.insert("string_free".to_string(), string_free_addr);
+            eprintln!("✅ Mapped string_free symbol successfully");
+        }
+    }
+    
+    // Map HashSet runtime functions if they exist
+    if codegen.get_module().get_function("HashSet_new").is_some() ||
+       codegen.get_module().get_function("HashSet_insert").is_some() {
+        eprintln!("🔍 Mapping HashSet runtime symbols...");
+        
+        // Define HashSet runtime functions directly in Rust for JIT execution
+        extern "C" fn hashset_new_impl() -> *mut std::ffi::c_void {
+            use std::collections::HashSet;
+            let set = Box::new(HashSet::<i32>::new());
+            Box::into_raw(set) as *mut std::ffi::c_void
+        }
+        
+        extern "C" fn hashset_insert_impl(set_ptr: *mut std::ffi::c_void, key: i32) -> i32 {
+            if set_ptr.is_null() { return 0; }
+            unsafe {
+                let set = &mut *(set_ptr as *mut std::collections::HashSet<i32>);
+                if set.insert(key) { 1 } else { 0 }
+            }
+        }
+        
+        extern "C" fn hashset_contains_impl(set_ptr: *mut std::ffi::c_void, key: i32) -> i32 {
+            if set_ptr.is_null() { return 0; }
+            unsafe {
+                let set = &*(set_ptr as *const std::collections::HashSet<i32>);
+                if set.contains(&key) { 1 } else { 0 }
+            }
+        }
+        
+        extern "C" fn hashset_remove_impl(set_ptr: *mut std::ffi::c_void, key: i32) -> i32 {
+            if set_ptr.is_null() { return 0; }
+            unsafe {
+                let set = &mut *(set_ptr as *mut std::collections::HashSet<i32>);
+                if set.remove(&key) { 1 } else { 0 }
+            }
+        }
+        
+        extern "C" fn hashset_len_impl(set_ptr: *mut std::ffi::c_void) -> i32 {
+            if set_ptr.is_null() { return 0; }
+            unsafe {
+                let set = &*(set_ptr as *const std::collections::HashSet<i32>);
+                set.len() as i32
+            }
+        }
+        
+        extern "C" fn hashset_is_empty_impl(set_ptr: *mut std::ffi::c_void) -> i32 {
+            if set_ptr.is_null() { return 1; }
+            unsafe {
+                let set = &*(set_ptr as *const std::collections::HashSet<i32>);
+                if set.is_empty() { 1 } else { 0 }
+            }
+        }
+        
+        extern "C" fn hashset_clear_impl(set_ptr: *mut std::ffi::c_void) {
+            if set_ptr.is_null() { return; }
+            unsafe {
+                let set = &mut *(set_ptr as *mut std::collections::HashSet<i32>);
+                set.clear();
+            }
+        }
+        
+        extern "C" fn hashset_free_impl(set_ptr: *mut std::ffi::c_void) {
+            if set_ptr.is_null() { return; }
+            unsafe {
+                let _ = Box::from_raw(set_ptr as *mut std::collections::HashSet<i32>);
+            }
+        }
+        
+        // Map HashSet_new
+        if let Some(hashset_new_fn) = codegen.get_module().get_function("HashSet_new") {
+            let hashset_new_addr = hashset_new_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashset_new_fn, hashset_new_addr);
+            symbol_table.insert("HashSet_new".to_string(), hashset_new_addr);
+            eprintln!("✅ Mapped HashSet_new symbol successfully");
+        }
+        
+        // Map HashSet_insert
+        if let Some(hashset_insert_fn) = codegen.get_module().get_function("HashSet_insert") {
+            let hashset_insert_addr = hashset_insert_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashset_insert_fn, hashset_insert_addr);
+            symbol_table.insert("HashSet_insert".to_string(), hashset_insert_addr);
+            eprintln!("✅ Mapped HashSet_insert symbol successfully");
+        }
+        
+        // Map HashSet_contains
+        if let Some(hashset_contains_fn) = codegen.get_module().get_function("HashSet_contains") {
+            let hashset_contains_addr = hashset_contains_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashset_contains_fn, hashset_contains_addr);
+            symbol_table.insert("HashSet_contains".to_string(), hashset_contains_addr);
+            eprintln!("✅ Mapped HashSet_contains symbol successfully");
+        }
+        
+        // Map HashSet_remove
+        if let Some(hashset_remove_fn) = codegen.get_module().get_function("HashSet_remove") {
+            let hashset_remove_addr = hashset_remove_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashset_remove_fn, hashset_remove_addr);
+            symbol_table.insert("HashSet_remove".to_string(), hashset_remove_addr);
+            eprintln!("✅ Mapped HashSet_remove symbol successfully");
+        }
+        
+        // Map HashSet_len
+        if let Some(hashset_len_fn) = codegen.get_module().get_function("HashSet_len") {
+            let hashset_len_addr = hashset_len_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashset_len_fn, hashset_len_addr);
+            symbol_table.insert("HashSet_len".to_string(), hashset_len_addr);
+            eprintln!("✅ Mapped HashSet_len symbol successfully");
+        }
+        
+        // Map HashSet_is_empty
+        if let Some(hashset_is_empty_fn) = codegen.get_module().get_function("HashSet_is_empty") {
+            let hashset_is_empty_addr = hashset_is_empty_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashset_is_empty_fn, hashset_is_empty_addr);
+            symbol_table.insert("HashSet_is_empty".to_string(), hashset_is_empty_addr);
+            eprintln!("✅ Mapped HashSet_is_empty symbol successfully");
+        }
+        
+        // Map HashSet_clear
+        if let Some(hashset_clear_fn) = codegen.get_module().get_function("HashSet_clear") {
+            let hashset_clear_addr = hashset_clear_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashset_clear_fn, hashset_clear_addr);
+            symbol_table.insert("HashSet_clear".to_string(), hashset_clear_addr);
+            eprintln!("✅ Mapped HashSet_clear symbol successfully");
+        }
+        
+        // Map HashSet_free
+        if let Some(hashset_free_fn) = codegen.get_module().get_function("HashSet_free") {
+            let hashset_free_addr = hashset_free_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashset_free_fn, hashset_free_addr);
+            symbol_table.insert("HashSet_free".to_string(), hashset_free_addr);
+            eprintln!("✅ Mapped HashSet_free symbol successfully");
+        }
+    }
+    
     eprintln!("✅ Symbol resolution complete - {} symbols mapped", symbol_table.len());
     Ok(symbol_table)
 }

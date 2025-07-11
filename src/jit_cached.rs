@@ -27,7 +27,7 @@ pub fn jit_execute_cached(source: &str, module_name: &str) -> Result<i32> {
         // Fast path: recompile and execute immediately since we have cached metadata
         let (program, _type_context) = compile_to_ast(source)?;
         let context = Context::create();
-        let mut codegen = codegen::CodeGenerator::new(&context, module_name);
+        let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
         codegen.compile_program(&program)?;
         
         let execution_engine = codegen
@@ -53,7 +53,7 @@ pub fn jit_execute_cached(source: &str, module_name: &str) -> Result<i32> {
     let (program, _type_context) = compile_to_ast(source)?;
 
     let context = Context::create();
-    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
+    let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
     codegen.compile_program(&program)?;
 
     // Create execution engine for JIT compilation

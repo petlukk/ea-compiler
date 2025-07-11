@@ -166,7 +166,7 @@ pub fn compile_to_llvm(source: &str, module_name: &str) -> Result<()> {
     eprintln!("✅ LLVM context created");
 
     eprintln!("🏗️ Creating CodeGenerator...");
-    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
+    let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
     eprintln!("✅ CodeGenerator created");
 
     eprintln!("🏗️ Compiling program to LLVM IR...");
@@ -200,7 +200,7 @@ pub fn compile_to_llvm_minimal(source: &str, module_name: &str) -> Result<()> {
     let (program, _type_context) = compile_to_ast(source)?;
 
     let context = Context::create();
-    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
+    let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
     codegen.compile_program(&program)?;
 
     // Write LLVM IR to file for inspection
@@ -224,7 +224,7 @@ pub fn diagnose_jit_execution(source: &str, module_name: &str) -> Result<String>
 
     // Generate LLVM IR
     let context = Context::create();
-    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
+    let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
     codegen.compile_program(&program)?;
     diagnostics.push_str("✅ LLVM IR generation successful\n");
 
@@ -328,7 +328,7 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
     let (program, _type_context) = compile_to_ast(source)?;
 
     let context = Context::create();
-    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
+    let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
     codegen.compile_program(&program)?;
 
     // Create execution engine for JIT compilation

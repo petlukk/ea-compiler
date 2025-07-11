@@ -412,6 +412,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // Add basic Vec runtime function declarations for Vec functionality
         let opaque_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let string_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
         let i32_type = self.context.i32_type();
         let i64_type = self.context.i64_type();
         let void_type = self.context.void_type();
@@ -481,6 +482,72 @@ impl<'ctx> CodeGenerator<'ctx> {
         let hashmap_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
         let hashmap_free_function = self.module.add_function("hashmap_free", hashmap_free_type, None);
         self.functions.insert("hashmap_free".to_string(), hashmap_free_function);
+
+        // String runtime functions
+        // External string_new() -> *String
+        let string_new_type = opaque_ptr_type.fn_type(&[], false);
+        let string_new_function = self.module.add_function("string_new", string_new_type, None);
+        self.functions.insert("string_new".to_string(), string_new_function);
+        
+        // External string_from(str: *i8) -> *String
+        let string_from_type = opaque_ptr_type.fn_type(&[string_ptr_type.into()], false);
+        let string_from_function = self.module.add_function("string_from", string_from_type, None);
+        self.functions.insert("string_from".to_string(), string_from_function);
+        
+        // External string_len(str: *String) -> i32
+        let string_len_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let string_len_function = self.module.add_function("string_len", string_len_type, None);
+        self.functions.insert("string_len".to_string(), string_len_function);
+        
+        // External string_push_str(str: *String, other: *i8) -> void
+        let string_push_str_type = void_type.fn_type(&[opaque_ptr_type.into(), string_ptr_type.into()], false);
+        let string_push_str_function = self.module.add_function("string_push_str", string_push_str_type, None);
+        self.functions.insert("string_push_str".to_string(), string_push_str_function);
+        
+        // External string_as_str(str: *String) -> *i8
+        let string_as_str_type = string_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
+        let string_as_str_function = self.module.add_function("string_as_str", string_as_str_type, None);
+        self.functions.insert("string_as_str".to_string(), string_as_str_function);
+        
+        // External string_clone(str: *String) -> *String
+        let string_clone_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
+        let string_clone_function = self.module.add_function("string_clone", string_clone_type, None);
+        self.functions.insert("string_clone".to_string(), string_clone_function);
+        
+        // External string_substring(str: *String, start: i32, end: i32) -> *String
+        let string_substring_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), i32_type.into(), i32_type.into()], false);
+        let string_substring_function = self.module.add_function("string_substring", string_substring_type, None);
+        self.functions.insert("string_substring".to_string(), string_substring_function);
+        
+        // External string_find(str: *String, needle: *i8) -> i32
+        let string_find_type = i32_type.fn_type(&[opaque_ptr_type.into(), string_ptr_type.into()], false);
+        let string_find_function = self.module.add_function("string_find", string_find_type, None);
+        self.functions.insert("string_find".to_string(), string_find_function);
+        
+        // External string_replace(str: *String, from: *i8, to: *i8) -> *String
+        let string_replace_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), string_ptr_type.into(), string_ptr_type.into()], false);
+        let string_replace_function = self.module.add_function("string_replace", string_replace_type, None);
+        self.functions.insert("string_replace".to_string(), string_replace_function);
+        
+        // External string_to_uppercase(str: *String) -> *String
+        let string_to_uppercase_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
+        let string_to_uppercase_function = self.module.add_function("string_to_uppercase", string_to_uppercase_type, None);
+        self.functions.insert("string_to_uppercase".to_string(), string_to_uppercase_function);
+        
+        // External string_to_lowercase(str: *String) -> *String
+        let string_to_lowercase_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
+        let string_to_lowercase_function = self.module.add_function("string_to_lowercase", string_to_lowercase_type, None);
+        self.functions.insert("string_to_lowercase".to_string(), string_to_lowercase_function);
+        
+        // External string_trim(str: *String) -> *String
+        let string_trim_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
+        let string_trim_function = self.module.add_function("string_trim", string_trim_type, None);
+        self.functions.insert("string_trim".to_string(), string_trim_function);
+        
+        // External string_free(str: *String) -> void
+        let string_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
+        let string_free_function = self.module.add_function("string_free", string_free_type, None);
+        self.functions.insert("string_free".to_string(), string_free_function);
 
         // Restore builder position
         if let Some(block) = current_block {
@@ -2110,28 +2177,51 @@ impl<'ctx> CodeGenerator<'ctx> {
         // HashSet<T> Standard Library Functions
         // ========================
 
-        // HashSet::new() -> *HashSet
+        // Declare HashSet runtime functions
+        let bool_type = self.context.bool_type();
+        let i32_type = self.context.i32_type();
+        let void_type = self.context.void_type();
+
+        // HashSet_new() -> *HashSet
         let hashset_new_type = opaque_ptr_type.fn_type(&[], false);
-        let hashset_new_function = self.module.add_function("HashSet::new", hashset_new_type, None);
-        self.functions.insert("HashSet::new".to_string(), hashset_new_function);
+        let hashset_new_function = self.module.add_function("HashSet_new", hashset_new_type, None);
+        self.functions.insert("HashSet_new".to_string(), hashset_new_function);
 
-        // Implement HashSet::new
-        let hashset_new_entry = self.context.append_basic_block(hashset_new_function, "entry");
-        self.builder.position_at_end(hashset_new_entry);
+        // HashSet_insert(*HashSet, i32) -> i32 (bool as i32)
+        let hashset_insert_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashset_insert_function = self.module.add_function("HashSet_insert", hashset_insert_type, None);
+        self.functions.insert("HashSet_insert".to_string(), hashset_insert_function);
 
-        let hashset_size = i64_type.const_int(24, false);
-        if let Some(&malloc_fn) = self.functions.get("malloc") {
-            let hashset_ptr = self.builder.build_call(
-                malloc_fn,
-                &[hashset_size.into()],
-                "hashset_alloc",
-            ).unwrap().try_as_basic_value().unwrap_left();
-            
-            self.builder.build_return(Some(&hashset_ptr)).unwrap();
-        } else {
-            let null_ptr = opaque_ptr_type.const_null();
-            self.builder.build_return(Some(&null_ptr)).unwrap();
-        }
+        // HashSet_contains(*HashSet, i32) -> i32 (bool as i32)
+        let hashset_contains_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashset_contains_function = self.module.add_function("HashSet_contains", hashset_contains_type, None);
+        self.functions.insert("HashSet_contains".to_string(), hashset_contains_function);
+
+        // HashSet_remove(*HashSet, i32) -> i32 (bool as i32)
+        let hashset_remove_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashset_remove_function = self.module.add_function("HashSet_remove", hashset_remove_type, None);
+        self.functions.insert("HashSet_remove".to_string(), hashset_remove_function);
+
+        // HashSet_len(*HashSet) -> i32
+        let hashset_len_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let hashset_len_function = self.module.add_function("HashSet_len", hashset_len_type, None);
+        self.functions.insert("HashSet_len".to_string(), hashset_len_function);
+
+        // HashSet_is_empty(*HashSet) -> i32 (bool as i32)
+        let hashset_is_empty_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let hashset_is_empty_function = self.module.add_function("HashSet_is_empty", hashset_is_empty_type, None);
+        self.functions.insert("HashSet_is_empty".to_string(), hashset_is_empty_function);
+
+        // HashSet_clear(*HashSet) -> void
+        let hashset_clear_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
+        let hashset_clear_function = self.module.add_function("HashSet_clear", hashset_clear_type, None);
+        self.functions.insert("HashSet_clear".to_string(), hashset_clear_function);
+
+        // HashSet_free(*HashSet) -> void
+        let hashset_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
+        let hashset_free_function = self.module.add_function("HashSet_free", hashset_free_type, None);
+        self.functions.insert("HashSet_free".to_string(), hashset_free_function);
+
 
         // ========================
         // String Standard Library Functions  
@@ -5146,6 +5236,26 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .i8_type()
                     .ptr_type(AddressSpace::default())
                     .into(),
+                "Vec" => self
+                    .context
+                    .i8_type()
+                    .ptr_type(AddressSpace::default())
+                    .into(),
+                "HashMap" => self
+                    .context
+                    .i8_type()
+                    .ptr_type(AddressSpace::default())
+                    .into(),
+                "HashSet" => self
+                    .context
+                    .i8_type()
+                    .ptr_type(AddressSpace::default())
+                    .into(),
+                "String" => self
+                    .context
+                    .i8_type()
+                    .ptr_type(AddressSpace::default())
+                    .into(),
                 _ => {
                     return Err(CompileError::codegen_error(
                         format!("Unsupported variable type: {}", type_ann.name),
@@ -5788,6 +5898,53 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // For all other operations, evaluate both operands first
                 let left_value = self.generate_expression(left)?;
                 let right_value = self.generate_expression(right)?;
+
+                // Handle String concatenation (+ operator)
+                if let (BasicValueEnum::PointerValue(left_ptr), BasicValueEnum::PointerValue(right_ptr)) =
+                    (left_value, right_value)
+                {
+                    if matches!(op, BinaryOp::Add) {
+                        // String concatenation: call string_concat function
+                        if let Some(&string_concat_function) = self.functions.get("string_concat") {
+                            let result = self
+                                .builder
+                                .build_call(
+                                    string_concat_function,
+                                    &[left_ptr.into(), right_ptr.into()],
+                                    "string_concat",
+                                )
+                                .map_err(|e| {
+                                    CompileError::codegen_error(
+                                        format!("Failed to build string concat: {:?}", e),
+                                        None,
+                                    )
+                                })?;
+                            if let Some(return_value) = result.try_as_basic_value().left() {
+                                return Ok(return_value);
+                            }
+                        }
+                    } else if matches!(op, BinaryOp::Equal) {
+                        // String comparison: call string_equals function
+                        if let Some(&string_equals_function) = self.functions.get("string_equals") {
+                            let result = self
+                                .builder
+                                .build_call(
+                                    string_equals_function,
+                                    &[left_ptr.into(), right_ptr.into()],
+                                    "string_equals",
+                                )
+                                .map_err(|e| {
+                                    CompileError::codegen_error(
+                                        format!("Failed to build string equals: {:?}", e),
+                                        None,
+                                    )
+                                })?;
+                            if let Some(return_value) = result.try_as_basic_value().left() {
+                                return Ok(return_value);
+                            }
+                        }
+                    }
+                }
 
                 // Handle operations based on operand types
                 if let (BasicValueEnum::IntValue(left_int), BasicValueEnum::IntValue(right_int)) =
@@ -6473,6 +6630,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                         match (module_name.as_str(), method_name.as_str()) {
                             ("Vec", "new") => "vec_new".to_string(),
                             ("HashMap", "new") => "hashmap_new".to_string(),
+                            ("HashSet", "new") => "HashSet_new".to_string(),
+                            ("String", "new") => "string_new".to_string(),
+                            ("String", "from") => "string_from".to_string(),
                             _ => format!("{}::{}", module_name, method_name)
                         }
                     } else {
@@ -6485,7 +6645,18 @@ impl<'ctx> CodeGenerator<'ctx> {
                         // For now, we'll determine the type based on the variable name pattern
                         // This is a simplified approach - in a full implementation, we'd use type information
                         let method_func_name = if let Expr::Variable(var_name) = &**base_expr {
-                            if var_name.contains("map") || var_name.starts_with("hash") {
+                            if var_name.contains("set") || var_name.starts_with("set") {
+                                // HashSet methods
+                                match method_name.as_str() {
+                                    "insert" => "HashSet_insert".to_string(),
+                                    "contains" => "HashSet_contains".to_string(),
+                                    "remove" => "HashSet_remove".to_string(),
+                                    "len" => "HashSet_len".to_string(),
+                                    "is_empty" => "HashSet_is_empty".to_string(),
+                                    "clear" => "HashSet_clear".to_string(),
+                                    _ => format!("HashSet::{}", method_name)
+                                }
+                            } else if var_name.contains("map") || var_name.starts_with("hash") {
                                 // HashMap methods
                                 match method_name.as_str() {
                                     "insert" => "hashmap_insert".to_string(),
@@ -6496,6 +6667,21 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     "is_empty" => "hashmap_is_empty".to_string(),
                                     "clear" => "hashmap_clear".to_string(),
                                     _ => format!("HashMap::{}", method_name)
+                                }
+                            } else if var_name.contains("string") || var_name.starts_with("s") {
+                                // String methods
+                                match method_name.as_str() {
+                                    "len" => "string_len".to_string(),
+                                    "push_str" => "string_push_str".to_string(),
+                                    "as_str" => "string_as_str".to_string(),
+                                    "clone" => "string_clone".to_string(),
+                                    "substring" => "string_substring".to_string(),
+                                    "find" => "string_find".to_string(),
+                                    "replace" => "string_replace".to_string(),
+                                    "to_uppercase" => "string_to_uppercase".to_string(),
+                                    "to_lowercase" => "string_to_lowercase".to_string(),
+                                    "trim" => "string_trim".to_string(),
+                                    _ => format!("String::{}", method_name)
                                 }
                             } else {
                                 // Vec methods (default)
@@ -6571,6 +6757,39 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         }
                                         "insert" => {
                                             // hashmap_insert returns void, create a dummy success value
+                                            let success_value = self.context.i32_type().const_int(1, false);
+                                            return Ok(success_value.into());
+                                        }
+                                        _ => {
+                                            return Ok(return_value);
+                                        }
+                                    }
+                                } else if method_func_name.starts_with("HashSet_") {
+                                    // HashSet methods
+                                    match method_name.as_str() {
+                                        "contains" | "remove" | "insert" => {
+                                            // HashSet methods return bool (0 or 1)
+                                            if let BasicValueEnum::IntValue(result) = return_value {
+                                                return Ok(result.into());
+                                            }
+                                            return Ok(return_value);
+                                        }
+                                        "len" => {
+                                            // HashSet_len returns i32, no conversion needed
+                                            if let BasicValueEnum::IntValue(len_i32) = return_value {
+                                                return Ok(len_i32.into());
+                                            }
+                                            return Ok(return_value);
+                                        }
+                                        "is_empty" => {
+                                            // HashSet_is_empty returns bool (0 or 1)
+                                            if let BasicValueEnum::IntValue(result) = return_value {
+                                                return Ok(result.into());
+                                            }
+                                            return Ok(return_value);
+                                        }
+                                        "clear" => {
+                                            // HashSet_clear returns void, create a dummy success value
                                             let success_value = self.context.i32_type().const_int(1, false);
                                             return Ok(success_value.into());
                                         }

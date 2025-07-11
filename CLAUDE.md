@@ -232,6 +232,16 @@ When adding new language features:
 5. **Code Gen**: Add LLVM IR generation in `src/codegen/mod.rs`
 6. **Tests**: Create comprehensive unit and integration tests
 
+### Standard Library Integration Patterns
+When adding stdlib types (Vec, HashMap, etc.):
+1. **Lexer**: Add type tokens (e.g., `VecType`, `HashMapType`)
+2. **Parser**: Add static method parsing (`Type::method()`) in `primary()` method
+3. **Type System**: Add static method handlers (`check_type_static_method()`)
+4. **Type Compatibility**: Add compatibility rules in `types_compatible()`
+5. **Code Gen**: Add runtime function declarations and implementations
+6. **C Runtime**: Add corresponding C implementations in `src/runtime/`
+7. **Build System**: Update `build.rs` to compile C runtime files
+
 ### Testing Strategy
 - **Unit tests**: Each module has comprehensive `#[cfg(test)]` sections
 - **Integration tests**: End-to-end compilation pipeline testing in `tests/`
@@ -290,11 +300,16 @@ src/
 ├── parallel_compilation.rs # Parallel compilation infrastructure
 ├── parser_optimization.rs # Parser performance optimizations
 ├── resource_manager.rs # Resource management and cleanup
-└── streaming_compiler.rs # Streaming compilation for large files
+├── streaming_compiler.rs # Streaming compilation for large files
+└── runtime/            # C runtime implementations
+    ├── vec_runtime.c   # Vec operations (push, pop, get, len)
+    └── hashmap_runtime.c # HashMap operations (insert, get, remove)
 
 tests/                  # Integration test suite
 ├── compilation_tests.rs    # Comprehensive compilation pipeline tests
-└── core_functionality_tests.rs # Core language functionality tests
+├── core_functionality_tests.rs # Core language functionality tests
+├── stdlib_integration_tests.rs # Standard library integration tests
+└── debug_sigsegv.rs        # Debug test for control flow issues
 
 benches/                # Performance benchmarks
 ├── compilation_performance.rs # Compilation speed benchmarks
@@ -338,6 +353,28 @@ make quality-check
 - **LLVM version mismatch**: Ensure exactly LLVM 14, not 15+
 - **Path issues**: Verify `llvm-config-14` is in PATH
 - **Permission errors**: Use `sudo` for apt installs only
+
+## Debugging and Troubleshooting
+
+### Parser Issues
+- **Infinite loops**: Parser has built-in loop detection (>5 iterations at same position)
+- **Unknown tokens**: Check lexer token definitions in `src/lexer/mod.rs`
+- **Syntax errors**: Use `--emit-tokens` to debug tokenization issues
+
+### Type System Issues
+- **Type mismatches**: Check type compatibility rules in `types_compatible()`
+- **Missing static methods**: Add handlers in `check_TYPE_static_method()` functions
+- **Unknown types**: Verify type annotation resolution in `annotation_to_type()`
+
+### LLVM/CodeGen Issues
+- **SIGSEGV during optimization**: Complex control flow functions (>3 basic blocks) skip optimization
+- **Missing functions**: Check runtime function declarations in codegen
+- **Link errors**: Ensure C runtime files are compiled via `build.rs`
+
+### Test Failures
+- **SIMD tests**: Ensure baseline SIMD types (f32x4, i32x4) for cross-platform compatibility
+- **Integration tests**: Check stdlib type compatibility and static method support
+- **Memory tests**: Use `valgrind` for memory leak detection
 
 ## Performance Characteristics
 
@@ -384,15 +421,18 @@ ea --help                       # Show usage help
 # Run specific test files
 cargo test --features=llvm compilation_tests
 cargo test --features=llvm core_functionality_tests
+cargo test --features=llvm --test stdlib_integration_tests
 
 # Run tests with pattern matching
 cargo test --features=llvm fibonacci
 cargo test --features=llvm simd
 cargo test --features=llvm vector
+cargo test --features=llvm println
 
 # Run single test function
 cargo test --features=llvm test_basic_tokenization
 cargo test --features=llvm test_simd_vector_operations
+cargo test --features=llvm test_stdlib_type_checking
 
 # Run with specific output
 cargo test --features=llvm -- --test-threads=1 --nocapture
@@ -444,12 +484,14 @@ cargo test --features=llvm -- --test-threads=1 --nocapture
 ## Current Status
 
 **Version**: v0.1.1 - Production-ready compiler with comprehensive v0.2 advanced features
-**Test Status**: 79 tests passing
+**Test Status**: 158 tests passing (130 unit + 7 compilation + 14 core + 1 debug + 6 stdlib)
 **Build Status**: Clean compilation with LLVM features enabled
-**Features**: Complete compilation pipeline, SIMD support, advanced v0.2 features implemented
+**Features**: Complete compilation pipeline, SIMD support, stdlib integration, advanced v0.2 features implemented
 
 ### Feature Implementation Status
 - ✅ **Core Language**: Complete compilation pipeline with SIMD support
+- ✅ **Standard Library**: Vec, HashMap, HashSet, String with static methods and type compatibility
+- ✅ **Parser Enhancement**: Robust error recovery, infinite loop prevention, println support
 - ✅ **Advanced Memory**: Region-based analysis and optimization (940+ lines)
 - ✅ **Compile-time Execution**: Algorithm selection and optimization (1,100+ lines)
 - ✅ **Advanced SIMD**: Hardware-specific optimization (779 lines)

@@ -1,0 +1,9 @@
+func main() {
+    let set = HashSet::new();
+    set.insert(42);
+    if set.contains(42) {
+        print("SUCCESS: HashSet validation passed");
+    } else {
+        print("FAILED: HashSet validation failed");
+    }
+}

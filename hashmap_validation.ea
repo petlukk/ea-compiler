@@ -1,4 +1,4 @@
-func main() -> () {
+func main() {
     print("Starting HashMap test");
     let map = HashMap::new();
     print("HashMap created");
@@ -18,5 +18,4 @@ func main() -> () {
     }
     
     print("HashMap test completed");
-    return;
 }

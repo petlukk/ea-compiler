@@ -1,0 +1,87 @@
+// HashSet stress test program - tests with large data sets
+// This program tests HashSet performance and memory management
+
+func main() -> () {
+    println("HashSet Stress Test Starting");
+    
+    // Test 1: Large dataset insertion
+    let set: HashSet = HashSet::new();
+    println("Created HashSet for stress test");
+    
+    // Insert 1000 elements
+    let i: i32 = 0;
+    while i < 1000 {
+        set.insert(i);
+        i = i + 1;
+    }
+    
+    println("Inserted 1000 elements");
+    
+    // Test 2: Verify all elements exist
+    let found: i32 = 0;
+    let j: i32 = 0;
+    while j < 1000 {
+        if set.contains(j) {
+            found = found + 1;
+        }
+        j = j + 1;
+    }
+    
+    if found == 1000 {
+        println("All 1000 elements found - PASS");
+    } else {
+        println("Missing elements - FAIL");
+    }
+    
+    // Test 3: Check length
+    let length: i32 = set.len();
+    if length == 1000 {
+        println("Length test passed");
+    } else {
+        println("Length test failed");
+    }
+    
+    // Test 4: Remove half the elements
+    let k: i32 = 0;
+    while k < 500 {
+        set.remove(k);
+        k = k + 1;
+    }
+    
+    println("Removed 500 elements");
+    
+    // Test 5: Verify removed elements don't exist
+    let not_found: i32 = 0;
+    let m: i32 = 0;
+    while m < 500 {
+        if !set.contains(m) {
+            not_found = not_found + 1;
+        }
+        m = m + 1;
+    }
+    
+    if not_found == 500 {
+        println("Removal verification passed");
+    } else {
+        println("Removal verification failed");
+    }
+    
+    // Test 6: Check final length
+    let final_length: i32 = set.len();
+    if final_length == 500 {
+        println("Final length test passed");
+    } else {
+        println("Final length test failed");
+    }
+    
+    // Test 7: Clear all elements
+    set.clear();
+    if set.is_empty() {
+        println("Clear test passed");
+    } else {
+        println("Clear test failed");
+    }
+    
+    println("HashSet Stress Test Complete");
+    return;
+}

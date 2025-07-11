@@ -1,0 +1,21 @@
+func main() -> () {
+    println("Testing Vec functionality");
+    let mut vec = Vec::new();
+    
+    // Test empty vector
+    if (vec.len() != 0) {
+        println("FAILURE: Empty vec should have length 0");
+        return;
+    }
+    
+    // Test push operations
+    vec.push(42);
+    vec.push(100);
+    
+    if (vec.len() != 2) {
+        println("FAILURE: Vec should have length 2 after 2 pushes");
+        return;
+    }
+    
+    println("SUCCESS: Vec test passed!");
+}

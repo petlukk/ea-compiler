@@ -1,0 +1,6 @@
+fn main() {
+    print("Starting String test");
+    let s1 = String::new();
+    print("String created");
+    print("Test complete");
+}

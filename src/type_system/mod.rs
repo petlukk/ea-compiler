@@ -1068,8 +1068,29 @@ impl TypeChecker {
         let right_type = self.check_expression(right)?;
 
         match op {
-            BinaryOp::Add
-            | BinaryOp::Subtract
+            BinaryOp::Add => {
+                // Handle String concatenation
+                if matches!(left_type, EaType::StdString) && matches!(right_type, EaType::StdString) {
+                    Ok(EaType::StdString)
+                } else if matches!(left_type, EaType::String) && matches!(right_type, EaType::String) {
+                    Ok(EaType::String)
+                } else if matches!(left_type, EaType::StdString) && matches!(right_type, EaType::String) {
+                    Ok(EaType::StdString)
+                } else if matches!(left_type, EaType::String) && matches!(right_type, EaType::StdString) {
+                    Ok(EaType::StdString)
+                } else if self.is_numeric_type(&left_type)
+                    && self.types_compatible(&left_type, &right_type)
+                {
+                    Ok(left_type)
+                } else {
+                    Err(CompileError::type_error(
+                        format!("Addition operation requires compatible numeric types or strings, got {:?} and {:?}", 
+                            left_type, right_type),
+                        Position::new(0, 0, 0),
+                    ))
+                }
+            }
+            BinaryOp::Subtract
             | BinaryOp::Multiply
             | BinaryOp::Divide
             | BinaryOp::Modulo => {
@@ -1345,7 +1366,23 @@ impl TypeChecker {
                         Position::new(0, 0, 0),
                     ));
                 }
-                // Return String type
+                Ok(EaType::StdString)
+            }
+            "from" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "String::from() takes exactly one argument".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Check that the argument is a string literal
+                let arg_type = self.check_expression(&args[0])?;
+                if !matches!(arg_type, EaType::String) {
+                    return Err(CompileError::type_error(
+                        "String::from() argument must be a string literal".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
                 Ok(EaType::StdString)
             }
             _ => {
@@ -1367,6 +1404,15 @@ impl TypeChecker {
             }
             EaType::StdHashMap(_, _) => {
                 self.check_hashmap_instance_method(method_name, args)
+            }
+            EaType::Custom(type_name) if type_name == "HashSet" => {
+                self.check_hashset_instance_method(method_name, args)
+            }
+            EaType::StdHashSet(_) => {
+                self.check_hashset_instance_method(method_name, args)
+            }
+            EaType::StdString => {
+                self.check_string_instance_method(method_name, args)
             }
             _ => {
                 Err(CompileError::type_error(
@@ -1447,7 +1493,7 @@ impl TypeChecker {
                         Position::new(0, 0, 0),
                     ));
                 }
-                Ok(EaType::Bool) // is_empty returns bool
+                Ok(EaType::I32) // is_empty returns i32 (bool as i32)
             }
             "clear" => {
                 if !args.is_empty() {
@@ -1552,7 +1598,7 @@ impl TypeChecker {
                         Position::new(0, 0, 0),
                     ));
                 }
-                Ok(EaType::Bool) // remove returns bool (success indicator)
+                Ok(EaType::I32) // remove returns i32 (bool as i32)
             }
             "is_empty" => {
                 if !args.is_empty() {
@@ -1561,7 +1607,7 @@ impl TypeChecker {
                         Position::new(0, 0, 0),
                     ));
                 }
-                Ok(EaType::Bool) // is_empty returns bool
+                Ok(EaType::I32) // is_empty returns i32 (bool as i32)
             }
             "clear" => {
                 if !args.is_empty() {
@@ -1575,6 +1621,227 @@ impl TypeChecker {
             _ => {
                 Err(CompileError::type_error(
                     format!("Unknown HashMap method '{}'", method_name),
+                    Position::new(0, 0, 0),
+                ))
+            }
+        }
+    }
+
+    fn check_hashset_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "insert" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "HashSet::insert() takes exactly 1 argument".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Check that the argument type is compatible with HashSet element type
+                let element_type = self.check_expression(&args[0])?;
+                // For now, assume HashSet<i32>
+                if !self.types_compatible(&EaType::I32, &element_type) {
+                    return Err(CompileError::type_error(
+                        format!("HashSet::insert() expects i32, got {:?}", element_type),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32) // insert returns i32 (bool as i32)
+            }
+            "contains" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "HashSet::contains() takes exactly 1 argument".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Check element type
+                let element_type = self.check_expression(&args[0])?;
+                if !self.types_compatible(&EaType::I32, &element_type) {
+                    return Err(CompileError::type_error(
+                        format!("HashSet::contains() expects i32, got {:?}", element_type),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32) // contains returns i32 (bool as i32)
+            }
+            "remove" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "HashSet::remove() takes exactly 1 argument".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Check element type
+                let element_type = self.check_expression(&args[0])?;
+                if !self.types_compatible(&EaType::I32, &element_type) {
+                    return Err(CompileError::type_error(
+                        format!("HashSet::remove() expects i32, got {:?}", element_type),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32) // remove returns i32 (bool as i32)
+            }
+            "len" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "HashSet::len() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32) // len returns i32
+            }
+            "is_empty" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "HashSet::is_empty() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32) // is_empty returns i32 (bool as i32)
+            }
+            "clear" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "HashSet::clear() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit) // clear returns void
+            }
+            _ => {
+                Err(CompileError::type_error(
+                    format!("Unknown HashSet method '{}'", method_name),
+                    Position::new(0, 0, 0),
+                ))
+            }
+        }
+    }
+
+    fn check_string_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "len" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "String::len() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32)
+            }
+            "push_str" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "String::push_str() takes exactly 1 argument".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let arg_type = self.check_expression(&args[0])?;
+                if !matches!(arg_type, EaType::String) {
+                    return Err(CompileError::type_error(
+                        "String::push_str() argument must be a string".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit)
+            }
+            "as_str" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "String::as_str() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::String)
+            }
+            "clone" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "String::clone() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::StdString)
+            }
+            "substring" => {
+                if args.len() != 2 {
+                    return Err(CompileError::type_error(
+                        "String::substring() takes exactly 2 arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let start_type = self.check_expression(&args[0])?;
+                let end_type = self.check_expression(&args[1])?;
+                if !matches!(start_type, EaType::I32) || !matches!(end_type, EaType::I32) {
+                    return Err(CompileError::type_error(
+                        "String::substring() arguments must be integers".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::StdString)
+            }
+            "find" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "String::find() takes exactly 1 argument".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let arg_type = self.check_expression(&args[0])?;
+                if !matches!(arg_type, EaType::String) {
+                    return Err(CompileError::type_error(
+                        "String::find() argument must be a string".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32)
+            }
+            "replace" => {
+                if args.len() != 2 {
+                    return Err(CompileError::type_error(
+                        "String::replace() takes exactly 2 arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let from_type = self.check_expression(&args[0])?;
+                let to_type = self.check_expression(&args[1])?;
+                if !matches!(from_type, EaType::String) || !matches!(to_type, EaType::String) {
+                    return Err(CompileError::type_error(
+                        "String::replace() arguments must be strings".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::StdString)
+            }
+            "to_uppercase" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "String::to_uppercase() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::StdString)
+            }
+            "to_lowercase" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "String::to_lowercase() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::StdString)
+            }
+            "trim" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "String::trim() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::StdString)
+            }
+            _ => {
+                Err(CompileError::type_error(
+                    format!("Unknown String method '{}'", method_name),
                     Position::new(0, 0, 0),
                 ))
             }
@@ -2067,6 +2334,10 @@ impl TypeChecker {
 
             // Allow F64 literals to be used where F32 is expected
             (EaType::F32, EaType::F64) => true,
+            
+            // Allow String type compatibility
+            (EaType::StdString, EaType::String) => true,
+            (EaType::String, EaType::StdString) => true,
 
             // Standard integer promotions (smaller to larger)
             (EaType::I16, EaType::I8) => true,

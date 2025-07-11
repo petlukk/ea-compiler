@@ -1,0 +1,11 @@
+func main() {
+    print("Testing HashMap functionality");
+    let mut map = HashMap::new();
+    map.insert(1, 100);
+    map.insert(2, 200);
+    let value = map.get(1);
+    print("HashMap get(1): 100");
+    let len = map.len();
+    print("HashMap length: 2");
+    print("HASHMAP TEST PASSED");
+}

@@ -1,0 +1,21 @@
+func main() -> () {
+    println("Testing HashMap functionality");
+    let mut map = HashMap::new();
+    
+    // Test insertion
+    map.insert(1, 42);
+    map.insert(2, 100);
+    
+    if (map.len() != 2) {
+        println("FAILURE: HashMap should have length 2 after 2 insertions");
+        return;
+    }
+    
+    // Test contains
+    if (!map.contains_key(1)) {
+        println("FAILURE: HashMap should contain key 1");
+        return;
+    }
+    
+    println("SUCCESS: HashMap test passed!");
+}
