@@ -123,28 +123,27 @@ pub fn map_essential_symbols(
             Box::into_raw(vec) as *mut std::ffi::c_void
         }
         
-        extern "C" fn vec_push_impl(vec_ptr: *mut std::ffi::c_void, item: i32) -> i32 {
-            if vec_ptr.is_null() { return 0; }
+        extern "C" fn vec_push_impl(vec_ptr: *mut std::ffi::c_void, item: i32) {
+            if vec_ptr.is_null() { return; }
             unsafe {
                 let vec = &mut *(vec_ptr as *mut Vec<i32>);
                 vec.push(item);
-                1 // Success
             }
         }
         
-        extern "C" fn vec_len_impl(vec_ptr: *mut std::ffi::c_void) -> u64 {
+        extern "C" fn vec_len_impl(vec_ptr: *mut std::ffi::c_void) -> i32 {
             if vec_ptr.is_null() { return 0; }
             unsafe {
                 let vec = &*(vec_ptr as *const Vec<i32>);
-                vec.len() as u64
+                vec.len() as i32
             }
         }
         
-        extern "C" fn vec_get_impl(vec_ptr: *mut std::ffi::c_void, index: u64) -> *mut std::ffi::c_void {
+        extern "C" fn vec_get_impl(vec_ptr: *mut std::ffi::c_void, index: i32) -> *mut std::ffi::c_void {
             if vec_ptr.is_null() { return std::ptr::null_mut(); }
             unsafe {
                 let vec = &*(vec_ptr as *const Vec<i32>);
-                if index < vec.len() as u64 {
+                if index >= 0 && (index as usize) < vec.len() {
                     // Return pointer to element - this is a bit tricky since we need a stable address
                     // For simplicity, we'll store the value on the heap and return it
                     let value = vec[index as usize];

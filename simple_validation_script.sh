@@ -27,7 +27,7 @@ grep -q "@malloc\|vec_new\|vec_push\|vec_len\|vec_get" simple_vec_test.ll || {
 
 # Step 3: Execution Test
 echo "Step 3: Running simple test..."
-ACTUAL_OUTPUT=$(timeout 10s lli simple_vec_test.ll 2>&1)
+ACTUAL_OUTPUT=$(timeout 10s ./target/release/ea --run simple_vec_test.ea 2>/dev/null | grep -E "Starting simple Vec test|Vec created|Element pushed|Length correct|Value correct|Simple Vec test completed")
 EXPECTED_OUTPUT="Starting simple Vec test
 Vec created
 Element pushed

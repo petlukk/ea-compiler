@@ -421,18 +421,18 @@ impl<'ctx> CodeGenerator<'ctx> {
         let vec_new_function = self.module.add_function("vec_new", vec_new_type, None);
         self.functions.insert("vec_new".to_string(), vec_new_function);
         
-        // External vec_push(vec: *Vec, item: i32) -> i32 (success indicator)
-        let vec_push_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        // External vec_push(vec: *Vec, item: i32) -> void (fixed type mismatch)
+        let vec_push_type = void_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
         let vec_push_function = self.module.add_function("vec_push", vec_push_type, None);
         self.functions.insert("vec_push".to_string(), vec_push_function);
         
-        // External vec_len(vec: *Vec) -> i64
-        let vec_len_type = i64_type.fn_type(&[opaque_ptr_type.into()], false);
+        // External vec_len(vec: *Vec) -> i32
+        let vec_len_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
         let vec_len_function = self.module.add_function("vec_len", vec_len_type, None);
         self.functions.insert("vec_len".to_string(), vec_len_function);
         
-        // External vec_get(vec: *Vec, index: i64) -> *i32 (pointer to element or null)
-        let vec_get_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), i64_type.into()], false);
+        // External vec_get(vec: *Vec, index: i32) -> *i32 (pointer to element or null)
+        let vec_get_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
         let vec_get_function = self.module.add_function("vec_get", vec_get_type, None);
         self.functions.insert("vec_get".to_string(), vec_get_function);
         
@@ -1738,7 +1738,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.functions.insert("Vec::push".to_string(), vec_push_function);
 
         // Add external vec_push runtime function
-        let vec_push_runtime_type = i32_type.fn_type(&[
+        let vec_push_runtime_type = void_type.fn_type(&[
             opaque_ptr_type.into(),
             i32_type.into(),
         ], false);
@@ -1765,8 +1765,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         let vec_len_function = self.module.add_function("Vec::len", vec_len_type, None);
         self.functions.insert("Vec::len".to_string(), vec_len_function);
 
-        // Add external vec_len runtime function
-        let vec_len_runtime_type = i64_type.fn_type(&[opaque_ptr_type.into()], false);
+        // Add external vec_len runtime function - make it match the wrapper (i32 return)
+        let vec_len_runtime_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
         let vec_len_runtime_function = self.module.add_function("vec_len", vec_len_runtime_type, None);
         self.functions.insert("vec_len".to_string(), vec_len_runtime_function);
 
@@ -1782,14 +1782,8 @@ impl<'ctx> CodeGenerator<'ctx> {
             "vec_len_call",
         ).unwrap().try_as_basic_value().unwrap_left();
         
-        // Convert i64 to i32
-        let len_i32 = self.builder.build_int_truncate(
-            len_result.into_int_value(),
-            i32_type,
-            "len_i32",
-        ).unwrap();
-        
-        self.builder.build_return(Some(&len_i32)).unwrap();
+        // No type conversion needed - both are i32
+        self.builder.build_return(Some(&len_result)).unwrap();
 
         // Vec::get(vec: *Vec, index: i32) -> i32 (returns value or 0 if out of bounds)
         let vec_get_type = i32_type.fn_type(&[
@@ -1799,10 +1793,10 @@ impl<'ctx> CodeGenerator<'ctx> {
         let vec_get_function = self.module.add_function("Vec::get", vec_get_type, None);
         self.functions.insert("Vec::get".to_string(), vec_get_function);
 
-        // Add external vec_get runtime function (returns pointer)
+        // Add external vec_get runtime function (returns pointer) - use i32 index
         let vec_get_runtime_type = opaque_ptr_type.fn_type(&[
             opaque_ptr_type.into(),
-            i64_type.into(),
+            i32_type.into(),
         ], false);
         let vec_get_runtime_function = self.module.add_function("vec_get", vec_get_runtime_type, None);
         self.functions.insert("vec_get".to_string(), vec_get_runtime_function);
@@ -1814,16 +1808,11 @@ impl<'ctx> CodeGenerator<'ctx> {
         let vec_param = vec_get_function.get_nth_param(0).unwrap();
         let index_param = vec_get_function.get_nth_param(1).unwrap();
         
-        // Convert index to i64
-        let index_i64 = self.builder.build_int_z_extend(
-            index_param.into_int_value(),
-            i64_type,
-            "index_i64",
-        ).unwrap();
+        // No type conversion needed - both are i32
         
         let ptr_result = self.builder.build_call(
             vec_get_runtime_function,
-            &[vec_param.into(), index_i64.into()],
+            &[vec_param.into(), index_param.into()],
             "vec_get_call",
         ).unwrap().try_as_basic_value().unwrap_left();
         
@@ -1956,8 +1945,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         let vec_capacity_function = self.module.add_function("Vec::capacity", vec_capacity_type, None);
         self.functions.insert("Vec::capacity".to_string(), vec_capacity_function);
 
-        // Add external vec_capacity runtime function
-        let vec_capacity_runtime_type = i64_type.fn_type(&[opaque_ptr_type.into()], false);
+        // Add external vec_capacity runtime function - use i32 return
+        let vec_capacity_runtime_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
         let vec_capacity_runtime_function = self.module.add_function("vec_capacity", vec_capacity_runtime_type, None);
         self.functions.insert("vec_capacity".to_string(), vec_capacity_runtime_function);
 
@@ -1973,14 +1962,8 @@ impl<'ctx> CodeGenerator<'ctx> {
             "vec_capacity_call",
         ).unwrap().try_as_basic_value().unwrap_left();
         
-        // Convert i64 to i32
-        let capacity_i32 = self.builder.build_int_truncate(
-            capacity_result.into_int_value(),
-            i32_type,
-            "capacity_i32",
-        ).unwrap();
-        
-        self.builder.build_return(Some(&capacity_i32)).unwrap();
+        // No type conversion needed - both are i32
+        self.builder.build_return(Some(&capacity_result)).unwrap();
 
         // Vec::clear(vec: *Vec) -> void
         let vec_clear_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
@@ -2011,8 +1994,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         let vec_with_capacity_function = self.module.add_function("Vec::with_capacity", vec_with_capacity_type, None);
         self.functions.insert("Vec::with_capacity".to_string(), vec_with_capacity_function);
 
-        // Add external vec_with_capacity runtime function
-        let vec_with_capacity_runtime_type = opaque_ptr_type.fn_type(&[i64_type.into()], false);
+        // Add external vec_with_capacity runtime function - use i32 parameter
+        let vec_with_capacity_runtime_type = opaque_ptr_type.fn_type(&[i32_type.into()], false);
         let vec_with_capacity_runtime_function = self.module.add_function("vec_with_capacity", vec_with_capacity_runtime_type, None);
         self.functions.insert("vec_with_capacity".to_string(), vec_with_capacity_runtime_function);
 
@@ -2022,16 +2005,10 @@ impl<'ctx> CodeGenerator<'ctx> {
         
         let capacity_param = vec_with_capacity_function.get_nth_param(0).unwrap();
         
-        // Convert capacity to i64
-        let capacity_i64 = self.builder.build_int_z_extend(
-            capacity_param.into_int_value(),
-            i64_type,
-            "capacity_i64",
-        ).unwrap();
-        
+        // No type conversion needed - both are i32
         let vec_result = self.builder.build_call(
             vec_with_capacity_runtime_function,
-            &[capacity_i64.into()],
+            &[capacity_param.into()],
             "vec_with_capacity_call",
         ).unwrap().try_as_basic_value().unwrap_left();
         
@@ -6468,14 +6445,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                             if let Some(return_value) = call.try_as_basic_value().left() {
                                 match method_name.as_str() {
                                     "len" => {
-                                        // vec_len returns i64, convert to i32
-                                        if let BasicValueEnum::IntValue(len_i64) = return_value {
-                                            let len_i32 = self.builder.build_int_truncate(
-                                                len_i64,
-                                                self.context.i32_type(),
-                                                "len_i32"
-                                            ).map_err(|e| CompileError::codegen_error(
-                                                format!("Failed to convert len to i32: {:?}", e), None))?;
+                                        // vec_len returns i32, no conversion needed
+                                        if let BasicValueEnum::IntValue(len_i32) = return_value {
                                             return Ok(len_i32.into());
                                         }
                                         return Ok(return_value);
@@ -6512,9 +6483,19 @@ impl<'ctx> CodeGenerator<'ctx> {
                                             
                                             // Valid case: dereference pointer
                                             self.builder.position_at_end(else_block);
-                                            let value = self.builder.build_load(ptr, "deref_value")
+                                            
+                                            // Cast the i8* pointer to i32* and load the i32 value
+                                            let i32_ptr = self.builder.build_pointer_cast(
+                                                ptr,
+                                                self.context.i32_type().ptr_type(AddressSpace::default()),
+                                                "i32_ptr"
+                                            ).map_err(|e| CompileError::codegen_error(
+                                                format!("Failed to cast pointer to i32*: {:?}", e), None))?;
+                                            
+                                            let value = self.builder.build_load(i32_ptr, "deref_value")
                                                 .map_err(|e| CompileError::codegen_error(
                                                     format!("Failed to dereference pointer: {:?}", e), None))?;
+                                            
                                             self.builder.build_unconditional_branch(merge_block)
                                                 .map_err(|e| CompileError::codegen_error(
                                                     format!("Failed to build branch: {:?}", e), None))?;
