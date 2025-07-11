@@ -84,7 +84,7 @@ pub fn jit_execute_cached(source: &str, module_name: &str) -> Result<i32> {
     
     // For now, we'll use a placeholder for machine code since LLVM JIT doesn't expose it directly
     // In a production system, you'd want to extract the actual machine code from the execution engine
-    let machine_code = Vec::new(); // TODO: Extract actual machine code from LLVM JIT
+    let machine_code = Vec::new(); // Note: LLVM JIT doesn't expose machine code directly; this is a known limitation
     
     cache.put(source, machine_code, 0, symbol_table, memory_usage as u64, compilation_time)
         .map_err(|e| CompileError::codegen_error(format!("Failed to cache JIT result: {}", e), None))?;

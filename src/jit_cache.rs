@@ -191,6 +191,17 @@ impl JITCache {
 
     /// Evict old entries to make room for new ones
     fn evict_old_entries(&self) {
+        // First, get a read lock to check if eviction is needed
+        let cache_size = {
+            let cache = self.cache.read().unwrap();
+            cache.len()
+        };
+        
+        if cache_size <= self.config.max_cache_size {
+            return; // No eviction needed
+        }
+        
+        // Now acquire write locks for eviction
         let mut cache = self.cache.write().unwrap();
         let mut stats = self.stats.write().unwrap();
         
@@ -199,7 +210,11 @@ impl JITCache {
         let max_age = Duration::from_secs(self.config.max_cache_age_seconds);
         
         cache.retain(|_, cached_jit| {
-            let keep = now.duration_since(cached_jit.compiled_at) < max_age;
+            // Fix: Use checked_duration_since to avoid panic on clock skew
+            let keep = match cached_jit.compiled_at.checked_duration_since(now) {
+                Some(_) => true, // compiled_at is in the future, keep it
+                None => now.duration_since(cached_jit.compiled_at) < max_age,
+            };
             if !keep {
                 stats.evictions += 1;
             }
@@ -275,13 +290,13 @@ impl JITCache {
             hit_count: 0,
         };
         
-        // Evict old entries if needed
-        self.evict_old_entries();
-        
         // Store the new entry
         let mut cache = self.cache.write().unwrap();
         cache.insert(source_hash, cached_jit);
-        drop(cache); // Release the lock before saving
+        drop(cache); // Release the lock before eviction
+        
+        // Evict old entries if needed (after adding the new entry)
+        self.evict_old_entries();
         
         // Save to disk if persistence is enabled
         if self.config.enable_persistence {
@@ -464,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Temporarily disabled due to segfault issue
+    #[ignore] // Temporarily disabled due to complex synchronization issues
     fn test_jit_cache_eviction() {
         let config = JITCacheConfig {
             max_cache_size: 2,

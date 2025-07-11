@@ -96,7 +96,7 @@ fn test_basic_stdlib_program() {
 
 #[test]
 fn test_vec_new_parsing() {
-    let source = "fn main() { let vec = Vec::new(); }";
+    let source = "func main() { let vec = Vec::new(); }";
     
     // Test tokenization first
     let tokens = tokenize(source).expect("Tokenization should succeed");

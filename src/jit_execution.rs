@@ -209,6 +209,106 @@ pub fn map_essential_symbols(
             symbol_table.insert("vec_pop".to_string(), vec_pop_addr);
             eprintln!("✅ Mapped vec_pop symbol successfully");
         }
+        
+        // Map HashMap runtime symbols (CRITICAL for HashMap functionality)
+        eprintln!("🔍 Mapping HashMap runtime symbols...");
+        
+        // Define HashMap runtime functions directly in Rust for JIT execution
+        extern "C" fn hashmap_new_impl() -> *mut std::ffi::c_void {
+            use std::collections::HashMap;
+            let map = Box::new(HashMap::<i32, i32>::new());
+            Box::into_raw(map) as *mut std::ffi::c_void
+        }
+        
+        extern "C" fn hashmap_insert_impl(map_ptr: *mut std::ffi::c_void, key: i32, value: i32) {
+            if map_ptr.is_null() { return; }
+            unsafe {
+                let map = &mut *(map_ptr as *mut std::collections::HashMap<i32, i32>);
+                map.insert(key, value);
+            }
+        }
+        
+        extern "C" fn hashmap_get_impl(map_ptr: *mut std::ffi::c_void, key: i32) -> i32 {
+            if map_ptr.is_null() { return 0; }
+            unsafe {
+                let map = &*(map_ptr as *const std::collections::HashMap<i32, i32>);
+                map.get(&key).cloned().unwrap_or(0)
+            }
+        }
+        
+        extern "C" fn hashmap_len_impl(map_ptr: *mut std::ffi::c_void) -> i32 {
+            if map_ptr.is_null() { return 0; }
+            unsafe {
+                let map = &*(map_ptr as *const std::collections::HashMap<i32, i32>);
+                map.len() as i32
+            }
+        }
+        
+        extern "C" fn hashmap_contains_key_impl(map_ptr: *mut std::ffi::c_void, key: i32) -> i32 {
+            if map_ptr.is_null() { return 0; }
+            unsafe {
+                let map = &*(map_ptr as *const std::collections::HashMap<i32, i32>);
+                if map.contains_key(&key) { 1 } else { 0 }
+            }
+        }
+        
+        extern "C" fn hashmap_remove_impl(map_ptr: *mut std::ffi::c_void, key: i32) -> i32 {
+            if map_ptr.is_null() { return 0; }
+            unsafe {
+                let map = &mut *(map_ptr as *mut std::collections::HashMap<i32, i32>);
+                if map.remove(&key).is_some() { 1 } else { 0 }
+            }
+        }
+        
+        // Map hashmap_new
+        if let Some(hashmap_new_fn) = codegen.get_module().get_function("hashmap_new") {
+            let hashmap_new_addr = hashmap_new_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashmap_new_fn, hashmap_new_addr);
+            symbol_table.insert("hashmap_new".to_string(), hashmap_new_addr);
+            eprintln!("✅ Mapped hashmap_new symbol successfully");
+        } else {
+            eprintln!("❌ hashmap_new function not found in module");
+        }
+        
+        // Map hashmap_insert
+        if let Some(hashmap_insert_fn) = codegen.get_module().get_function("hashmap_insert") {
+            let hashmap_insert_addr = hashmap_insert_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashmap_insert_fn, hashmap_insert_addr);
+            symbol_table.insert("hashmap_insert".to_string(), hashmap_insert_addr);
+            eprintln!("✅ Mapped hashmap_insert symbol successfully");
+        }
+        
+        // Map hashmap_get
+        if let Some(hashmap_get_fn) = codegen.get_module().get_function("hashmap_get") {
+            let hashmap_get_addr = hashmap_get_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashmap_get_fn, hashmap_get_addr);
+            symbol_table.insert("hashmap_get".to_string(), hashmap_get_addr);
+            eprintln!("✅ Mapped hashmap_get symbol successfully");
+        }
+        
+        // Map hashmap_len
+        if let Some(hashmap_len_fn) = codegen.get_module().get_function("hashmap_len") {
+            let hashmap_len_addr = hashmap_len_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashmap_len_fn, hashmap_len_addr);
+            symbol_table.insert("hashmap_len".to_string(), hashmap_len_addr);
+            eprintln!("✅ Mapped hashmap_len symbol successfully");
+        }
+        
+        // Map hashmap_contains_key
+        if let Some(hashmap_contains_key_fn) = codegen.get_module().get_function("hashmap_contains_key") {
+            let hashmap_contains_key_addr = hashmap_contains_key_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashmap_contains_key_fn, hashmap_contains_key_addr);
+            symbol_table.insert("hashmap_contains_key".to_string(), hashmap_contains_key_addr);
+            eprintln!("✅ Mapped hashmap_contains_key symbol successfully");
+        }
+        
+        // Map hashmap_remove
+        if let Some(hashmap_remove_fn) = codegen.get_module().get_function("hashmap_remove") {
+            let hashmap_remove_addr = hashmap_remove_impl as *const () as usize;
+            execution_engine.add_global_mapping(&hashmap_remove_fn, hashmap_remove_addr);
+            symbol_table.insert("hashmap_remove".to_string(), hashmap_remove_addr);
+            eprintln!("✅ Mapped hashmap_remove symbol successfully");
+        }
     }
     
     eprintln!("✅ Symbol resolution complete - {} symbols mapped", symbol_table.len());

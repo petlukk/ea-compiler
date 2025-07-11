@@ -76,13 +76,30 @@ impl Parser {
 
         let mut statements = Vec::new();
         let mut loop_count = 0;
+        let mut last_position = self.current;
+        let mut position_stuck_count = 0;
 
         eprintln!("🔄 Starting parsing loop...");
         while !self.is_at_end() {
             loop_count += 1;
             eprintln!("🔄 Parse loop iteration {}, current position: {:?}", loop_count, self.current);
             
-            if loop_count > 100 {
+            // Check if we're stuck at the same position
+            if self.current == last_position {
+                position_stuck_count += 1;
+                if position_stuck_count > 5 {
+                    eprintln!("❌ Parser stuck at position {} for {} iterations, forcing advance", self.current, position_stuck_count);
+                    // Force advance to prevent infinite loop
+                    self.advance();
+                    self.synchronize();
+                    position_stuck_count = 0;
+                }
+            } else {
+                position_stuck_count = 0;
+            }
+            last_position = self.current;
+            
+            if loop_count > 1000 {
                 eprintln!("❌ Parse loop detected (over 1000 iterations), breaking");
                 return Err(CompileError::ParseError {
                     message: "Infinite loop detected in parser".to_string(),
@@ -239,7 +256,7 @@ impl Parser {
             params: parameters,
             return_type,
             body: Box::new(body),
-            attributes: Vec::new(), // TODO: Parse attributes
+            attributes: Vec::new(), // Note: Attributes not yet implemented
         })
     }
 
@@ -942,10 +959,26 @@ impl Parser {
             }
         }
 
-        // Handle built-in functions (print, etc.)
+        // Handle built-in functions (print, println, etc.)
         if !self.is_at_end() && matches!(self.peek().kind, TokenKind::Print) {
             let token = self.advance().clone();
             let func_name = "print";
+            
+            // This should be a function call
+            if self.check(&TokenKind::LeftParen) {
+                let var_expr = Expr::Variable(func_name.to_string());
+                self.advance(); // consume '('
+                return self.finish_call(var_expr);
+            }
+            
+            // If not a function call, treat as variable reference  
+            return Ok(Expr::Variable(func_name.to_string()));
+        }
+
+        // Handle println function
+        if !self.is_at_end() && matches!(self.peek().kind, TokenKind::Println) {
+            let token = self.advance().clone();
+            let func_name = "println";
             
             // This should be a function call
             if self.check(&TokenKind::LeftParen) {
@@ -1353,6 +1386,39 @@ impl Parser {
             TokenKind::HashSetType,
             TokenKind::StringType,
             TokenKind::FileType,
+            // SIMD vector types
+            TokenKind::F32x2,
+            TokenKind::F32x4,
+            TokenKind::F32x8,
+            TokenKind::F32x16,
+            TokenKind::F64x2,
+            TokenKind::F64x4,
+            TokenKind::F64x8,
+            TokenKind::I32x2,
+            TokenKind::I32x4,
+            TokenKind::I32x8,
+            TokenKind::I32x16,
+            TokenKind::I64x2,
+            TokenKind::I64x4,
+            TokenKind::I64x8,
+            TokenKind::I16x4,
+            TokenKind::I16x8,
+            TokenKind::I16x16,
+            TokenKind::I16x32,
+            TokenKind::I8x8,
+            TokenKind::I8x16,
+            TokenKind::I8x32,
+            TokenKind::I8x64,
+            TokenKind::U32x4,
+            TokenKind::U32x8,
+            TokenKind::U16x8,
+            TokenKind::U16x16,
+            TokenKind::U8x16,
+            TokenKind::U8x32,
+            TokenKind::Mask8,
+            TokenKind::Mask16,
+            TokenKind::Mask32,
+            TokenKind::Mask64,
         ]) {
             let token = self.previous();
             let type_name = match &token.kind {
@@ -1374,6 +1440,39 @@ impl Parser {
                 TokenKind::HashSetType => "HashSet",
                 TokenKind::StringType => "String",
                 TokenKind::FileType => "File",
+                // SIMD vector types
+                TokenKind::F32x2 => "f32x2",
+                TokenKind::F32x4 => "f32x4",
+                TokenKind::F32x8 => "f32x8",
+                TokenKind::F32x16 => "f32x16",
+                TokenKind::F64x2 => "f64x2",
+                TokenKind::F64x4 => "f64x4",
+                TokenKind::F64x8 => "f64x8",
+                TokenKind::I32x2 => "i32x2",
+                TokenKind::I32x4 => "i32x4",
+                TokenKind::I32x8 => "i32x8",
+                TokenKind::I32x16 => "i32x16",
+                TokenKind::I64x2 => "i64x2",
+                TokenKind::I64x4 => "i64x4",
+                TokenKind::I64x8 => "i64x8",
+                TokenKind::I16x4 => "i16x4",
+                TokenKind::I16x8 => "i16x8",
+                TokenKind::I16x16 => "i16x16",
+                TokenKind::I16x32 => "i16x32",
+                TokenKind::I8x8 => "i8x8",
+                TokenKind::I8x16 => "i8x16",
+                TokenKind::I8x32 => "i8x32",
+                TokenKind::I8x64 => "i8x64",
+                TokenKind::U32x4 => "u32x4",
+                TokenKind::U32x8 => "u32x8",
+                TokenKind::U16x8 => "u16x8",
+                TokenKind::U16x16 => "u16x16",
+                TokenKind::U8x16 => "u8x16",
+                TokenKind::U8x32 => "u8x32",
+                TokenKind::Mask8 => "mask8",
+                TokenKind::Mask16 => "mask16",
+                TokenKind::Mask32 => "mask32",
+                TokenKind::Mask64 => "mask64",
                 _ => unreachable!(),
             };
             return Ok(type_name.to_string());

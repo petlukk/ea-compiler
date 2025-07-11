@@ -196,11 +196,12 @@ func main() -> i32 {
 
 #[test]
 fn test_different_simd_types() {
+    // Test only baseline SIMD types that are available on all target architectures
     let test_cases = vec![
-        ("f32x4", "[1.0, 2.0, 3.0, 4.0]f32x4"),
-        ("f32x8", "[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]f32x8"),
-        ("i32x4", "[1, 2, 3, 4]i32x4"),
-        ("i64x2", "[100, 200]i64x2"),
+        ("f32x4", "[1.0, 2.0, 3.0, 4.0]f32x4"),  // SSE baseline
+        ("f32x2", "[1.0, 2.0]f32x2"),             // Basic SIMD
+        ("i32x4", "[1, 2, 3, 4]i32x4"),          // SSE2 baseline
+        ("i64x2", "[100, 200]i64x2"),             // SSE2 baseline
     ];
 
     for (type_name, vector_literal) in test_cases {

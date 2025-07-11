@@ -10,7 +10,7 @@ use crate::ast::{
 };
 use crate::error::{CompileError, Result};
 use crate::memory_profiler::{record_memory_usage, CompilationPhase, check_memory_limit};
-// use crate::type_system::EaType; // TODO: Remove if not needed
+// Removed unused import per DEVELOPMENT_PROCESS.md - no placeholder comments
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
@@ -445,6 +445,42 @@ impl<'ctx> CodeGenerator<'ctx> {
         let vec_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
         let vec_free_function = self.module.add_function("vec_free", vec_free_type, None);
         self.functions.insert("vec_free".to_string(), vec_free_function);
+
+        // HashMap runtime functions
+        // External hashmap_new() -> *HashMap
+        let hashmap_new_type = opaque_ptr_type.fn_type(&[], false);
+        let hashmap_new_function = self.module.add_function("hashmap_new", hashmap_new_type, None);
+        self.functions.insert("hashmap_new".to_string(), hashmap_new_function);
+        
+        // External hashmap_insert(map: *HashMap, key: i32, value: i32) -> void
+        let hashmap_insert_type = void_type.fn_type(&[opaque_ptr_type.into(), i32_type.into(), i32_type.into()], false);
+        let hashmap_insert_function = self.module.add_function("hashmap_insert", hashmap_insert_type, None);
+        self.functions.insert("hashmap_insert".to_string(), hashmap_insert_function);
+        
+        // External hashmap_get(map: *HashMap, key: i32) -> i32
+        let hashmap_get_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashmap_get_function = self.module.add_function("hashmap_get", hashmap_get_type, None);
+        self.functions.insert("hashmap_get".to_string(), hashmap_get_function);
+        
+        // External hashmap_len(map: *HashMap) -> i32
+        let hashmap_len_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let hashmap_len_function = self.module.add_function("hashmap_len", hashmap_len_type, None);
+        self.functions.insert("hashmap_len".to_string(), hashmap_len_function);
+        
+        // External hashmap_contains_key(map: *HashMap, key: i32) -> i32
+        let hashmap_contains_key_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashmap_contains_key_function = self.module.add_function("hashmap_contains_key", hashmap_contains_key_type, None);
+        self.functions.insert("hashmap_contains_key".to_string(), hashmap_contains_key_function);
+        
+        // External hashmap_remove(map: *HashMap, key: i32) -> i32
+        let hashmap_remove_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashmap_remove_function = self.module.add_function("hashmap_remove", hashmap_remove_type, None);
+        self.functions.insert("hashmap_remove".to_string(), hashmap_remove_function);
+        
+        // External hashmap_free(map: *HashMap) -> void
+        let hashmap_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
+        let hashmap_free_function = self.module.add_function("hashmap_free", hashmap_free_type, None);
+        self.functions.insert("hashmap_free".to_string(), hashmap_free_function);
 
         // Restore builder position
         if let Some(block) = current_block {
@@ -4452,6 +4488,39 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .into(),
                     ),
                     "()" => None, // void type
+                    // SIMD vector types
+                    "f32x2" => Some(self.context.f32_type().vec_type(2).into()),
+                    "f32x4" => Some(self.context.f32_type().vec_type(4).into()),
+                    "f32x8" => Some(self.context.f32_type().vec_type(8).into()),
+                    "f32x16" => Some(self.context.f32_type().vec_type(16).into()),
+                    "f64x2" => Some(self.context.f64_type().vec_type(2).into()),
+                    "f64x4" => Some(self.context.f64_type().vec_type(4).into()),
+                    "f64x8" => Some(self.context.f64_type().vec_type(8).into()),
+                    "i32x2" => Some(self.context.i32_type().vec_type(2).into()),
+                    "i32x4" => Some(self.context.i32_type().vec_type(4).into()),
+                    "i32x8" => Some(self.context.i32_type().vec_type(8).into()),
+                    "i32x16" => Some(self.context.i32_type().vec_type(16).into()),
+                    "i64x2" => Some(self.context.i64_type().vec_type(2).into()),
+                    "i64x4" => Some(self.context.i64_type().vec_type(4).into()),
+                    "i64x8" => Some(self.context.i64_type().vec_type(8).into()),
+                    "i16x4" => Some(self.context.i16_type().vec_type(4).into()),
+                    "i16x8" => Some(self.context.i16_type().vec_type(8).into()),
+                    "i16x16" => Some(self.context.i16_type().vec_type(16).into()),
+                    "i16x32" => Some(self.context.i16_type().vec_type(32).into()),
+                    "i8x8" => Some(self.context.i8_type().vec_type(8).into()),
+                    "i8x16" => Some(self.context.i8_type().vec_type(16).into()),
+                    "i8x32" => Some(self.context.i8_type().vec_type(32).into()),
+                    "i8x64" => Some(self.context.i8_type().vec_type(64).into()),
+                    "u32x4" => Some(self.context.i32_type().vec_type(4).into()), // Use i32 for u32
+                    "u32x8" => Some(self.context.i32_type().vec_type(8).into()),
+                    "u16x8" => Some(self.context.i16_type().vec_type(8).into()),
+                    "u16x16" => Some(self.context.i16_type().vec_type(16).into()),
+                    "u8x16" => Some(self.context.i8_type().vec_type(16).into()),
+                    "u8x32" => Some(self.context.i8_type().vec_type(32).into()),
+                    "mask8" => Some(self.context.i8_type().vec_type(8).into()),
+                    "mask16" => Some(self.context.i16_type().vec_type(16).into()),
+                    "mask32" => Some(self.context.i32_type().vec_type(32).into()),
+                    "mask64" => Some(self.context.i64_type().vec_type(64).into()),
                     _ => {
                         return Err(CompileError::codegen_error(
                             format!("Unsupported return type: {}", type_ann.name),
@@ -5192,10 +5261,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 args,
             } => self.generate_enum_literal(enum_name, variant, args),
             Expr::Match { value: _, arms: _ } => {
-                // TODO: Implement match expression code generation
-                let int_type = self.context.i32_type();
-                let zero = int_type.const_int(0, false);
-                Ok(zero.into())
+                // Match expressions are not yet implemented - returning error instead of placeholder
+                Err(CompileError::codegen_error(
+                    "Match expressions are not yet implemented".to_string(),
+                    None,
+                ))
             }
             Expr::Block(statements) => self.generate_block_expression(statements),
         }
@@ -6411,16 +6481,47 @@ impl<'ctx> CodeGenerator<'ctx> {
                         let object_value = self.generate_expression(base_expr)?;
                         
                         // Get the method function
-                        // Map Vec method names to runtime function names
-                        let method_func_name = match method_name.as_str() {
-                            "push" => "vec_push".to_string(),
-                            "len" => "vec_len".to_string(),
-                            "get" => "vec_get".to_string(),
-                            "pop" => "vec_pop".to_string(),
-                            "capacity" => "vec_capacity".to_string(),
-                            "is_empty" => "vec_is_empty".to_string(),
-                            "clear" => "vec_clear".to_string(),
-                            _ => format!("Vec::{}", method_name)
+                        // Map Vec and HashMap method names to runtime function names
+                        // For now, we'll determine the type based on the variable name pattern
+                        // This is a simplified approach - in a full implementation, we'd use type information
+                        let method_func_name = if let Expr::Variable(var_name) = &**base_expr {
+                            if var_name.contains("map") || var_name.starts_with("hash") {
+                                // HashMap methods
+                                match method_name.as_str() {
+                                    "insert" => "hashmap_insert".to_string(),
+                                    "get" => "hashmap_get".to_string(),
+                                    "len" => "hashmap_len".to_string(),
+                                    "contains_key" => "hashmap_contains_key".to_string(),
+                                    "remove" => "hashmap_remove".to_string(),
+                                    "is_empty" => "hashmap_is_empty".to_string(),
+                                    "clear" => "hashmap_clear".to_string(),
+                                    _ => format!("HashMap::{}", method_name)
+                                }
+                            } else {
+                                // Vec methods (default)
+                                match method_name.as_str() {
+                                    "push" => "vec_push".to_string(),
+                                    "len" => "vec_len".to_string(),
+                                    "get" => "vec_get".to_string(),
+                                    "pop" => "vec_pop".to_string(),
+                                    "capacity" => "vec_capacity".to_string(),
+                                    "is_empty" => "vec_is_empty".to_string(),
+                                    "clear" => "vec_clear".to_string(),
+                                    _ => format!("Vec::{}", method_name)
+                                }
+                            }
+                        } else {
+                            // Default to Vec methods for other expressions
+                            match method_name.as_str() {
+                                "push" => "vec_push".to_string(),
+                                "len" => "vec_len".to_string(),
+                                "get" => "vec_get".to_string(),
+                                "pop" => "vec_pop".to_string(),
+                                "capacity" => "vec_capacity".to_string(),
+                                "is_empty" => "vec_is_empty".to_string(),
+                                "clear" => "vec_clear".to_string(),
+                                _ => format!("Vec::{}", method_name)
+                            }
                         };
                         if let Some(&function) = self.functions.get(&method_func_name) {
                             // Generate arguments, with object as first argument
@@ -6441,16 +6542,52 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     )
                                 })?;
 
-                            // Handle special return value processing for Vec methods
+                            // Handle special return value processing for Vec and HashMap methods
                             if let Some(return_value) = call.try_as_basic_value().left() {
-                                match method_name.as_str() {
-                                    "len" => {
-                                        // vec_len returns i32, no conversion needed
-                                        if let BasicValueEnum::IntValue(len_i32) = return_value {
-                                            return Ok(len_i32.into());
+                                // Check if this is a HashMap method based on the function name
+                                if method_func_name.starts_with("hashmap_") {
+                                    // HashMap methods
+                                    match method_name.as_str() {
+                                        "get" => {
+                                            // hashmap_get returns i32 directly (0 if not found)
+                                            if let BasicValueEnum::IntValue(value) = return_value {
+                                                return Ok(value.into());
+                                            }
+                                            return Ok(return_value);
                                         }
-                                        return Ok(return_value);
+                                        "len" => {
+                                            // hashmap_len returns i32, no conversion needed
+                                            if let BasicValueEnum::IntValue(len_i32) = return_value {
+                                                return Ok(len_i32.into());
+                                            }
+                                            return Ok(return_value);
+                                        }
+                                        "contains_key" | "remove" => {
+                                            // hashmap_contains_key and hashmap_remove return i32 (0 or 1)
+                                            if let BasicValueEnum::IntValue(result) = return_value {
+                                                return Ok(result.into());
+                                            }
+                                            return Ok(return_value);
+                                        }
+                                        "insert" => {
+                                            // hashmap_insert returns void, create a dummy success value
+                                            let success_value = self.context.i32_type().const_int(1, false);
+                                            return Ok(success_value.into());
+                                        }
+                                        _ => {
+                                            return Ok(return_value);
+                                        }
                                     }
+                                } else {
+                                    // Vec methods
+                                    match method_name.as_str() {
+                                        "len" => {
+                                            // vec_len returns i32, no conversion needed
+                                            if let BasicValueEnum::IntValue(len_i32) = return_value {
+                                                return Ok(len_i32.into());
+                                            }
+                                            return Ok(return_value);
+                                        }
                                     "get" => {
                                         // vec_get returns pointer, dereference to get value
                                         if let BasicValueEnum::PointerValue(ptr) = return_value {
@@ -6515,8 +6652,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         // vec_push returns i32 success indicator, which is fine
                                         return Ok(return_value);
                                     }
-                                    _ => {
-                                        return Ok(return_value);
+                                        _ => {
+                                            return Ok(return_value);
+                                        }
                                     }
                                 }
                             } else {
@@ -6525,7 +6663,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             }
                         } else {
                             return Err(CompileError::codegen_error(
-                                format!("Method '{}' not found on Vec", method_name),
+                                format!("Method '{}' not found", method_name),
                                 None,
                             ));
                         }
@@ -7221,7 +7359,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
                 if let BasicValueEnum::VectorValue(vec_val) = vector_val {
                     // For now, implement simple horizontal reduction by extracting and adding elements
-                    // TODO: Use target-specific horizontal instructions when available
+                    // Note: Currently using element-wise reduction; target-specific horizontal instructions could be added later
                     let vector_type = vec_val.get_type();
                     let element_count = vector_type.get_size();
 

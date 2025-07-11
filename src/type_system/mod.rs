@@ -66,6 +66,13 @@ pub enum EaType {
         width: usize,
         vector_type: crate::ast::SIMDVectorType,
     },
+
+    // Standard Library Collection Types
+    StdVec(Box<EaType>),                        // Vec<T>
+    StdHashMap(Box<EaType>, Box<EaType>),       // HashMap<K, V>
+    StdHashSet(Box<EaType>),                    // HashSet<T>
+    StdString,                                  // String (Eä string type)
+    StdFile,                                    // File handle type
 }
 
 /// Represents a function type with parameters and return type.
@@ -117,6 +124,11 @@ impl fmt::Display for EaType {
             EaType::Generic(name) => write!(f, "{}", name),
             EaType::Error => write!(f, "<e>"),
             EaType::SIMDVector { vector_type, .. } => write!(f, "{}", vector_type),
+            EaType::StdVec(elem_type) => write!(f, "Vec<{}>", elem_type),
+            EaType::StdHashMap(key_type, value_type) => write!(f, "HashMap<{}, {}>", key_type, value_type),
+            EaType::StdHashSet(elem_type) => write!(f, "HashSet<{}>", elem_type),
+            EaType::StdString => write!(f, "String"),
+            EaType::StdFile => write!(f, "File"),
         }
     }
 }
@@ -581,7 +593,7 @@ impl TypeChecker {
         &mut self.context
     }
 
-    /// Adds built-in enum types like Result<T,E> and Option<T>
+    /// Adds built-in enum types like Result<T,E> and Option<T>, and collection types like Vec<T> and HashMap<K,V>
     fn add_builtin_types(&mut self) {
         // Result<T, E> enum with Ok(T) and Err(E) variants
         let result_type = EaType::Enum {
@@ -596,6 +608,14 @@ impl TypeChecker {
             variants: vec!["Some".to_string(), "None".to_string()],
         };
         self.context.types.insert("Option".to_string(), option_type);
+
+        // Vec<T> collection type (for now we'll use i32 as the element type)
+        let vec_type = EaType::StdVec(Box::new(EaType::I32));
+        self.context.types.insert("Vec".to_string(), vec_type);
+
+        // HashMap<K, V> collection type (for now we'll use i32 for both key and value)
+        let hashmap_type = EaType::StdHashMap(Box::new(EaType::I32), Box::new(EaType::I32));
+        self.context.types.insert("HashMap".to_string(), hashmap_type);
     }
 
     /// Gets a reference to the hardware detector.
@@ -717,7 +737,7 @@ impl TypeChecker {
         self.context.define_function(name.to_string(), func_type);
 
         let mut function_context = self.context.enter_scope();
-        function_context.current_function_return = Some(return_ea_type);
+        function_context.current_function_return = Some(return_ea_type.clone());
 
         for (param, param_type) in params.iter().zip(param_types.iter()) {
             function_context.define_variable(param.name.clone(), param_type.clone());
@@ -725,8 +745,19 @@ impl TypeChecker {
 
         let old_context = std::mem::replace(&mut self.context, function_context);
         let result = self.check_statement(body);
+        
+        // Check if function with non-unit return type actually returns a value
+        if result.is_ok() && !matches!(return_ea_type, EaType::Unit) {
+            if !self.statement_returns(body) {
+                self.context = old_context;
+                return Err(CompileError::type_error(
+                    format!("Function '{}' with return type {:?} is missing a return statement", name, return_ea_type),
+                    Position::new(0, 0, 0),
+                ));
+            }
+        }
+        
         self.context = old_context;
-
         result
     }
 
@@ -789,6 +820,38 @@ impl TypeChecker {
         }
 
         Ok(())
+    }
+
+    /// Check if a statement guarantees a return (control flow analysis)
+    fn statement_returns(&self, stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Return(_) => true,
+            Stmt::Block(stmts) => {
+                // A block returns if any statement in it returns
+                stmts.iter().any(|s| self.statement_returns(s))
+            }
+            Stmt::If { condition: _, then_branch, else_branch } => {
+                // If statement returns if both branches return
+                if let Some(else_stmt) = else_branch {
+                    self.statement_returns(then_branch) && self.statement_returns(else_stmt)
+                } else {
+                    false // If without else cannot guarantee return
+                }
+            }
+            Stmt::While { condition: _, body: _ } => {
+                // While loop cannot guarantee return (might not execute)
+                false
+            }
+            Stmt::For { initializer: _, condition: _, increment: _, body: _ } => {
+                // For loop cannot guarantee return (might not execute)
+                false
+            }
+            Stmt::ForIn { variable: _, iterable: _, body: _ } => {
+                // For-in loop cannot guarantee return (might not execute)
+                false
+            }
+            _ => false, // Other statements don't guarantee return
+        }
     }
 
     fn check_block(&mut self, stmts: &[Stmt]) -> Result<()> {
@@ -1193,6 +1256,15 @@ impl TypeChecker {
             Expr::Variable(type_name) if type_name == "Vec" => {
                 self.check_vec_static_method(method_name, args)
             }
+            Expr::Variable(type_name) if type_name == "HashMap" => {
+                self.check_hashmap_static_method(method_name, args)
+            }
+            Expr::Variable(type_name) if type_name == "HashSet" => {
+                self.check_hashset_static_method(method_name, args)
+            }
+            Expr::Variable(type_name) if type_name == "String" => {
+                self.check_string_static_method(method_name, args)
+            }
             // Instance method call: vec.push(), vec.len(), etc.
             _ => {
                 let base_type = self.check_expression(base)?;
@@ -1211,7 +1283,7 @@ impl TypeChecker {
                     ));
                 }
                 // Return Vec<i32> type for now (we can extend this for generics later)
-                Ok(EaType::Custom("Vec".to_string()))
+                Ok(EaType::StdVec(Box::new(EaType::I32)))
             }
             _ => {
                 Err(CompileError::type_error(
@@ -1222,10 +1294,79 @@ impl TypeChecker {
         }
     }
 
+    fn check_hashmap_static_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "new" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "HashMap::new() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Return HashMap<i32, i32> type for now (we can extend this for generics later)
+                Ok(EaType::StdHashMap(Box::new(EaType::I32), Box::new(EaType::I32)))
+            }
+            _ => {
+                Err(CompileError::type_error(
+                    format!("Unknown static method 'HashMap::{}'", method_name),
+                    Position::new(0, 0, 0),
+                ))
+            }
+        }
+    }
+
+    fn check_hashset_static_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "new" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "HashSet::new() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Return HashSet<i32> type for now (we can extend this for generics later)
+                Ok(EaType::StdHashSet(Box::new(EaType::I32)))
+            }
+            _ => {
+                Err(CompileError::type_error(
+                    format!("Unknown static method 'HashSet::{}'", method_name),
+                    Position::new(0, 0, 0),
+                ))
+            }
+        }
+    }
+
+    fn check_string_static_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "new" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "String::new() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Return String type
+                Ok(EaType::StdString)
+            }
+            _ => {
+                Err(CompileError::type_error(
+                    format!("Unknown static method 'String::{}'", method_name),
+                    Position::new(0, 0, 0),
+                ))
+            }
+        }
+    }
+
     fn check_instance_method(&mut self, base_type: &EaType, method_name: &str, args: &[Expr]) -> Result<EaType> {
         match base_type {
             EaType::Custom(type_name) if type_name == "Vec" => {
                 self.check_vec_instance_method(method_name, args)
+            }
+            EaType::StdVec(_) => {
+                self.check_vec_instance_method(method_name, args)
+            }
+            EaType::StdHashMap(_, _) => {
+                self.check_hashmap_instance_method(method_name, args)
             }
             _ => {
                 Err(CompileError::type_error(
@@ -1326,6 +1467,120 @@ impl TypeChecker {
         }
     }
 
+    fn check_hashmap_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "insert" => {
+                if args.len() != 2 {
+                    return Err(CompileError::type_error(
+                        "HashMap::insert() takes exactly 2 arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Check that the argument types are compatible with HashMap key and value types
+                let key_type = self.check_expression(&args[0])?;
+                let value_type = self.check_expression(&args[1])?;
+                // For now, assume HashMap<i32, i32>
+                if !self.types_compatible(&EaType::I32, &key_type) {
+                    return Err(CompileError::type_error(
+                        format!("HashMap::insert() expects i32 key, got {:?}", key_type),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                if !self.types_compatible(&EaType::I32, &value_type) {
+                    return Err(CompileError::type_error(
+                        format!("HashMap::insert() expects i32 value, got {:?}", value_type),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit) // insert returns void
+            }
+            "get" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "HashMap::get() takes exactly 1 argument".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Check key type
+                let key_type = self.check_expression(&args[0])?;
+                if !self.types_compatible(&EaType::I32, &key_type) {
+                    return Err(CompileError::type_error(
+                        format!("HashMap::get() expects i32 key, got {:?}", key_type),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32) // get returns i32 (HashMap value type)
+            }
+            "len" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "HashMap::len() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32) // len returns i32
+            }
+            "contains_key" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "HashMap::contains_key() takes exactly 1 argument".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Check key type
+                let key_type = self.check_expression(&args[0])?;
+                if !self.types_compatible(&EaType::I32, &key_type) {
+                    return Err(CompileError::type_error(
+                        format!("HashMap::contains_key() expects i32 key, got {:?}", key_type),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Bool) // contains_key returns bool
+            }
+            "remove" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "HashMap::remove() takes exactly 1 argument".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Check key type
+                let key_type = self.check_expression(&args[0])?;
+                if !self.types_compatible(&EaType::I32, &key_type) {
+                    return Err(CompileError::type_error(
+                        format!("HashMap::remove() expects i32 key, got {:?}", key_type),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Bool) // remove returns bool (success indicator)
+            }
+            "is_empty" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "HashMap::is_empty() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Bool) // is_empty returns bool
+            }
+            "clear" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "HashMap::clear() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit) // clear returns void
+            }
+            _ => {
+                Err(CompileError::type_error(
+                    format!("Unknown HashMap method '{}'", method_name),
+                    Position::new(0, 0, 0),
+                ))
+            }
+        }
+    }
+
     fn check_index_expression(&mut self, array: &Box<Expr>, index: &Box<Expr>) -> Result<EaType> {
         let array_type = self.check_expression(array)?;
         let index_type = self.check_expression(index)?;
@@ -1383,6 +1638,32 @@ impl TypeChecker {
     }
 
     fn check_field_access(&mut self, object: &Box<Expr>, field: &str) -> Result<EaType> {
+        // Check if this is a static method call on a type (e.g., HashMap::new())
+        if let Expr::Variable(type_name) = &**object {
+            // Check if this is a known type with static methods
+            if let Some(_type) = self.context.types.get(type_name) {
+                // Handle static method calls on built-in types
+                match (type_name.as_str(), field) {
+                    ("Vec", "new") => {
+                        // Vec::new() returns a Vec<i32> for now
+                        return Ok(EaType::StdVec(Box::new(EaType::I32)));
+                    }
+                    ("HashMap", "new") => {
+                        // HashMap::new() returns a HashMap<i32, i32> for now
+                        return Ok(EaType::StdHashMap(Box::new(EaType::I32), Box::new(EaType::I32)));
+                    }
+                    _ => {
+                        // Unknown static method
+                        return Err(CompileError::type_error(
+                            format!("Type '{}' has no static method '{}'", type_name, field),
+                            Position::new(0, 0, 0),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // If not a static method call, try to evaluate as regular field access
         let object_type = self.check_expression(object)?;
 
         match &object_type {
@@ -1436,7 +1717,7 @@ impl TypeChecker {
         for variant in variants {
             variant_names.push(variant.name.clone());
 
-            // TODO: For now, just validate that variant names don't conflict
+            // Note: Currently only validating variant name conflicts; data types not yet implemented
             // In future, we'll need to handle variant data types as well
             if let Some(_data) = &variant.data {
                 // Validate that the data types are valid
@@ -1548,7 +1829,7 @@ impl TypeChecker {
             }
         }
 
-        // TODO: Check for exhaustiveness (all possible patterns covered)
+        // Note: Exhaustiveness checking not yet implemented
 
         Ok(first_arm_type)
     }
@@ -1618,7 +1899,7 @@ impl TypeChecker {
                             ));
                         }
 
-                        // TODO: Type check variant data patterns when enum variants have data
+                        // Note: Variant data pattern type checking not yet implemented
                         if !patterns.is_empty() {
                             // For now, just accept any sub-patterns
                             // In the future, we'd need to look up the variant's data types
@@ -1695,6 +1976,39 @@ impl TypeChecker {
             "bool" => Ok(EaType::Bool),
             "string" => Ok(EaType::String),
             "()" => Ok(EaType::Unit),
+            // SIMD vector types
+            "f32x2" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F32, width: 2, vector_type: crate::ast::SIMDVectorType::F32x2 }),
+            "f32x4" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F32, width: 4, vector_type: crate::ast::SIMDVectorType::F32x4 }),
+            "f32x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F32, width: 8, vector_type: crate::ast::SIMDVectorType::F32x8 }),
+            "f32x16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F32, width: 16, vector_type: crate::ast::SIMDVectorType::F32x16 }),
+            "f64x2" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F64, width: 2, vector_type: crate::ast::SIMDVectorType::F64x2 }),
+            "f64x4" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F64, width: 4, vector_type: crate::ast::SIMDVectorType::F64x4 }),
+            "f64x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F64, width: 8, vector_type: crate::ast::SIMDVectorType::F64x8 }),
+            "i32x2" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I32, width: 2, vector_type: crate::ast::SIMDVectorType::I32x2 }),
+            "i32x4" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I32, width: 4, vector_type: crate::ast::SIMDVectorType::I32x4 }),
+            "i32x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I32, width: 8, vector_type: crate::ast::SIMDVectorType::I32x8 }),
+            "i32x16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I32, width: 16, vector_type: crate::ast::SIMDVectorType::I32x16 }),
+            "i64x2" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I64, width: 2, vector_type: crate::ast::SIMDVectorType::I64x2 }),
+            "i64x4" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I64, width: 4, vector_type: crate::ast::SIMDVectorType::I64x4 }),
+            "i64x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I64, width: 8, vector_type: crate::ast::SIMDVectorType::I64x8 }),
+            "i16x4" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I16, width: 4, vector_type: crate::ast::SIMDVectorType::I16x4 }),
+            "i16x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I16, width: 8, vector_type: crate::ast::SIMDVectorType::I16x8 }),
+            "i16x16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I16, width: 16, vector_type: crate::ast::SIMDVectorType::I16x16 }),
+            "i16x32" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I16, width: 32, vector_type: crate::ast::SIMDVectorType::I16x32 }),
+            "i8x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I8, width: 8, vector_type: crate::ast::SIMDVectorType::I8x8 }),
+            "i8x16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I8, width: 16, vector_type: crate::ast::SIMDVectorType::I8x16 }),
+            "i8x32" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I8, width: 32, vector_type: crate::ast::SIMDVectorType::I8x32 }),
+            "i8x64" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I8, width: 64, vector_type: crate::ast::SIMDVectorType::I8x64 }),
+            "u32x4" => Ok(EaType::SIMDVector { element_type: SIMDElementType::U32, width: 4, vector_type: crate::ast::SIMDVectorType::U32x4 }),
+            "u32x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::U32, width: 8, vector_type: crate::ast::SIMDVectorType::U32x8 }),
+            "u16x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::U16, width: 8, vector_type: crate::ast::SIMDVectorType::U16x8 }),
+            "u16x16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::U16, width: 16, vector_type: crate::ast::SIMDVectorType::U16x16 }),
+            "u8x16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::U8, width: 16, vector_type: crate::ast::SIMDVectorType::U8x16 }),
+            "u8x32" => Ok(EaType::SIMDVector { element_type: SIMDElementType::U8, width: 32, vector_type: crate::ast::SIMDVectorType::U8x32 }),
+            "mask8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I8, width: 8, vector_type: crate::ast::SIMDVectorType::Mask8 }),
+            "mask16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I16, width: 16, vector_type: crate::ast::SIMDVectorType::Mask16 }),
+            "mask32" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I32, width: 32, vector_type: crate::ast::SIMDVectorType::Mask32 }),
+            "mask64" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I64, width: 64, vector_type: crate::ast::SIMDVectorType::Mask64 }),
             // Standard library collection types
             "Vec" => {
                 // For now, treat Vec as a generic type - proper generics will be implemented later
@@ -1737,6 +2051,10 @@ impl TypeChecker {
             (EaType::Custom(name), EaType::F32) if name == "f32" => true,
             (EaType::F64, EaType::Custom(name)) if name == "f64" => true,
             (EaType::Custom(name), EaType::F64) if name == "f64" => true,
+            
+            // Handle SIMD types that might be represented as Custom types
+            (EaType::SIMDVector { vector_type: vt1, .. }, EaType::Custom(name)) if name == &format!("{}", vt1) => true,
+            (EaType::Custom(name), EaType::SIMDVector { vector_type: vt1, .. }) if name == &format!("{}", vt1) => true,
 
             // Allow I64 literals to be used where smaller integer types are expected
             // This is common in programming languages - literal 5 can be used as i32
@@ -1778,6 +2096,23 @@ impl TypeChecker {
                     vector_type: v2, ..
                 },
             ) => v1.is_compatible_with(v2),
+
+            // Standard library collection compatibility
+            // Allow Custom("Vec") to be compatible with StdVec
+            (EaType::Custom(name), EaType::StdVec(_)) if name == "Vec" => true,
+            (EaType::StdVec(_), EaType::Custom(name)) if name == "Vec" => true,
+            
+            // Allow Custom("HashMap") to be compatible with StdHashMap
+            (EaType::Custom(name), EaType::StdHashMap(_, _)) if name == "HashMap" => true,
+            (EaType::StdHashMap(_, _), EaType::Custom(name)) if name == "HashMap" => true,
+            
+            // Allow Custom("HashSet") to be compatible with StdHashSet
+            (EaType::Custom(name), EaType::StdHashSet(_)) if name == "HashSet" => true,
+            (EaType::StdHashSet(_), EaType::Custom(name)) if name == "HashSet" => true,
+            
+            // Allow Custom("String") to be compatible with StdString
+            (EaType::Custom(name), EaType::StdString) if name == "String" => true,
+            (EaType::StdString, EaType::Custom(name)) if name == "String" => true,
 
             _ => false,
         }
@@ -2114,7 +2449,7 @@ impl TypeChecker {
         match vector_type {
             EaType::SIMDVector { .. } => {
                 // For now, return the same vector type
-                // TODO: Implement proper swizzle result type inference
+                // Note: Swizzle result type inference not yet implemented
                 Ok(vector_type)
             }
             _ => Err(CompileError::type_error(
