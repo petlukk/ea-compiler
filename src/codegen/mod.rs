@@ -4698,8 +4698,14 @@ impl<'ctx> CodeGenerator<'ctx> {
         };
 
         // Only continue with merge block if it's reachable
-        // If both branches have terminators, merge block is unreachable
-        if !(then_has_terminator && else_has_terminator) {
+        // If both branches have terminators, merge block is unreachable and should be removed
+        if then_has_terminator && else_has_terminator {
+            // DEVELOPMENT_PROCESS.md: Fix root cause - remove unreachable basic block
+            // This prevents LLVM IR validation errors for empty blocks
+            unsafe {
+                let _ = merge_block.remove_from_function();
+            }
+        } else {
             self.builder.position_at_end(merge_block);
         }
         Ok(())

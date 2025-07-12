@@ -511,14 +511,15 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Temporarily disabled due to complex synchronization issues
     fn test_jit_cache_eviction() {
+        // DEVELOPMENT_PROCESS.md: Fix synchronization issues by using isolated cache
+        // No global state, no complex timing, just simple cache behavior testing
         let config = JITCacheConfig {
             max_cache_size: 2,
             max_cache_age_seconds: 3600,
             enable_statistics: true,
             enable_persistence: false,
-            cache_directory: std::path::PathBuf::from(".test_cache"),
+            cache_directory: std::path::PathBuf::from(".test_cache_eviction"),
         };
         let cache = JITCache::with_config(config);
 
@@ -533,36 +534,42 @@ mod tests {
                 Duration::from_millis(10),
             )
             .unwrap();
+        
         cache
             .put(
                 "code2",
-                vec![0x90],
+                vec![0x91], // Different code
                 0x2000,
                 HashMap::new(),
                 512,
-                Duration::from_millis(10),
+                Duration::from_millis(20),
             )
             .unwrap();
+        
+        // Cache should be at capacity
         assert_eq!(cache.size(), 2);
 
-        // Add one more - should evict oldest
-        thread::sleep(Duration::from_millis(1)); // Ensure different timestamps
+        // Add one more - should evict oldest (code1)
+        // REAL FIX: Remove problematic sleep that causes test hangs
         cache
             .put(
                 "code3",
-                vec![0x90],
+                vec![0x92], // Different code
                 0x3000,
                 HashMap::new(),
                 512,
-                Duration::from_millis(10),
+                Duration::from_millis(30),
             )
             .unwrap();
+        
+        // Cache should still be at max capacity
         assert_eq!(cache.size(), 2);
 
-        // Oldest should be evicted
-        assert!(cache.get("code1").is_none());
-        assert!(cache.get("code2").is_some());
-        assert!(cache.get("code3").is_some());
+        // DEVELOPMENT_PROCESS.md: Test actual eviction behavior
+        // The LRU eviction should have removed the oldest entry (code1)
+        assert!(cache.get("code1").is_none(), "Oldest entry should be evicted");
+        assert!(cache.get("code2").is_some(), "Second entry should remain");
+        assert!(cache.get("code3").is_some(), "Newest entry should exist");
     }
 
     #[test]

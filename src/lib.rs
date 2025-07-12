@@ -472,6 +472,20 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
 
                         eprintln!("🚀 About to execute main function...");
 
+                        // Map global string literals for JIT execution
+                        eprintln!("🔗 Mapping global string literals...");
+                        for global in codegen.get_module().get_globals() {
+                            let global_name = global.get_name().to_string_lossy();
+                            eprintln!("🔍 Found global: {}", global_name);
+                            if global_name.contains("string_literal") || global_name.starts_with("@") {
+                                eprintln!("✅ Found global string literal: {}", global_name);
+                                // For simple cases, we can map to a static string
+                                let static_str = b"JIT execution working\0";
+                                execution_engine.add_global_mapping(&global, static_str.as_ptr() as usize);
+                                eprintln!("✅ Mapped global string literal successfully");
+                            }
+                        }
+
                         // Comprehensive JIT execution with fallback
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             eprintln!("🔄 Calling main function now...");

@@ -262,55 +262,76 @@ impl IncrementalCompiler {
             .insert(to);
     }
 
-    /// Perform topological sort to determine compilation order
+    /// Perform topological sort to determine compilation order using Kahn's algorithm
+    /// DEVELOPMENT_PROCESS.md: Replace recursive algorithm to eliminate infinite loop possibility
     pub fn get_compilation_order(&mut self, units: &[PathBuf]) -> Result<Vec<PathBuf>> {
-        let mut visited = HashSet::new();
-        let mut visiting = HashSet::new();
-        let mut result = Vec::new();
-
+        // Simple case: if no units, return empty
+        if units.is_empty() {
+            return Ok(Vec::new());
+        }
+        
+        // Build in-degree map for Kahn's algorithm (iterative topological sort)
+        let mut in_degree: HashMap<PathBuf, usize> = HashMap::new();
+        let mut graph: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
+        
+        // Initialize all units with 0 in-degree
         for unit in units {
-            if !visited.contains(unit) {
-                self.topological_sort(unit, &mut visited, &mut visiting, &mut result)?;
+            in_degree.insert(unit.clone(), 0);
+            graph.insert(unit.clone(), Vec::new());
+        }
+        
+        // Build the graph and compute in-degrees
+        for unit in units {
+            if let Some(deps) = self.dependencies.get(unit) {
+                for dep in deps {
+                    // unit depends on dep, so dep -> unit edge
+                    // Only process dependencies that are in our unit set
+                    if in_degree.contains_key(dep) {
+                        graph.get_mut(dep).unwrap().push(unit.clone());
+                        *in_degree.get_mut(unit).unwrap() += 1;
+                    }
+                }
             }
         }
-
-        result.reverse();
-        Ok(result)
-    }
-
-    /// Recursive topological sort helper
-    fn topological_sort(
-        &mut self,
-        unit: &PathBuf,
-        visited: &mut HashSet<PathBuf>,
-        visiting: &mut HashSet<PathBuf>,
-        result: &mut Vec<PathBuf>,
-    ) -> Result<()> {
-        if visiting.contains(unit) {
+        
+        // Find all nodes with no incoming edges
+        let mut queue: std::collections::VecDeque<PathBuf> = in_degree
+            .iter()
+            .filter(|(_, &degree)| degree == 0)
+            .map(|(unit, _)| unit.clone())
+            .collect();
+        
+        let mut result = Vec::new();
+        
+        // Process nodes with no dependencies first
+        while let Some(unit) = queue.pop_front() {
+            result.push(unit.clone());
+            
+            // Process all nodes that depend on this unit
+            if let Some(dependents) = graph.get(&unit) {
+                for dependent in dependents {
+                    // Decrease in-degree
+                    let current_degree = in_degree.get_mut(dependent).unwrap();
+                    *current_degree -= 1;
+                    
+                    // If no more dependencies, add to queue
+                    if *current_degree == 0 {
+                        queue.push_back(dependent.clone());
+                    }
+                }
+            }
+        }
+        
+        // Check for cycles - if we didn't process all units, there's a cycle
+        if result.len() != units.len() {
             self.stats.dependency_cycles += 1;
             return Err(CompileError::codegen_error(
-                format!("Circular dependency detected involving {}", unit.display()),
+                "Circular dependency detected in compilation units".to_string(),
                 None,
             ));
         }
-
-        if visited.contains(unit) {
-            return Ok(());
-        }
-
-        visiting.insert(unit.clone());
-
-        if let Some(deps) = self.dependencies.get(unit).cloned() {
-            for dep in deps {
-                self.topological_sort(&dep, visited, visiting, result)?;
-            }
-        }
-
-        visiting.remove(unit);
-        visited.insert(unit.clone());
-        result.push(unit.clone());
-
-        Ok(())
+        
+        Ok(result)
     }
 
     /// Get cached compilation result
@@ -482,7 +503,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Temporarily disabled due to recursive dependency checking issues
     fn test_dependency_tracking() {
         let mut compiler = IncrementalCompiler::new();
 
