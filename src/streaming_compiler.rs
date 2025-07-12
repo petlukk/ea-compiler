@@ -8,9 +8,11 @@ use crate::{
     ast::Stmt,
     error::{CompileError, Result},
     lexer::{Lexer, Token, TokenKind},
+    memory_profiler::{
+        check_memory_limit, get_current_memory_usage, record_memory_usage, CompilationPhase,
+    },
     parser::Parser,
     type_system::{TypeChecker, TypeContext},
-    memory_profiler::{record_memory_usage, CompilationPhase, check_memory_limit, get_current_memory_usage},
 };
 
 /// Configuration for the streaming compiler
@@ -97,17 +99,21 @@ impl<'a> StreamingCompiler<'a> {
     /// Stream compile a source string using incremental processing
     pub fn stream_compile(&mut self, source: &'a str) -> Result<TypeContext> {
         // Initialize memory tracking
-        record_memory_usage(CompilationPhase::Lexing, 0, "Starting streaming compilation");
-        
+        record_memory_usage(
+            CompilationPhase::Lexing,
+            0,
+            "Starting streaming compilation",
+        );
+
         // Initialize lexer
         self.lexer = Some(Lexer::new(source));
-        
+
         // Process tokens in batches
         self.process_tokens_in_batches()?;
-        
+
         // Process any remaining statements
         self.process_remaining_statements()?;
-        
+
         // Return the final type context
         Ok(self.type_checker.get_context().clone())
     }
@@ -140,7 +146,7 @@ impl<'a> StreamingCompiler<'a> {
 
                 // Process the token batch
                 self.process_token_batch()?;
-                
+
                 // Check memory limits
                 if let Err(e) = check_memory_limit() {
                     return Err(CompileError::MemoryExhausted {
@@ -161,20 +167,25 @@ impl<'a> StreamingCompiler<'a> {
             return Ok(());
         }
 
-        record_memory_usage(CompilationPhase::Parsing, 
-            self.token_buffer.len() * std::mem::size_of::<Token>(), 
-            &format!("Processing token batch of {} tokens", self.token_buffer.len()));
+        record_memory_usage(
+            CompilationPhase::Parsing,
+            self.token_buffer.len() * std::mem::size_of::<Token>(),
+            &format!(
+                "Processing token batch of {} tokens",
+                self.token_buffer.len()
+            ),
+        );
 
         // Create parser for this batch
         let mut parser = Parser::new(std::mem::take(&mut self.token_buffer));
-        
+
         // Parse statements from the token batch
         loop {
             match parser.parse_statement() {
                 Ok(Some(stmt)) => {
                     self.current_statements.push(stmt);
                     self.stats.statements_in_current_batch += 1;
-                    
+
                     // Check if we need to process the statement batch
                     if self.current_statements.len() >= self.config.max_statements_in_memory {
                         self.process_statement_batch()?;
@@ -187,7 +198,7 @@ impl<'a> StreamingCompiler<'a> {
 
         // Update token buffer with any remaining tokens
         self.token_buffer = parser.get_remaining_tokens();
-        
+
         Ok(())
     }
 
@@ -197,9 +208,14 @@ impl<'a> StreamingCompiler<'a> {
             return Ok(());
         }
 
-        record_memory_usage(CompilationPhase::TypeChecking, 
-            self.current_statements.len() * std::mem::size_of::<Stmt>(), 
-            &format!("Type checking batch of {} statements", self.current_statements.len()));
+        record_memory_usage(
+            CompilationPhase::TypeChecking,
+            self.current_statements.len() * std::mem::size_of::<Stmt>(),
+            &format!(
+                "Type checking batch of {} statements",
+                self.current_statements.len()
+            ),
+        );
 
         // Perform incremental type checking
         if self.config.incremental_type_checking {
@@ -214,7 +230,7 @@ impl<'a> StreamingCompiler<'a> {
         // Update statistics
         self.stats.total_statements_processed += self.current_statements.len();
         self.stats.compilation_phases_completed += 1;
-        
+
         // Clear processed statements to free memory
         self.current_statements.clear();
         self.stats.statements_in_current_batch = 0;
@@ -223,11 +239,15 @@ impl<'a> StreamingCompiler<'a> {
         let current_memory = std::mem::size_of::<TypeContext>() + 
             self.type_checker.get_context().functions.len() * 64 + // Rough estimate
             self.type_checker.get_context().variables.len() * 64;
-        
-        record_memory_usage(CompilationPhase::TypeChecking, current_memory, 
-            &format!("Completed batch {} - {} total statements processed", 
-                self.stats.compilation_phases_completed, 
-                self.stats.total_statements_processed));
+
+        record_memory_usage(
+            CompilationPhase::TypeChecking,
+            current_memory,
+            &format!(
+                "Completed batch {} - {} total statements processed",
+                self.stats.compilation_phases_completed, self.stats.total_statements_processed
+            ),
+        );
 
         Ok(())
     }
@@ -259,8 +279,12 @@ impl<'a> StreamingCompiler<'a> {
 /// Streaming compilation function that replaces the monolithic approach
 pub fn stream_compile_source(source: &str) -> Result<(TypeContext, StreamingStats)> {
     // Initialize memory tracking
-    record_memory_usage(CompilationPhase::Lexing, 0, "Starting streaming compilation");
-    
+    record_memory_usage(
+        CompilationPhase::Lexing,
+        0,
+        "Starting streaming compilation",
+    );
+
     // Use normal parsing but with statement-level streaming for memory efficiency
     // This avoids the complex token batching that was causing hangs
     let tokens = crate::tokenize(source)?;
@@ -268,34 +292,38 @@ pub fn stream_compile_source(source: &str) -> Result<(TypeContext, StreamingStat
     let mut type_checker = crate::type_system::TypeChecker::new();
     let mut stats = StreamingStats::new();
     let config = StreamingConfig::default();
-    
+
     // Parse all statements first (this is the reliable approach)
     let statements = parser.parse_program()?;
-    
-    record_memory_usage(CompilationPhase::Parsing, 
-        statements.len() * std::mem::size_of::<crate::ast::Stmt>(), 
-        &format!("Parsed {} statements", statements.len()));
-    
+
+    record_memory_usage(
+        CompilationPhase::Parsing,
+        statements.len() * std::mem::size_of::<crate::ast::Stmt>(),
+        &format!("Parsed {} statements", statements.len()),
+    );
+
     // Now process statements in batches for memory efficiency
     let mut processed_statements = 0;
-    
+
     for batch in statements.chunks(config.max_statements_in_memory) {
-        record_memory_usage(CompilationPhase::TypeChecking, 
-            batch.len() * std::mem::size_of::<crate::ast::Stmt>(), 
-            &format!("Type checking batch of {} statements", batch.len()));
+        record_memory_usage(
+            CompilationPhase::TypeChecking,
+            batch.len() * std::mem::size_of::<crate::ast::Stmt>(),
+            &format!("Type checking batch of {} statements", batch.len()),
+        );
 
         // Type check this batch
         for stmt in batch {
             type_checker.check_statement(stmt)?;
             processed_statements += 1;
         }
-        
+
         // Update statistics
         stats.total_statements_processed = processed_statements;
         stats.total_tokens_processed = tokens.len();
         stats.compilation_phases_completed += 1;
         stats.statements_in_current_batch = batch.len();
-        
+
         // Check memory limits after each batch
         if let Err(e) = check_memory_limit() {
             return Err(CompileError::MemoryExhausted {
@@ -307,17 +335,21 @@ pub fn stream_compile_source(source: &str) -> Result<(TypeContext, StreamingStat
 
     // Final memory usage
     stats.peak_memory_usage = get_current_memory_usage();
-    
+
     // Complete streaming compilation
-    record_memory_usage(CompilationPhase::TypeChecking, 0, "Completed streaming compilation");
-    
+    record_memory_usage(
+        CompilationPhase::TypeChecking,
+        0,
+        "Completed streaming compilation",
+    );
+
     Ok((type_checker.get_context().clone(), stats))
 }
 
 /// Streaming compilation with custom configuration
 pub fn stream_compile_with_config(
-    source: &str, 
-    config: StreamingConfig
+    source: &str,
+    config: StreamingConfig,
 ) -> Result<(TypeContext, StreamingStats)> {
     // Use the default implementation for now
     stream_compile_source(source)

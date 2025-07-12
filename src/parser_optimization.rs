@@ -3,14 +3,14 @@
 //! This module provides optimizations to improve parser performance for complex programs,
 //! including memoization, expression caching, and recursive call optimization.
 
-use std::collections::HashMap;
-use std::time::Instant;
 use crate::{
     ast::{Expr, Stmt},
     error::{CompileError, Result},
     lexer::Token,
-    resource_manager::{record_nesting_depth, check_resource_limits},
+    resource_manager::{check_resource_limits, record_nesting_depth},
 };
+use std::collections::HashMap;
+use std::time::Instant;
 
 /// Cache key for memoizing parsing results
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -67,7 +67,7 @@ impl Default for ParserOptimizer {
             total_parse_time: std::time::Duration::new(0, 0),
             max_recursion_depth: 0,
             current_recursion_depth: 0,
-            max_cache_size: 10000, // Cache up to 10k parse results
+            max_cache_size: 10000,     // Cache up to 10k parse results
             max_recursion_limit: 1000, // Prevent stack overflow
             enable_caching: true,
         }
@@ -113,7 +113,12 @@ impl ParserOptimizer {
         // Prevent cache from growing too large
         if self.cache.len() >= self.max_cache_size {
             // Remove oldest entries (simple LRU approximation)
-            let keys_to_remove: Vec<_> = self.cache.keys().take(self.max_cache_size / 4).cloned().collect();
+            let keys_to_remove: Vec<_> = self
+                .cache
+                .keys()
+                .take(self.max_cache_size / 4)
+                .cloned()
+                .collect();
             for key in keys_to_remove {
                 self.cache.remove(&key);
             }
@@ -125,7 +130,7 @@ impl ParserOptimizer {
     /// Enter a recursive parsing context
     pub fn enter_recursion(&mut self) -> Result<()> {
         self.current_recursion_depth += 1;
-        
+
         if self.current_recursion_depth > self.max_recursion_depth {
             self.max_recursion_depth = self.current_recursion_depth;
         }
@@ -182,24 +187,36 @@ impl ParserOptimizer {
     /// Generate performance report
     pub fn generate_performance_report(&self) -> String {
         let mut report = String::new();
-        
+
         report.push_str("=== Parser Performance Report ===\n");
         report.push_str(&format!("Cache Hits: {}\n", self.cache_hits));
         report.push_str(&format!("Cache Misses: {}\n", self.cache_misses));
-        report.push_str(&format!("Cache Hit Ratio: {:.2}%\n", self.get_cache_hit_ratio() * 100.0));
+        report.push_str(&format!(
+            "Cache Hit Ratio: {:.2}%\n",
+            self.get_cache_hit_ratio() * 100.0
+        ));
         report.push_str(&format!("Cache Size: {} entries\n", self.cache.len()));
-        report.push_str(&format!("Total Parse Time: {:.2}ms\n", self.total_parse_time.as_secs_f64() * 1000.0));
-        report.push_str(&format!("Max Recursion Depth: {}\n", self.max_recursion_depth));
+        report.push_str(&format!(
+            "Total Parse Time: {:.2}ms\n",
+            self.total_parse_time.as_secs_f64() * 1000.0
+        ));
+        report.push_str(&format!(
+            "Max Recursion Depth: {}\n",
+            self.max_recursion_depth
+        ));
         report.push_str(&format!("Recursion Limit: {}\n", self.max_recursion_limit));
-        
+
         if self.max_recursion_depth > self.max_recursion_limit / 2 {
-            report.push_str("\n⚠️  Warning: High recursion depth detected. Consider simplifying expressions.\n");
+            report.push_str(
+                "\n⚠️  Warning: High recursion depth detected. Consider simplifying expressions.\n",
+            );
         }
-        
+
         if self.get_cache_hit_ratio() < 0.1 {
-            report.push_str("\n💡 Tip: Low cache hit ratio. Consider enabling expression caching.\n");
+            report
+                .push_str("\n💡 Tip: Low cache hit ratio. Consider enabling expression caching.\n");
         }
-        
+
         report
     }
 
@@ -244,9 +261,7 @@ pub fn initialize_parser_optimizer() {
 
 /// Get the global parser optimizer
 pub fn get_parser_optimizer() -> Option<&'static mut ParserOptimizer> {
-    unsafe {
-        GLOBAL_PARSER_OPTIMIZER.as_mut()
-    }
+    unsafe { GLOBAL_PARSER_OPTIMIZER.as_mut() }
 }
 
 /// Record entering a recursive parsing context
@@ -300,12 +315,12 @@ impl ExpressionComplexityAnalyzer {
     /// Analyze expression complexity and suggest optimizations
     pub fn analyze_complexity(tokens: &[Token]) -> ComplexityAnalysis {
         let mut analysis = ComplexityAnalysis::new();
-        
+
         let mut depth: i32 = 0;
         let mut max_depth: usize = 0;
         let mut operator_count = 0;
         let mut identifier_count = 0;
-        
+
         for token in tokens {
             match &token.kind {
                 crate::lexer::TokenKind::LeftParen => {
@@ -317,10 +332,10 @@ impl ExpressionComplexityAnalyzer {
                 crate::lexer::TokenKind::RightParen => {
                     depth = depth.saturating_sub(1);
                 }
-                crate::lexer::TokenKind::Plus | 
-                crate::lexer::TokenKind::Minus |
-                crate::lexer::TokenKind::Star |
-                crate::lexer::TokenKind::Slash => {
+                crate::lexer::TokenKind::Plus
+                | crate::lexer::TokenKind::Minus
+                | crate::lexer::TokenKind::Star
+                | crate::lexer::TokenKind::Slash => {
                     operator_count += 1;
                 }
                 crate::lexer::TokenKind::Identifier(_) => {
@@ -329,13 +344,13 @@ impl ExpressionComplexityAnalyzer {
                 _ => {}
             }
         }
-        
+
         analysis.max_nesting_depth = max_depth;
         analysis.operator_count = operator_count;
         analysis.identifier_count = identifier_count;
         analysis.token_count = tokens.len();
         analysis.calculate_complexity_score();
-        
+
         analysis
     }
 }
@@ -362,39 +377,39 @@ impl ComplexityAnalysis {
             suggestions: Vec::new(),
         }
     }
-    
+
     /// Calculate a complexity score based on various factors
     pub fn calculate_complexity_score(&mut self) {
         // Simple complexity scoring algorithm
         let depth_weight = 2.0;
         let operator_weight = 1.0;
         let size_weight = 0.1;
-        
-        self.complexity_score = 
-            (self.max_nesting_depth as f64 * depth_weight) +
-            (self.operator_count as f64 * operator_weight) +
-            (self.token_count as f64 * size_weight);
-        
+
+        self.complexity_score = (self.max_nesting_depth as f64 * depth_weight)
+            + (self.operator_count as f64 * operator_weight)
+            + (self.token_count as f64 * size_weight);
+
         // Generate suggestions based on complexity
         if self.max_nesting_depth > 10 {
             self.suggestions.push(
-                "Consider breaking down deeply nested expressions into multiple statements".to_string()
+                "Consider breaking down deeply nested expressions into multiple statements"
+                    .to_string(),
             );
         }
-        
+
         if self.operator_count > 20 {
             self.suggestions.push(
-                "Consider using intermediate variables to simplify complex expressions".to_string()
+                "Consider using intermediate variables to simplify complex expressions".to_string(),
             );
         }
-        
+
         if self.token_count > 100 {
             self.suggestions.push(
                 "Large expression detected. Consider using functions or breaking into smaller parts".to_string()
             );
         }
     }
-    
+
     /// Check if the expression is considered complex
     pub fn is_complex(&self) -> bool {
         self.complexity_score > 50.0 || self.max_nesting_depth > 15

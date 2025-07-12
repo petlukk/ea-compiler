@@ -1,4 +1,0 @@
-func main() -> () {
-    print("Testing SIMD compilation");
-    return;
-}

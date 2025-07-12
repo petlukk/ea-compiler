@@ -4,16 +4,16 @@
 //! This module provides multi-threaded compilation capabilities to leverage
 //! multi-core systems for faster compilation of large projects.
 
-use crate::error::{CompileError, Result};
 use crate::ast::Stmt;
+use crate::error::{CompileError, Result};
 use crate::type_system::TypeContext;
 // IncrementalCompiler import removed as it's unused
+use crossbeam_channel::{bounded, Receiver, Sender};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
-use crossbeam_channel::{bounded, Receiver, Sender};
 // rayon::prelude import removed as it's unused
 
 /// Compilation job for parallel processing
@@ -156,7 +156,10 @@ impl ParallelCompiler {
             config.num_threads
         };
 
-        eprintln!("🚀 Initializing parallel compiler with {} threads", num_threads);
+        eprintln!(
+            "🚀 Initializing parallel compiler with {} threads",
+            num_threads
+        );
 
         let (job_sender, job_receiver) = bounded(config.max_queue_size);
         let (result_sender, result_receiver) = bounded(config.max_queue_size);
@@ -179,43 +182,52 @@ impl ParallelCompiler {
 
             let worker = thread::spawn(move || {
                 eprintln!("🔧 Worker thread {} started", worker_id);
-                
+
                 while let Ok(job) = job_receiver.recv() {
                     let start_time = Instant::now();
-                    
-                    eprintln!("🔨 Worker {} processing job {} ({})", worker_id, job.job_id, job.file_path.display());
-                    
+
+                    eprintln!(
+                        "🔨 Worker {} processing job {} ({})",
+                        worker_id,
+                        job.job_id,
+                        job.file_path.display()
+                    );
+
                     // Compile the job with timeout
                     let result = Self::compile_job_with_timeout(job.clone(), max_job_time);
-                    
+
                     let compilation_time = start_time.elapsed();
-                    
+
                     // Update statistics
                     {
                         let mut stats = stats.write().unwrap();
                         stats.total_jobs += 1;
                         stats.total_compilation_time += compilation_time;
-                        stats.average_job_time = stats.total_compilation_time / stats.total_jobs.max(1) as u32;
-                        
+                        stats.average_job_time =
+                            stats.total_compilation_time / stats.total_jobs.max(1) as u32;
+
                         if result.success {
                             stats.successful_jobs += 1;
                         } else {
                             stats.failed_jobs += 1;
                         }
                     }
-                    
-                    eprintln!("✅ Worker {} completed job {} in {:?}", worker_id, job.job_id, compilation_time);
-                    
+
+                    eprintln!(
+                        "✅ Worker {} completed job {} in {:?}",
+                        worker_id, job.job_id, compilation_time
+                    );
+
                     // Send result
                     if result_sender.send(result).is_err() {
                         eprintln!("❌ Worker {} failed to send result", worker_id);
                         break;
                     }
                 }
-                
+
                 eprintln!("🔧 Worker thread {} finished", worker_id);
             });
-            
+
             workers.push(worker);
         }
 
@@ -234,48 +246,40 @@ impl ParallelCompiler {
     /// Compile a job with timeout
     fn compile_job_with_timeout(job: CompilationJob, timeout: Duration) -> CompilationResult {
         let start_time = Instant::now();
-        
+
         // Use a timeout-based approach for compilation
-        let result = std::panic::catch_unwind(|| {
-            crate::compile_to_ast(&job.source)
-        });
-        
+        let result = std::panic::catch_unwind(|| crate::compile_to_ast(&job.source));
+
         let compilation_time = start_time.elapsed();
-        
+
         match result {
-            Ok(Ok((ast, type_context))) => {
-                CompilationResult {
-                    job_id: job.job_id,
-                    file_path: job.file_path,
-                    ast,
-                    type_context,
-                    compilation_time,
-                    success: true,
-                    error_message: None,
-                }
-            }
-            Ok(Err(e)) => {
-                CompilationResult {
-                    job_id: job.job_id,
-                    file_path: job.file_path,
-                    ast: Vec::new(),
-                    type_context: crate::type_system::TypeContext::new(),
-                    compilation_time,
-                    success: false,
-                    error_message: Some(format!("Compilation error: {}", e)),
-                }
-            }
-            Err(_) => {
-                CompilationResult {
-                    job_id: job.job_id,
-                    file_path: job.file_path,
-                    ast: Vec::new(),
-                    type_context: crate::type_system::TypeContext::new(),
-                    compilation_time,
-                    success: false,
-                    error_message: Some("Compilation panicked".to_string()),
-                }
-            }
+            Ok(Ok((ast, type_context))) => CompilationResult {
+                job_id: job.job_id,
+                file_path: job.file_path,
+                ast,
+                type_context,
+                compilation_time,
+                success: true,
+                error_message: None,
+            },
+            Ok(Err(e)) => CompilationResult {
+                job_id: job.job_id,
+                file_path: job.file_path,
+                ast: Vec::new(),
+                type_context: crate::type_system::TypeContext::new(),
+                compilation_time,
+                success: false,
+                error_message: Some(format!("Compilation error: {}", e)),
+            },
+            Err(_) => CompilationResult {
+                job_id: job.job_id,
+                file_path: job.file_path,
+                ast: Vec::new(),
+                type_context: crate::type_system::TypeContext::new(),
+                compilation_time,
+                success: false,
+                error_message: Some("Compilation panicked".to_string()),
+            },
         }
     }
 
@@ -308,12 +312,12 @@ impl ParallelCompiler {
     /// Submit multiple jobs for parallel compilation
     pub fn submit_jobs(&mut self, jobs: Vec<(PathBuf, String, u32)>) -> Result<Vec<u64>> {
         let mut job_ids = Vec::new();
-        
+
         for (file_path, source, priority) in jobs {
             let job_id = self.submit_job(file_path, source, priority)?;
             job_ids.push(job_id);
         }
-        
+
         Ok(job_ids)
     }
 
@@ -324,13 +328,16 @@ impl ParallelCompiler {
                 if result.job_id == job_id {
                     return Ok(result);
                 }
-                
+
                 // Store other results for later retrieval
                 self.results.write().unwrap().insert(result.job_id, result);
             }
         }
-        
-        Err(CompileError::codegen_error("Job not found or receiver closed".to_string(), None))
+
+        Err(CompileError::codegen_error(
+            "Job not found or receiver closed".to_string(),
+            None,
+        ))
     }
 
     /// Wait for all jobs to complete
@@ -338,7 +345,7 @@ impl ParallelCompiler {
         let total_jobs = self.stats.read().unwrap().total_jobs;
         let mut completed_jobs = 0;
         let mut all_results = HashMap::new();
-        
+
         while completed_jobs < total_jobs {
             if let Some(receiver) = &self.result_receiver {
                 if let Ok(result) = receiver.recv() {
@@ -347,40 +354,47 @@ impl ParallelCompiler {
                 }
             }
         }
-        
+
         Ok(all_results)
     }
 
     /// Compile multiple files in parallel
-    pub fn compile_files_parallel(&mut self, files: Vec<PathBuf>) -> Result<HashMap<PathBuf, CompilationResult>> {
+    pub fn compile_files_parallel(
+        &mut self,
+        files: Vec<PathBuf>,
+    ) -> Result<HashMap<PathBuf, CompilationResult>> {
         let start_time = Instant::now();
-        
+
         eprintln!("🚀 Starting parallel compilation of {} files", files.len());
-        
+
         // Read all files and submit jobs
         let mut job_ids = Vec::new();
         for file_path in &files {
-            let source = std::fs::read_to_string(file_path)
-                .map_err(|e| CompileError::codegen_error(format!("Failed to read {}: {}", file_path.display(), e), None))?;
-            
+            let source = std::fs::read_to_string(file_path).map_err(|e| {
+                CompileError::codegen_error(
+                    format!("Failed to read {}: {}", file_path.display(), e),
+                    None,
+                )
+            })?;
+
             let job_id = self.submit_job(file_path.clone(), source, 1)?;
             job_ids.push(job_id);
         }
-        
+
         // Wait for all jobs to complete
         let mut results = HashMap::new();
         for job_id in job_ids {
             let result = self.wait_for_job(job_id)?;
             results.insert(result.file_path.clone(), result);
         }
-        
+
         // Update wall-clock time
         let wall_clock_time = start_time.elapsed();
         self.stats.write().unwrap().wall_clock_time = wall_clock_time;
-        
+
         eprintln!("✅ Parallel compilation completed in {:?}", wall_clock_time);
         self.print_stats();
-        
+
         Ok(results)
     }
 
@@ -398,28 +412,34 @@ impl ParallelCompiler {
         eprintln!("   Failed jobs: {}", stats.failed_jobs);
         eprintln!("   Threads used: {}", stats.threads_used);
         eprintln!("   Wall-clock time: {:?}", stats.wall_clock_time);
-        eprintln!("   Total compilation time: {:?}", stats.total_compilation_time);
+        eprintln!(
+            "   Total compilation time: {:?}",
+            stats.total_compilation_time
+        );
         eprintln!("   Average job time: {:?}", stats.average_job_time);
         eprintln!("   Throughput: {:.2} jobs/sec", stats.throughput());
-        eprintln!("   Parallelization efficiency: {:.1}%", stats.parallelization_efficiency());
+        eprintln!(
+            "   Parallelization efficiency: {:.1}%",
+            stats.parallelization_efficiency()
+        );
     }
 }
 
 impl Drop for ParallelCompiler {
     fn drop(&mut self) {
         eprintln!("🔧 Shutting down parallel compiler...");
-        
+
         // Close channels to signal workers to stop
         drop(self.job_sender.take());
         drop(self.result_receiver.take());
-        
+
         // Wait for workers to finish
         while let Some(worker) = self.workers.pop() {
             if let Err(e) = worker.join() {
                 eprintln!("❌ Worker thread panic: {:?}", e);
             }
         }
-        
+
         eprintln!("✅ Parallel compiler shutdown complete");
     }
 }
@@ -430,17 +450,17 @@ static PARALLEL_INIT: std::sync::Once = std::sync::Once::new();
 
 /// Initialize the global parallel compiler
 pub fn initialize_parallel_compiler(config: ParallelConfig) {
-    PARALLEL_INIT.call_once(|| {
-        unsafe {
-            GLOBAL_PARALLEL_COMPILER = Some(ParallelCompiler::with_config(config));
-        }
+    PARALLEL_INIT.call_once(|| unsafe {
+        GLOBAL_PARALLEL_COMPILER = Some(ParallelCompiler::with_config(config));
     });
 }
 
 /// Get reference to the global parallel compiler
 pub fn get_parallel_compiler() -> &'static mut ParallelCompiler {
     unsafe {
-        GLOBAL_PARALLEL_COMPILER.as_mut().expect("Parallel compiler not initialized")
+        GLOBAL_PARALLEL_COMPILER
+            .as_mut()
+            .expect("Parallel compiler not initialized")
     }
 }
 

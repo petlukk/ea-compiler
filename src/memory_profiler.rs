@@ -1,5 +1,5 @@
 //! Memory profiling infrastructure for Eä compiler
-//! 
+//!
 //! This module provides comprehensive memory tracking and profiling capabilities
 //! to identify and fix memory exhaustion issues during compilation.
 
@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 /// Global memory profiler instance
-static MEMORY_PROFILER: std::sync::LazyLock<Arc<Mutex<MemoryProfiler>>> = 
+static MEMORY_PROFILER: std::sync::LazyLock<Arc<Mutex<MemoryProfiler>>> =
     std::sync::LazyLock::new(|| Arc::new(Mutex::new(MemoryProfiler::new())));
 
 /// Memory profiler for tracking compilation phase memory usage
@@ -81,13 +81,13 @@ impl MemoryProfiler {
     pub fn record_usage(&mut self, phase: CompilationPhase, usage: usize, description: String) {
         // Update current usage
         self.phase_usage.insert(phase, usage);
-        
+
         // Update peak usage
         let current_peak = self.peak_usage.get(&phase).unwrap_or(&0);
         if usage > *current_peak {
             self.peak_usage.insert(phase, usage);
         }
-        
+
         // Add to timeline
         self.timeline.push(MemorySnapshot {
             timestamp: Instant::now(),
@@ -95,7 +95,7 @@ impl MemoryProfiler {
             memory_usage: usage,
             description,
         });
-        
+
         // Update total allocations
         self.total_allocations += usage;
     }
@@ -121,7 +121,8 @@ impl MemoryProfiler {
 
     /// Get current compilation phase (latest recorded)
     pub fn get_current_phase(&self) -> CompilationPhase {
-        self.timeline.last()
+        self.timeline
+            .last()
             .map(|snapshot| snapshot.phase)
             .unwrap_or(CompilationPhase::Total)
     }
@@ -148,33 +149,41 @@ impl MemoryProfiler {
     /// Generate memory usage report
     pub fn generate_report(&self) -> String {
         let mut report = String::new();
-        
+
         report.push_str("=== Memory Usage Report ===\n");
-        report.push_str(&format!("Total Memory Usage: {:.2} MB\n", 
-            self.get_total_usage() as f64 / 1024.0 / 1024.0));
-        report.push_str(&format!("Memory Limit: {:.2} MB\n", 
-            self.memory_limit as f64 / 1024.0 / 1024.0));
+        report.push_str(&format!(
+            "Total Memory Usage: {:.2} MB\n",
+            self.get_total_usage() as f64 / 1024.0 / 1024.0
+        ));
+        report.push_str(&format!(
+            "Memory Limit: {:.2} MB\n",
+            self.memory_limit as f64 / 1024.0 / 1024.0
+        ));
         report.push_str(&format!("Total Allocations: {}\n", self.total_allocations));
-        
+
         report.push_str("\nMemory Usage by Phase:\n");
         for (phase, usage) in &self.phase_usage {
             let peak = self.peak_usage.get(phase).unwrap_or(&0);
-            report.push_str(&format!("  {:?}: {:.2} MB (peak: {:.2} MB)\n", 
-                phase, 
+            report.push_str(&format!(
+                "  {:?}: {:.2} MB (peak: {:.2} MB)\n",
+                phase,
                 *usage as f64 / 1024.0 / 1024.0,
-                *peak as f64 / 1024.0 / 1024.0));
+                *peak as f64 / 1024.0 / 1024.0
+            ));
         }
-        
+
         report.push_str("\nMemory Timeline (last 10 events):\n");
         for snapshot in self.timeline.iter().rev().take(10) {
             let elapsed = snapshot.timestamp.duration_since(self.start_time);
-            report.push_str(&format!("  {:.2}s - {:?}: {:.2} MB - {}\n",
+            report.push_str(&format!(
+                "  {:.2}s - {:?}: {:.2} MB - {}\n",
                 elapsed.as_secs_f64(),
                 snapshot.phase,
                 snapshot.memory_usage as f64 / 1024.0 / 1024.0,
-                snapshot.description));
+                snapshot.description
+            ));
         }
-        
+
         report
     }
 }
@@ -182,7 +191,9 @@ impl MemoryProfiler {
 /// Memory-related errors
 #[derive(Debug, thiserror::Error)]
 pub enum MemoryError {
-    #[error("Memory limit exceeded: {current} bytes used, limit is {limit} bytes (phase: {phase:?})")]
+    #[error(
+        "Memory limit exceeded: {current} bytes used, limit is {limit} bytes (phase: {phase:?})"
+    )]
     LimitExceeded {
         current: usize,
         limit: usize,
@@ -214,7 +225,6 @@ pub fn check_memory_limit() -> Result<(), MemoryError> {
         Ok(()) // If we can't lock, assume it's okay
     }
 }
-
 
 /// Set global memory limit
 pub fn set_memory_limit(limit: usize) {
@@ -269,13 +279,13 @@ impl<T> MemoryTracker<T> {
     /// Create a new memory tracker
     pub fn new(data: T, phase: CompilationPhase) -> Self {
         let size = std::mem::size_of::<T>();
-        record_memory_usage(phase, size, &format!("Allocated {}", std::any::type_name::<T>()));
-        
-        Self {
-            data,
-            size,
+        record_memory_usage(
             phase,
-        }
+            size,
+            &format!("Allocated {}", std::any::type_name::<T>()),
+        );
+
+        Self { data, size, phase }
     }
 
     /// Get the wrapped data
@@ -303,12 +313,16 @@ impl<T> Drop for MemoryTracker<T> {
                 let new_usage = current_usage.saturating_sub(self.size);
                 profiler.phase_usage.insert(self.phase, new_usage);
             }
-            
+
             // Record the deallocation event
             profiler.record_usage(
-                self.phase, 
-                0, 
-                format!("Freed {} bytes of {}", self.size, std::any::type_name::<T>())
+                self.phase,
+                0,
+                format!(
+                    "Freed {} bytes of {}",
+                    self.size,
+                    std::any::type_name::<T>()
+                ),
             );
         }
     }
@@ -320,7 +334,11 @@ macro_rules! track_memory {
     ($phase:expr, $expr:expr) => {{
         let result = $expr;
         let size = std::mem::size_of_val(&result);
-        $crate::memory_profiler::record_memory_usage($phase, size, &format!("Allocated at {}:{}", file!(), line!()));
+        $crate::memory_profiler::record_memory_usage(
+            $phase,
+            size,
+            &format!("Allocated at {}:{}", file!(), line!()),
+        );
         result
     }};
 }
@@ -332,11 +350,19 @@ mod tests {
     #[test]
     fn test_memory_profiler_basic() {
         let mut profiler = MemoryProfiler::new();
-        
+
         // Record some usage
-        profiler.record_usage(CompilationPhase::Lexing, 1024, "Test allocation".to_string());
-        profiler.record_usage(CompilationPhase::Parsing, 2048, "Parser allocation".to_string());
-        
+        profiler.record_usage(
+            CompilationPhase::Lexing,
+            1024,
+            "Test allocation".to_string(),
+        );
+        profiler.record_usage(
+            CompilationPhase::Parsing,
+            2048,
+            "Parser allocation".to_string(),
+        );
+
         // Check totals
         assert_eq!(profiler.get_total_usage(), 3072);
         assert_eq!(profiler.timeline.len(), 2);
@@ -346,13 +372,21 @@ mod tests {
     fn test_memory_limit_check() {
         let mut profiler = MemoryProfiler::new();
         profiler.set_memory_limit(1024);
-        
+
         // Should be okay under limit
-        profiler.record_usage(CompilationPhase::Lexing, 512, "Small allocation".to_string());
+        profiler.record_usage(
+            CompilationPhase::Lexing,
+            512,
+            "Small allocation".to_string(),
+        );
         assert!(profiler.check_memory_limit().is_ok());
-        
+
         // Should fail over limit
-        profiler.record_usage(CompilationPhase::Parsing, 1024, "Large allocation".to_string());
+        profiler.record_usage(
+            CompilationPhase::Parsing,
+            1024,
+            "Large allocation".to_string(),
+        );
         assert!(profiler.check_memory_limit().is_err());
     }
 
@@ -360,7 +394,7 @@ mod tests {
     fn test_memory_tracker() {
         let data = vec![1, 2, 3, 4, 5];
         let _tracker = MemoryTracker::new(data, CompilationPhase::Lexing);
-        
+
         // Memory should be recorded
         assert!(get_current_memory_usage() > 0);
     }

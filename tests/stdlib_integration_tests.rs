@@ -1,7 +1,7 @@
 // tests/stdlib_integration_tests.rs
 //! Standard library integration tests
 
-use ea_compiler::{tokenize, parse, compile_to_ast};
+use ea_compiler::{compile_to_ast, parse, tokenize};
 
 #[test]
 fn test_stdlib_tokenization() {
@@ -17,19 +17,29 @@ fn test_stdlib_tokenization() {
     "#;
 
     let tokens = tokenize(source).expect("Tokenization should succeed");
-    
+
     // Check for standard library type tokens
     let token_kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
-    
+
     // Should contain Vec, HashMap, HashSet, String tokens
-    assert!(token_kinds.iter().any(|kind| matches!(kind, ea_compiler::lexer::TokenKind::VecType)));
-    assert!(token_kinds.iter().any(|kind| matches!(kind, ea_compiler::lexer::TokenKind::HashMapType)));
-    assert!(token_kinds.iter().any(|kind| matches!(kind, ea_compiler::lexer::TokenKind::HashSetType)));
-    assert!(token_kinds.iter().any(|kind| matches!(kind, ea_compiler::lexer::TokenKind::StringType)));
-    assert!(token_kinds.iter().any(|kind| matches!(kind, ea_compiler::lexer::TokenKind::Println)));
+    assert!(token_kinds
+        .iter()
+        .any(|kind| matches!(kind, ea_compiler::lexer::TokenKind::VecType)));
+    assert!(token_kinds
+        .iter()
+        .any(|kind| matches!(kind, ea_compiler::lexer::TokenKind::HashMapType)));
+    assert!(token_kinds
+        .iter()
+        .any(|kind| matches!(kind, ea_compiler::lexer::TokenKind::HashSetType)));
+    assert!(token_kinds
+        .iter()
+        .any(|kind| matches!(kind, ea_compiler::lexer::TokenKind::StringType)));
+    assert!(token_kinds
+        .iter()
+        .any(|kind| matches!(kind, ea_compiler::lexer::TokenKind::Println)));
 }
 
-#[test] 
+#[test]
 fn test_stdlib_parsing() {
     let source = r#"
         func test() -> () {
@@ -58,7 +68,11 @@ fn test_stdlib_type_checking() {
 
     // This should compile (parse + type check) without errors
     let result = compile_to_ast(source);
-    assert!(result.is_ok(), "Type checking should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Type checking should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -72,9 +86,11 @@ fn test_println_tokenization() {
 
     let tokens = tokenize(source).expect("Tokenization should succeed");
     let token_kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
-    
+
     // Should contain println token
-    assert!(token_kinds.iter().any(|kind| matches!(kind, ea_compiler::lexer::TokenKind::Println)));
+    assert!(token_kinds
+        .iter()
+        .any(|kind| matches!(kind, ea_compiler::lexer::TokenKind::Println)));
 }
 
 #[test]
@@ -88,8 +104,12 @@ fn test_basic_stdlib_program() {
 
     // Full compilation pipeline should work
     let result = compile_to_ast(source);
-    assert!(result.is_ok(), "Full compilation should succeed: {:?}", result.err());
-    
+    assert!(
+        result.is_ok(),
+        "Full compilation should succeed: {:?}",
+        result.err()
+    );
+
     let (ast, _type_context) = result.unwrap();
     assert_eq!(ast.len(), 1); // Should have one function declaration
 }
@@ -97,15 +117,15 @@ fn test_basic_stdlib_program() {
 #[test]
 fn test_vec_new_parsing() {
     let source = "func main() { let vec = Vec::new(); }";
-    
+
     // Test tokenization first
     let tokens = tokenize(source).expect("Tokenization should succeed");
     println!("Tokens: {:?}", tokens);
-    
+
     // Test parsing
     let ast = parse(source).expect("Parsing should succeed");
     println!("AST: {:?}", ast);
-    
+
     // Should have parsed successfully
     assert!(!ast.is_empty());
 }

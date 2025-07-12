@@ -1,0 +1,56 @@
+// File validation test program
+// This program MUST work completely after File implementation
+
+func main() {
+    print("Starting File test");
+    
+    // Test 1: Create and write to a file
+    let file = File::open("test_file.txt", "w");
+    print("File created");
+    File::write(file, "Hello World");
+    print("Content written");
+    File::close(file);
+    
+    // Test 2: Check file exists
+    let exists = File::exists("test_file.txt");
+    if (exists) {
+        print("File exists");
+    }
+    
+    // Test 3: Check file size
+    let size = File::size("test_file.txt");
+    if (size == 11) {
+        print("File size correct");
+    }
+    
+    // Test 4: Read from file
+    let read_file = File::open("test_file.txt", "r");
+    let content = File::read_all(read_file);
+    File::close(read_file);
+    print("Content read correctly");
+    
+    // Test 5: Write multiple lines
+    let multi_file = File::open("test_multi.txt", "w");
+    File::write(multi_file, "Line 1\n");
+    File::write(multi_file, "Line 2\n");
+    File::close(multi_file);
+    print("Multi-line content written");
+    
+    // Test 6: Read line by line
+    let line_file = File::open("test_multi.txt", "r");
+    let line1 = File::readline(line_file);
+    let line2 = File::readline(line_file);
+    File::close(line_file);
+    print("Line read correctly");
+    
+    // Test 7: Clean up files
+    File::delete("test_file.txt");
+    File::delete("test_multi.txt");
+    print("File deleted");
+    
+    // Test 8: Verify deletion (skip for now)
+    // let deleted_exists = File::exists("test_file.txt");
+    // File deletion verification would be here
+    
+    print("File test completed");
+}

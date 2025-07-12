@@ -1,13 +1,13 @@
 //! Compile-time execution engine for Eä
-//! 
+//!
 //! This module provides revolutionary compile-time execution capabilities:
 //! - More powerful than Zig's comptime
 //! - Complex algorithm execution at compile time
 //! - Automatic optimization selection based on data characteristics
 //! - Performance guarantees through static analysis
 
-use crate::ast::{Expr, Stmt, Literal, TypeAnnotation};
-use crate::memory::{MemoryManager, MemoryAttributes};
+use crate::ast::{Expr, Literal, Stmt, TypeAnnotation};
+use crate::memory::{MemoryAttributes, MemoryManager};
 use crate::type_system::{EaType, TypeContext};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -37,19 +37,19 @@ pub enum ComptimeValue {
     Float(f64),
     Boolean(bool),
     String(String),
-    
+
     /// Collection values
     Array(Vec<ComptimeValue>),
     Tuple(Vec<ComptimeValue>),
     Struct(HashMap<String, ComptimeValue>),
-    
+
     /// SIMD vector values
     SIMDVector {
         elements: Vec<ComptimeValue>,
         vector_type: String,
         width: usize,
     },
-    
+
     /// Function values (for higher-order programming)
     Function {
         name: String,
@@ -57,17 +57,17 @@ pub enum ComptimeValue {
         body_hash: u64, // Store hash instead of AST for serialization
         closure: HashMap<String, ComptimeValue>,
     },
-    
+
     /// Type values (for metaprogramming) - simplified for serialization
     Type(String),
-    
+
     /// Algorithm implementations selected at compile time
     Algorithm {
         algorithm_type: AlgorithmType,
         implementation: AlgorithmImpl,
         performance_characteristics: PerformanceProfile,
     },
-    
+
     /// Lookup tables computed at compile time
     LookupTable {
         table_type: LookupTableType,
@@ -150,9 +150,9 @@ pub struct ComptimeFunction {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComptimeAttributes {
-    pub pure: bool,                    // No side effects
-    pub deterministic: bool,           // Same inputs always produce same outputs
-    pub memoizable: bool,             // Results can be cached
+    pub pure: bool,          // No side effects
+    pub deterministic: bool, // Same inputs always produce same outputs
+    pub memoizable: bool,    // Results can be cached
     pub complexity_bounds: Option<ComplexityBounds>,
     pub memory_requirements: Option<MemoryAttributes>,
     pub simd_friendly: bool,
@@ -161,8 +161,8 @@ pub struct ComptimeAttributes {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComplexityBounds {
-    pub time_complexity: String,      // e.g., "O(n log n)"
-    pub space_complexity: String,     // e.g., "O(n)"
+    pub time_complexity: String,  // e.g., "O(n log n)"
+    pub space_complexity: String, // e.g., "O(n)"
     pub max_iterations: Option<u64>,
     pub max_recursion_depth: Option<u32>,
 }
@@ -202,10 +202,10 @@ pub struct DataCharacteristics {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DataSize {
-    Small,      // < 1KB
-    Medium,     // 1KB - 1MB
-    Large,      // 1MB - 1GB
-    Huge,       // > 1GB
+    Small,  // < 1KB
+    Medium, // 1KB - 1MB
+    Large,  // 1MB - 1GB
+    Huge,   // > 1GB
     Unknown,
 }
 
@@ -304,7 +304,11 @@ impl ComptimeEngine {
         self.stats.total_evaluations += 1;
 
         let result = match stmt {
-            Stmt::VarDeclaration { name, type_annotation: _, initializer } => {
+            Stmt::VarDeclaration {
+                name,
+                type_annotation: _,
+                initializer,
+            } => {
                 if let Some(value) = initializer {
                     let computed_value = self.evaluate_expression(value)?;
                     self.values.insert(name.clone(), computed_value.clone());
@@ -316,11 +320,9 @@ impl ComptimeEngine {
                     Ok(default_value)
                 }
             }
-            
-            Stmt::Expression(expr) => {
-                self.evaluate_expression(expr)
-            }
-            
+
+            Stmt::Expression(expr) => self.evaluate_expression(expr),
+
             Stmt::Block(statements) => {
                 let mut last_value = ComptimeValue::Integer(0); // Unit value equivalent
                 for stmt in statements {
@@ -328,17 +330,25 @@ impl ComptimeEngine {
                 }
                 Ok(last_value)
             }
-            
-            Stmt::If { condition, then_branch, else_branch } => {
+
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
                 let condition_value = self.evaluate_expression(condition)?;
-                
+
                 let condition_bool = match condition_value {
                     ComptimeValue::Boolean(b) => b,
                     ComptimeValue::Integer(i) => i != 0,
                     ComptimeValue::Float(f) => f != 0.0,
-                    _ => return Err(ComptimeError::TypeMismatch("Condition must be boolean or numeric".to_string())),
+                    _ => {
+                        return Err(ComptimeError::TypeMismatch(
+                            "Condition must be boolean or numeric".to_string(),
+                        ))
+                    }
                 };
-                
+
                 if condition_bool {
                     self.execute_statement(then_branch)
                 } else if let Some(else_stmt) = else_branch {
@@ -347,7 +357,7 @@ impl ComptimeEngine {
                     Ok(ComptimeValue::Integer(0)) // Unit value
                 }
             }
-            
+
             Stmt::Return(expr) => {
                 if let Some(expr) = expr {
                     self.evaluate_expression(expr)
@@ -355,7 +365,7 @@ impl ComptimeEngine {
                     Ok(ComptimeValue::Integer(0)) // Unit value
                 }
             }
-            
+
             _ => {
                 // For other statement types, return a default value
                 // In a full implementation, this would handle Function, While, For, etc.
@@ -370,80 +380,93 @@ impl ComptimeEngine {
     /// Evaluate an expression at compile time
     pub fn evaluate_expression(&mut self, expr: &Expr) -> Result<ComptimeValue, ComptimeError> {
         match expr {
-            Expr::Literal(lit) => {
-                match lit {
-                    Literal::Integer(value) => Ok(ComptimeValue::Integer(*value)),
-                    Literal::Float(value) => Ok(ComptimeValue::Float(*value)),
-                    Literal::Boolean(value) => Ok(ComptimeValue::Boolean(*value)),
-                    Literal::String(value) => Ok(ComptimeValue::String(value.clone())),
-                    Literal::Vector { elements, vector_type } => {
-                        let computed_elements: Result<Vec<_>, _> = elements.iter()
-                            .map(|elem| self.evaluate_literal(elem))
-                            .collect();
-                        let computed_elements = computed_elements?;
-                        
-                        Ok(ComptimeValue::SIMDVector {
-                            elements: computed_elements,
-                            vector_type: vector_type.as_ref().map(|vt| format!("{:?}", vt)).unwrap_or_default(),
-                            width: elements.len(),
-                        })
-                    }
+            Expr::Literal(lit) => match lit {
+                Literal::Integer(value) => Ok(ComptimeValue::Integer(*value)),
+                Literal::Float(value) => Ok(ComptimeValue::Float(*value)),
+                Literal::Boolean(value) => Ok(ComptimeValue::Boolean(*value)),
+                Literal::String(value) => Ok(ComptimeValue::String(value.clone())),
+                Literal::Vector {
+                    elements,
+                    vector_type,
+                } => {
+                    let computed_elements: Result<Vec<_>, _> = elements
+                        .iter()
+                        .map(|elem| self.evaluate_literal(elem))
+                        .collect();
+                    let computed_elements = computed_elements?;
+
+                    Ok(ComptimeValue::SIMDVector {
+                        elements: computed_elements,
+                        vector_type: vector_type
+                            .as_ref()
+                            .map(|vt| format!("{:?}", vt))
+                            .unwrap_or_default(),
+                        width: elements.len(),
+                    })
                 }
-            }
-            
-            Expr::Variable(name) => {
-                self.values.get(name)
-                    .cloned()
-                    .ok_or_else(|| ComptimeError::UnknownFunction(format!("Variable '{}' not found", name)))
-            }
-            
+            },
+
+            Expr::Variable(name) => self.values.get(name).cloned().ok_or_else(|| {
+                ComptimeError::UnknownFunction(format!("Variable '{}' not found", name))
+            }),
+
             Expr::Call(func, args) => {
                 if let Expr::Variable(name) = func.as_ref() {
                     self.evaluate_function_call(name, args)
                 } else {
-                    Err(ComptimeError::UnsupportedExpression("Complex function calls not supported".to_string()))
+                    Err(ComptimeError::UnsupportedExpression(
+                        "Complex function calls not supported".to_string(),
+                    ))
                 }
             }
-            
+
             Expr::Binary(left, operator, right) => {
                 let left_val = self.evaluate_expression(left)?;
                 let right_val = self.evaluate_expression(right)?;
                 self.evaluate_binary_operation(&left_val, &format!("{:?}", operator), &right_val)
             }
-            
+
             Expr::Unary(operator, operand) => {
                 let operand_val = self.evaluate_expression(operand)?;
                 self.evaluate_unary_operation(&format!("{:?}", operator), &operand_val)
             }
-            
+
             Expr::Index(array, index) => {
                 let array_val = self.evaluate_expression(array)?;
                 let index_val = self.evaluate_expression(index)?;
-                
+
                 let index_num = match index_val {
                     ComptimeValue::Integer(i) => i as usize,
-                    _ => return Err(ComptimeError::TypeMismatch("Index must be an integer".to_string())),
+                    _ => {
+                        return Err(ComptimeError::TypeMismatch(
+                            "Index must be an integer".to_string(),
+                        ))
+                    }
                 };
-                
+
                 match array_val {
                     ComptimeValue::Array(elements) => {
-                        elements.get(index_num)
-                            .cloned()
-                            .ok_or_else(|| ComptimeError::CompilationError("Array index out of bounds".to_string()))
+                        elements.get(index_num).cloned().ok_or_else(|| {
+                            ComptimeError::CompilationError("Array index out of bounds".to_string())
+                        })
                     }
                     ComptimeValue::SIMDVector { elements, .. } => {
-                        elements.get(index_num)
-                            .cloned()
-                            .ok_or_else(|| ComptimeError::CompilationError("Vector index out of bounds".to_string()))
+                        elements.get(index_num).cloned().ok_or_else(|| {
+                            ComptimeError::CompilationError(
+                                "Vector index out of bounds".to_string(),
+                            )
+                        })
                     }
-                    _ => Err(ComptimeError::TypeMismatch("Cannot index non-array type".to_string())),
+                    _ => Err(ComptimeError::TypeMismatch(
+                        "Cannot index non-array type".to_string(),
+                    )),
                 }
             }
-            
+
             _ => Err(ComptimeError::UnsupportedExpression(format!("{:?}", expr))),
         }
     }
-    
+
     /// Evaluate unary operations
     fn evaluate_unary_operation(
         &mut self,
@@ -454,21 +477,27 @@ impl ComptimeEngine {
             "-" => match operand {
                 ComptimeValue::Integer(val) => Ok(ComptimeValue::Integer(-val)),
                 ComptimeValue::Float(val) => Ok(ComptimeValue::Float(-val)),
-                _ => Err(ComptimeError::TypeMismatch("Cannot negate non-numeric type".to_string())),
+                _ => Err(ComptimeError::TypeMismatch(
+                    "Cannot negate non-numeric type".to_string(),
+                )),
             },
             "!" => match operand {
                 ComptimeValue::Boolean(val) => Ok(ComptimeValue::Boolean(!val)),
                 ComptimeValue::Integer(val) => Ok(ComptimeValue::Boolean(*val == 0)),
-                _ => Err(ComptimeError::TypeMismatch("Cannot apply logical NOT to non-boolean type".to_string())),
+                _ => Err(ComptimeError::TypeMismatch(
+                    "Cannot apply logical NOT to non-boolean type".to_string(),
+                )),
             },
             "~" => match operand {
                 ComptimeValue::Integer(val) => Ok(ComptimeValue::Integer(!val)),
-                _ => Err(ComptimeError::TypeMismatch("Cannot apply bitwise NOT to non-integer type".to_string())),
+                _ => Err(ComptimeError::TypeMismatch(
+                    "Cannot apply bitwise NOT to non-integer type".to_string(),
+                )),
             },
             _ => Err(ComptimeError::UnsupportedOperation(operator.to_string())),
         }
     }
-    
+
     /// Helper to evaluate literals recursively  
     fn evaluate_literal(&mut self, lit: &Literal) -> Result<ComptimeValue, ComptimeError> {
         match lit {
@@ -476,15 +505,22 @@ impl ComptimeEngine {
             Literal::Float(value) => Ok(ComptimeValue::Float(*value)),
             Literal::Boolean(value) => Ok(ComptimeValue::Boolean(*value)),
             Literal::String(value) => Ok(ComptimeValue::String(value.clone())),
-            Literal::Vector { elements, vector_type } => {
-                let computed_elements: Result<Vec<_>, _> = elements.iter()
+            Literal::Vector {
+                elements,
+                vector_type,
+            } => {
+                let computed_elements: Result<Vec<_>, _> = elements
+                    .iter()
                     .map(|elem| self.evaluate_literal(elem))
                     .collect();
                 let computed_elements = computed_elements?;
-                
+
                 Ok(ComptimeValue::SIMDVector {
                     elements: computed_elements,
-                    vector_type: vector_type.as_ref().map(|vt| format!("{:?}", vt)).unwrap_or_default(),
+                    vector_type: vector_type
+                        .as_ref()
+                        .map(|vt| format!("{:?}", vt))
+                        .unwrap_or_default(),
                     width: elements.len(),
                 })
             }
@@ -498,17 +534,34 @@ impl ComptimeEngine {
         size: usize,
     ) -> Result<ComptimeValue, ComptimeError> {
         let start_time = Instant::now();
-        
+
         let data = match &table_type {
-            LookupTableType::Mathematical { function_name, domain_start, domain_end, precision } => {
-                self.generate_mathematical_table(function_name, *domain_start, *domain_end, *precision, size)?
-            }
-            LookupTableType::Optimization { parameter_space, objective_function, optimization_method } => {
-                self.generate_optimization_table(parameter_space, objective_function, optimization_method, size)?
-            }
-            LookupTableType::Configuration { config_space, performance_model } => {
-                self.generate_configuration_table(config_space, performance_model, size)?
-            }
+            LookupTableType::Mathematical {
+                function_name,
+                domain_start,
+                domain_end,
+                precision,
+            } => self.generate_mathematical_table(
+                function_name,
+                *domain_start,
+                *domain_end,
+                *precision,
+                size,
+            )?,
+            LookupTableType::Optimization {
+                parameter_space,
+                objective_function,
+                optimization_method,
+            } => self.generate_optimization_table(
+                parameter_space,
+                objective_function,
+                optimization_method,
+                size,
+            )?,
+            LookupTableType::Configuration {
+                config_space,
+                performance_model,
+            } => self.generate_configuration_table(config_space, performance_model, size)?,
         };
 
         self.stats.lookup_tables_generated += 1;
@@ -527,14 +580,20 @@ impl ComptimeEngine {
         algorithm_type: AlgorithmType,
         data_characteristics: DataCharacteristics,
     ) -> Result<ComptimeValue, ComptimeError> {
-        let choices = self.optimization_db.get_algorithm_choices(&algorithm_type, &data_characteristics);
-        
+        let choices = self
+            .optimization_db
+            .get_algorithm_choices(&algorithm_type, &data_characteristics);
+
         if choices.is_empty() {
-            return Err(ComptimeError::NoSuitableAlgorithm(format!("{:?}", algorithm_type)));
+            return Err(ComptimeError::NoSuitableAlgorithm(format!(
+                "{:?}",
+                algorithm_type
+            )));
         }
 
         // Select the highest-scoring algorithm
-        let best_choice = choices.iter()
+        let best_choice = choices
+            .iter()
             .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap())
             .unwrap();
 
@@ -544,7 +603,10 @@ impl ComptimeEngine {
             cache_behavior: self.get_cache_behavior(&best_choice.implementation),
             simd_utilization: self.get_simd_utilization(&best_choice.implementation),
             parallelization_factor: self.get_parallelization_factor(&best_choice.implementation),
-            expected_performance: best_choice.performance_estimate.execution_time.as_secs_f64(),
+            expected_performance: best_choice
+                .performance_estimate
+                .execution_time
+                .as_secs_f64(),
         };
 
         self.stats.algorithms_generated += 1;
@@ -564,10 +626,10 @@ impl ComptimeEngine {
     ) -> Result<Vec<Stmt>, ComptimeError> {
         // Generate optimized code based on compile-time parameters
         let mut specialized_statements = Vec::new();
-        
+
         // Simple template substitution and specialization
         // This is a basic implementation - in practice, this would be much more sophisticated
-        
+
         // Check if this is a loop unrolling template
         if template.contains("UNROLL_LOOP") {
             if let Some(ComptimeValue::Integer(count)) = parameters.get("unroll_count") {
@@ -575,21 +637,27 @@ impl ComptimeEngine {
                 for i in 0..*count {
                     let stmt = Stmt::VarDeclaration {
                         name: format!("unrolled_var_{}", i),
-                        type_annotation: Some(TypeAnnotation { name: "i32".to_string(), is_mutable: false }),
+                        type_annotation: Some(TypeAnnotation {
+                            name: "i32".to_string(),
+                            is_mutable: false,
+                        }),
                         initializer: Some(Expr::Literal(Literal::Integer(i as i64))),
                     };
                     specialized_statements.push(stmt);
                 }
             }
         }
-        
+
         // Check if this is a SIMD vectorization template
         if template.contains("VECTORIZE") {
             if let Some(ComptimeValue::Integer(width)) = parameters.get("vector_width") {
                 // Generate vectorized operations
                 let stmt = Stmt::VarDeclaration {
                     name: "vectorized_op".to_string(),
-                    type_annotation: Some(TypeAnnotation { name: format!("f32x{}", width), is_mutable: false }),
+                    type_annotation: Some(TypeAnnotation {
+                        name: format!("f32x{}", width),
+                        is_mutable: false,
+                    }),
                     initializer: Some(Expr::Literal(Literal::Vector {
                         elements: vec![Literal::Float(1.0); *width as usize],
                         vector_type: None,
@@ -598,7 +666,7 @@ impl ComptimeEngine {
                 specialized_statements.push(stmt);
             }
         }
-        
+
         // Check if this is a constant folding template
         if template.contains("CONSTANT_FOLD") {
             // Generate constant-folded expressions
@@ -606,14 +674,17 @@ impl ComptimeEngine {
                 if let ComptimeValue::Integer(value) = param_value {
                     let stmt = Stmt::VarDeclaration {
                         name: format!("const_{}", param_name),
-                        type_annotation: Some(TypeAnnotation { name: "i32".to_string(), is_mutable: false }),
+                        type_annotation: Some(TypeAnnotation {
+                            name: "i32".to_string(),
+                            is_mutable: false,
+                        }),
                         initializer: Some(Expr::Literal(Literal::Integer(*value))),
                     };
                     specialized_statements.push(stmt);
                 }
             }
         }
-        
+
         Ok(specialized_statements)
     }
 
@@ -624,15 +695,15 @@ impl ComptimeEngine {
         vector_width: usize,
     ) -> Result<Vec<Expr>, ComptimeError> {
         let mut optimized = Vec::new();
-        
+
         // Analyze operations for vectorization opportunities
         let vectorizable_groups = self.analyze_vectorization_opportunities(operations)?;
-        
+
         for group in vectorizable_groups {
             let vectorized = self.vectorize_operation_group(group, vector_width)?;
             optimized.extend(vectorized);
         }
-        
+
         Ok(optimized)
     }
 
@@ -755,48 +826,65 @@ impl ComptimeEngine {
                         "generate_lookup_table requires 4 arguments: function_name, start, end, size".to_string()
                     ));
                 }
-                
+
                 // Extract function name
                 let func_name = match self.evaluate_expression(&args[0])? {
                     ComptimeValue::String(name) => name,
-                    _ => return Err(ComptimeError::TypeMismatch("Expected string for function name".to_string())),
+                    _ => {
+                        return Err(ComptimeError::TypeMismatch(
+                            "Expected string for function name".to_string(),
+                        ))
+                    }
                 };
-                
+
                 // Extract domain parameters
                 let start = match self.evaluate_expression(&args[1])? {
                     ComptimeValue::Float(val) => val,
                     ComptimeValue::Integer(val) => val as f64,
-                    _ => return Err(ComptimeError::TypeMismatch("Expected number for domain start".to_string())),
+                    _ => {
+                        return Err(ComptimeError::TypeMismatch(
+                            "Expected number for domain start".to_string(),
+                        ))
+                    }
                 };
-                
+
                 let end = match self.evaluate_expression(&args[2])? {
                     ComptimeValue::Float(val) => val,
                     ComptimeValue::Integer(val) => val as f64,
-                    _ => return Err(ComptimeError::TypeMismatch("Expected number for domain end".to_string())),
+                    _ => {
+                        return Err(ComptimeError::TypeMismatch(
+                            "Expected number for domain end".to_string(),
+                        ))
+                    }
                 };
-                
+
                 let size = match self.evaluate_expression(&args[3])? {
                     ComptimeValue::Integer(val) => val as usize,
-                    _ => return Err(ComptimeError::TypeMismatch("Expected integer for table size".to_string())),
+                    _ => {
+                        return Err(ComptimeError::TypeMismatch(
+                            "Expected integer for table size".to_string(),
+                        ))
+                    }
                 };
-                
+
                 let table_type = LookupTableType::Mathematical {
                     function_name: func_name,
                     domain_start: start,
                     domain_end: end,
                     precision: 0.001,
                 };
-                
+
                 self.generate_lookup_table(table_type, size)
             }
-            
+
             "select_optimal_algorithm" => {
                 if args.len() < 2 {
                     return Err(ComptimeError::CompilationError(
-                        "select_optimal_algorithm requires algorithm_type and data_characteristics".to_string()
+                        "select_optimal_algorithm requires algorithm_type and data_characteristics"
+                            .to_string(),
                     ));
                 }
-                
+
                 // Extract algorithm type
                 let algo_type = match self.evaluate_expression(&args[0])? {
                     ComptimeValue::String(type_str) => match type_str.as_str() {
@@ -805,11 +893,20 @@ impl ComptimeEngine {
                         "transform" => AlgorithmType::Transform,
                         "reduce" => AlgorithmType::Reduce,
                         "mathematical" => AlgorithmType::Mathematical,
-                        _ => return Err(ComptimeError::CompilationError(format!("Unknown algorithm type: {}", type_str))),
+                        _ => {
+                            return Err(ComptimeError::CompilationError(format!(
+                                "Unknown algorithm type: {}",
+                                type_str
+                            )))
+                        }
                     },
-                    _ => return Err(ComptimeError::TypeMismatch("Expected string for algorithm type".to_string())),
+                    _ => {
+                        return Err(ComptimeError::TypeMismatch(
+                            "Expected string for algorithm type".to_string(),
+                        ))
+                    }
                 };
-                
+
                 // For now, use default characteristics - in a real implementation this would parse the second argument
                 let characteristics = DataCharacteristics {
                     size: DataSize::Medium,
@@ -818,42 +915,51 @@ impl ComptimeEngine {
                     data_type: "i32".to_string(),
                     constraints: vec![],
                 };
-                
+
                 self.select_optimal_algorithm(algo_type, characteristics)
             }
-            
+
             "optimize_simd" => {
                 if args.len() < 2 {
                     return Err(ComptimeError::CompilationError(
-                        "optimize_simd requires operations array and vector width".to_string()
+                        "optimize_simd requires operations array and vector width".to_string(),
                     ));
                 }
-                
+
                 let vector_width = match self.evaluate_expression(&args[1])? {
                     ComptimeValue::Integer(width) => width as usize,
-                    _ => return Err(ComptimeError::TypeMismatch("Expected integer for vector width".to_string())),
+                    _ => {
+                        return Err(ComptimeError::TypeMismatch(
+                            "Expected integer for vector width".to_string(),
+                        ))
+                    }
                 };
-                
+
                 // For now, return a simple optimization result
                 Ok(ComptimeValue::Array(vec![
                     ComptimeValue::String("SIMD optimization applied".to_string()),
                     ComptimeValue::Integer(vector_width as i64),
                 ]))
             }
-            
+
             "sin" | "cos" | "tan" | "sqrt" | "log" | "exp" => {
                 if args.len() != 1 {
-                    return Err(ComptimeError::CompilationError(
-                        format!("{} requires exactly one argument", name)
-                    ));
+                    return Err(ComptimeError::CompilationError(format!(
+                        "{} requires exactly one argument",
+                        name
+                    )));
                 }
-                
+
                 let input = match self.evaluate_expression(&args[0])? {
                     ComptimeValue::Float(val) => val,
                     ComptimeValue::Integer(val) => val as f64,
-                    _ => return Err(ComptimeError::TypeMismatch("Expected number for math function".to_string())),
+                    _ => {
+                        return Err(ComptimeError::TypeMismatch(
+                            "Expected number for math function".to_string(),
+                        ))
+                    }
                 };
-                
+
                 let result = match name {
                     "sin" => input.sin(),
                     "cos" => input.cos(),
@@ -863,10 +969,10 @@ impl ComptimeEngine {
                     "exp" => input.exp(),
                     _ => unreachable!(),
                 };
-                
+
                 Ok(ComptimeValue::Float(result))
             }
-            
+
             _ => Err(ComptimeError::UnknownFunction(name.to_string())),
         }
     }
@@ -878,76 +984,74 @@ impl ComptimeEngine {
         right: &ComptimeValue,
     ) -> Result<ComptimeValue, ComptimeError> {
         match (left, right) {
-            (ComptimeValue::Integer(l), ComptimeValue::Integer(r)) => {
-                match operator {
-                    "+" => Ok(ComptimeValue::Integer(l + r)),
-                    "-" => Ok(ComptimeValue::Integer(l - r)),
-                    "*" => Ok(ComptimeValue::Integer(l * r)),
-                    "/" => {
-                        if *r == 0 {
-                            return Err(ComptimeError::CompilationError("Division by zero".to_string()));
-                        }
-                        Ok(ComptimeValue::Integer(l / r))
-                    },
-                    "%" => {
-                        if *r == 0 {
-                            return Err(ComptimeError::CompilationError("Modulo by zero".to_string()));
-                        }
-                        Ok(ComptimeValue::Integer(l % r))
-                    },
-                    "==" => Ok(ComptimeValue::Boolean(l == r)),
-                    "!=" => Ok(ComptimeValue::Boolean(l != r)),
-                    "<" => Ok(ComptimeValue::Boolean(l < r)),
-                    "<=" => Ok(ComptimeValue::Boolean(l <= r)),
-                    ">" => Ok(ComptimeValue::Boolean(l > r)),
-                    ">=" => Ok(ComptimeValue::Boolean(l >= r)),
-                    "&" => Ok(ComptimeValue::Integer(l & r)),
-                    "|" => Ok(ComptimeValue::Integer(l | r)),
-                    "^" => Ok(ComptimeValue::Integer(l ^ r)),
-                    "<<" => Ok(ComptimeValue::Integer(l << r)),
-                    ">>" => Ok(ComptimeValue::Integer(l >> r)),
-                    _ => Err(ComptimeError::UnsupportedOperation(operator.to_string())),
+            (ComptimeValue::Integer(l), ComptimeValue::Integer(r)) => match operator {
+                "+" => Ok(ComptimeValue::Integer(l + r)),
+                "-" => Ok(ComptimeValue::Integer(l - r)),
+                "*" => Ok(ComptimeValue::Integer(l * r)),
+                "/" => {
+                    if *r == 0 {
+                        return Err(ComptimeError::CompilationError(
+                            "Division by zero".to_string(),
+                        ));
+                    }
+                    Ok(ComptimeValue::Integer(l / r))
                 }
-            }
-            (ComptimeValue::Float(l), ComptimeValue::Float(r)) => {
-                match operator {
-                    "+" => Ok(ComptimeValue::Float(l + r)),
-                    "-" => Ok(ComptimeValue::Float(l - r)),
-                    "*" => Ok(ComptimeValue::Float(l * r)),
-                    "/" => {
-                        if *r == 0.0 {
-                            return Err(ComptimeError::CompilationError("Division by zero".to_string()));
-                        }
-                        Ok(ComptimeValue::Float(l / r))
-                    },
-                    "%" => Ok(ComptimeValue::Float(l % r)),
-                    "==" => Ok(ComptimeValue::Boolean((l - r).abs() < f64::EPSILON)),
-                    "!=" => Ok(ComptimeValue::Boolean((l - r).abs() >= f64::EPSILON)),
-                    "<" => Ok(ComptimeValue::Boolean(l < r)),
-                    "<=" => Ok(ComptimeValue::Boolean(l <= r)),
-                    ">" => Ok(ComptimeValue::Boolean(l > r)),
-                    ">=" => Ok(ComptimeValue::Boolean(l >= r)),
-                    "**" => Ok(ComptimeValue::Float(l.powf(*r))),
-                    _ => Err(ComptimeError::UnsupportedOperation(operator.to_string())),
+                "%" => {
+                    if *r == 0 {
+                        return Err(ComptimeError::CompilationError(
+                            "Modulo by zero".to_string(),
+                        ));
+                    }
+                    Ok(ComptimeValue::Integer(l % r))
                 }
-            }
-            (ComptimeValue::Boolean(l), ComptimeValue::Boolean(r)) => {
-                match operator {
-                    "&&" => Ok(ComptimeValue::Boolean(*l && *r)),
-                    "||" => Ok(ComptimeValue::Boolean(*l || *r)),
-                    "==" => Ok(ComptimeValue::Boolean(l == r)),
-                    "!=" => Ok(ComptimeValue::Boolean(l != r)),
-                    _ => Err(ComptimeError::UnsupportedOperation(operator.to_string())),
+                "==" => Ok(ComptimeValue::Boolean(l == r)),
+                "!=" => Ok(ComptimeValue::Boolean(l != r)),
+                "<" => Ok(ComptimeValue::Boolean(l < r)),
+                "<=" => Ok(ComptimeValue::Boolean(l <= r)),
+                ">" => Ok(ComptimeValue::Boolean(l > r)),
+                ">=" => Ok(ComptimeValue::Boolean(l >= r)),
+                "&" => Ok(ComptimeValue::Integer(l & r)),
+                "|" => Ok(ComptimeValue::Integer(l | r)),
+                "^" => Ok(ComptimeValue::Integer(l ^ r)),
+                "<<" => Ok(ComptimeValue::Integer(l << r)),
+                ">>" => Ok(ComptimeValue::Integer(l >> r)),
+                _ => Err(ComptimeError::UnsupportedOperation(operator.to_string())),
+            },
+            (ComptimeValue::Float(l), ComptimeValue::Float(r)) => match operator {
+                "+" => Ok(ComptimeValue::Float(l + r)),
+                "-" => Ok(ComptimeValue::Float(l - r)),
+                "*" => Ok(ComptimeValue::Float(l * r)),
+                "/" => {
+                    if *r == 0.0 {
+                        return Err(ComptimeError::CompilationError(
+                            "Division by zero".to_string(),
+                        ));
+                    }
+                    Ok(ComptimeValue::Float(l / r))
                 }
-            }
-            (ComptimeValue::String(l), ComptimeValue::String(r)) => {
-                match operator {
-                    "+" => Ok(ComptimeValue::String(format!("{}{}", l, r))),
-                    "==" => Ok(ComptimeValue::Boolean(l == r)),
-                    "!=" => Ok(ComptimeValue::Boolean(l != r)),
-                    _ => Err(ComptimeError::UnsupportedOperation(operator.to_string())),
-                }
-            }
+                "%" => Ok(ComptimeValue::Float(l % r)),
+                "==" => Ok(ComptimeValue::Boolean((l - r).abs() < f64::EPSILON)),
+                "!=" => Ok(ComptimeValue::Boolean((l - r).abs() >= f64::EPSILON)),
+                "<" => Ok(ComptimeValue::Boolean(l < r)),
+                "<=" => Ok(ComptimeValue::Boolean(l <= r)),
+                ">" => Ok(ComptimeValue::Boolean(l > r)),
+                ">=" => Ok(ComptimeValue::Boolean(l >= r)),
+                "**" => Ok(ComptimeValue::Float(l.powf(*r))),
+                _ => Err(ComptimeError::UnsupportedOperation(operator.to_string())),
+            },
+            (ComptimeValue::Boolean(l), ComptimeValue::Boolean(r)) => match operator {
+                "&&" => Ok(ComptimeValue::Boolean(*l && *r)),
+                "||" => Ok(ComptimeValue::Boolean(*l || *r)),
+                "==" => Ok(ComptimeValue::Boolean(l == r)),
+                "!=" => Ok(ComptimeValue::Boolean(l != r)),
+                _ => Err(ComptimeError::UnsupportedOperation(operator.to_string())),
+            },
+            (ComptimeValue::String(l), ComptimeValue::String(r)) => match operator {
+                "+" => Ok(ComptimeValue::String(format!("{}{}", l, r))),
+                "==" => Ok(ComptimeValue::Boolean(l == r)),
+                "!=" => Ok(ComptimeValue::Boolean(l != r)),
+                _ => Err(ComptimeError::UnsupportedOperation(operator.to_string())),
+            },
             // Mixed type operations
             (ComptimeValue::Integer(l), ComptimeValue::Float(r)) => {
                 let l_float = *l as f64;
@@ -958,26 +1062,35 @@ impl ComptimeEngine {
                 self.evaluate_binary_operation(left, operator, &ComptimeValue::Float(r_float))
             }
             // SIMD vector operations
-            (ComptimeValue::SIMDVector { elements: l_elems, .. }, 
-             ComptimeValue::SIMDVector { elements: r_elems, .. }) => {
+            (
+                ComptimeValue::SIMDVector {
+                    elements: l_elems, ..
+                },
+                ComptimeValue::SIMDVector {
+                    elements: r_elems, ..
+                },
+            ) => {
                 if l_elems.len() != r_elems.len() {
-                    return Err(ComptimeError::TypeMismatch("Vector lengths must match".to_string()));
+                    return Err(ComptimeError::TypeMismatch(
+                        "Vector lengths must match".to_string(),
+                    ));
                 }
-                
+
                 let mut result_elems = Vec::new();
                 for (l_elem, r_elem) in l_elems.iter().zip(r_elems.iter()) {
                     result_elems.push(self.evaluate_binary_operation(l_elem, operator, r_elem)?);
                 }
-                
+
                 Ok(ComptimeValue::SIMDVector {
                     elements: result_elems,
                     vector_type: "computed".to_string(),
                     width: l_elems.len(),
                 })
             }
-            _ => Err(ComptimeError::TypeMismatch(
-                format!("Cannot apply {} to {:?} and {:?}", operator, left, right)
-            )),
+            _ => Err(ComptimeError::TypeMismatch(format!(
+                "Cannot apply {} to {:?} and {:?}",
+                operator, left, right
+            ))),
         }
     }
 
@@ -991,7 +1104,7 @@ impl ComptimeEngine {
     ) -> Result<Vec<ComptimeValue>, ComptimeError> {
         let mut table = Vec::with_capacity(size);
         let step = (domain_end - domain_start) / (size as f64 - 1.0);
-        
+
         for i in 0..size {
             let x = domain_start + (i as f64) * step;
             let y = match function_name {
@@ -1005,7 +1118,7 @@ impl ComptimeEngine {
             };
             table.push(ComptimeValue::Float(y));
         }
-        
+
         Ok(table)
     }
 
@@ -1017,11 +1130,11 @@ impl ComptimeEngine {
         size: usize,
     ) -> Result<Vec<ComptimeValue>, ComptimeError> {
         let mut optimization_table = Vec::new();
-        
+
         // Generate optimization parameters based on the parameter space
         for i in 0..size {
             let progress = i as f64 / size as f64;
-            
+
             match objective_function {
                 "minimize_time" => {
                     // Generate parameters that minimize execution time
@@ -1038,7 +1151,7 @@ impl ComptimeEngine {
                             // Simulate genetic algorithm evolution
                             0.5 + 0.5 * (1.0 - progress).powi(2)
                         }
-                        _ => 1.0 - progress * 0.5 // Default linear optimization
+                        _ => 1.0 - progress * 0.5, // Default linear optimization
                     };
                     optimization_table.push(ComptimeValue::Float(value));
                 }
@@ -1051,7 +1164,7 @@ impl ComptimeEngine {
                             let exploration = (-progress * 5.0).exp();
                             1.0 - exploration * 0.3
                         }
-                        _ => progress * 1.2 + 0.5 // Default throughput optimization
+                        _ => progress * 1.2 + 0.5, // Default throughput optimization
                     };
                     optimization_table.push(ComptimeValue::Float(value.min(2.0)));
                 }
@@ -1062,11 +1175,11 @@ impl ComptimeEngine {
                     } else {
                         progress
                     };
-                    
+
                     let value = match optimization_method {
                         "gradient_descent" => base_factor * 0.8,
                         "simulated_annealing" => base_factor * (1.0 - progress * 0.3),
-                        _ => base_factor * 0.9
+                        _ => base_factor * 0.9,
                     };
                     optimization_table.push(ComptimeValue::Float(value));
                 }
@@ -1077,7 +1190,7 @@ impl ComptimeEngine {
                 }
             }
         }
-        
+
         Ok(optimization_table)
     }
 
@@ -1088,12 +1201,12 @@ impl ComptimeEngine {
         size: usize,
     ) -> Result<Vec<ComptimeValue>, ComptimeError> {
         let mut config_table = Vec::new();
-        
+
         // Generate configuration values based on the config space and performance model
         for i in 0..size {
             let config_index = i % config_space.len().max(1);
             let progress = i as f64 / size as f64;
-            
+
             let value = match performance_model {
                 "cache_aware" => {
                     // Generate cache-aware configuration parameters
@@ -1114,7 +1227,7 @@ impl ComptimeEngine {
                             // Prefetch distance: 1-8 cache lines ahead
                             ((progress * 8.0) as i64).max(1)
                         }
-                        _ => ((progress * 100.0) as i64).max(1)
+                        _ => ((progress * 100.0) as i64).max(1),
                     };
                     ComptimeValue::Integer(base_value)
                 }
@@ -1139,7 +1252,7 @@ impl ComptimeEngine {
                             let align_index = (progress * alignments.len() as f64) as usize;
                             alignments[align_index.min(alignments.len() - 1)] as i64
                         }
-                        _ => ((progress * 16.0) as i64).max(1)
+                        _ => ((progress * 16.0) as i64).max(1),
                     };
                     ComptimeValue::Integer(base_value)
                 }
@@ -1148,7 +1261,10 @@ impl ComptimeEngine {
                     let base_value = match config_space.get(config_index) {
                         Some(config) if config.contains("pool_size") => {
                             // Memory pool sizes: 1KB to 1MB
-                            let pool_sizes = [1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576];
+                            let pool_sizes = [
+                                1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144,
+                                524288, 1048576,
+                            ];
                             let pool_index = (progress * pool_sizes.len() as f64) as usize;
                             pool_sizes[pool_index.min(pool_sizes.len() - 1)] as i64
                         }
@@ -1162,7 +1278,7 @@ impl ComptimeEngine {
                             // GC thresholds: 10% to 90% of memory
                             ((progress * 80.0 + 10.0) as i64).max(10).min(90)
                         }
-                        _ => ((progress * 50.0) as i64).max(1)
+                        _ => ((progress * 50.0) as i64).max(1),
                     };
                     ComptimeValue::Integer(base_value)
                 }
@@ -1181,7 +1297,7 @@ impl ComptimeEngine {
                             // Sleep state depth: 0-3 (C0-C3)
                             ((progress * 4.0) as i64).max(0).min(3)
                         }
-                        _ => ((progress * 75.0 + 25.0) as i64).max(25).min(100)
+                        _ => ((progress * 75.0 + 25.0) as i64).max(25).min(100),
                     };
                     ComptimeValue::Integer(base_value)
                 }
@@ -1191,10 +1307,10 @@ impl ComptimeEngine {
                     ComptimeValue::Integer(base_value)
                 }
             };
-            
+
             config_table.push(value);
         }
-        
+
         Ok(config_table)
     }
 
@@ -1206,7 +1322,7 @@ impl ComptimeEngine {
         // This would be much more sophisticated in a real implementation
         let mut groups = Vec::new();
         let mut current_group = Vec::new();
-        
+
         for (i, _op) in operations.iter().enumerate() {
             current_group.push(i);
             if current_group.len() >= 4 {
@@ -1214,11 +1330,11 @@ impl ComptimeEngine {
                 current_group.clear();
             }
         }
-        
+
         if !current_group.is_empty() {
             groups.push(current_group);
         }
-        
+
         Ok(groups)
     }
 
@@ -1240,7 +1356,7 @@ impl OptimizationDatabase {
             performance_models: HashMap::new(),
             performance_history: HashMap::new(),
         };
-        
+
         db.initialize_default_algorithms();
         db
     }
@@ -1255,25 +1371,23 @@ impl OptimizationDatabase {
             constraints: vec![],
         };
 
-        let choices = vec![
-            AlgorithmChoice {
-                implementation: AlgorithmImpl::LinearSearch,
-                score: 0.9,
-                reasoning: "Small sorted data benefits from linear search".to_string(),
-                performance_estimate: PerformanceEstimate {
-                    execution_time: Duration::from_nanos(100),
-                    memory_usage: 64,
-                    cache_behavior: CacheBehaviorEstimate {
-                        l1_misses: 1,
-                        l2_misses: 0,
-                        l3_misses: 0,
-                        memory_bandwidth_utilization: 0.1,
-                    },
-                    energy_consumption: 0.001,
-                    confidence: 0.95,
+        let choices = vec![AlgorithmChoice {
+            implementation: AlgorithmImpl::LinearSearch,
+            score: 0.9,
+            reasoning: "Small sorted data benefits from linear search".to_string(),
+            performance_estimate: PerformanceEstimate {
+                execution_time: Duration::from_nanos(100),
+                memory_usage: 64,
+                cache_behavior: CacheBehaviorEstimate {
+                    l1_misses: 1,
+                    l2_misses: 0,
+                    l3_misses: 0,
+                    memory_bandwidth_utilization: 0.1,
                 },
-            }
-        ];
+                energy_consumption: 0.001,
+                confidence: 0.95,
+            },
+        }];
 
         self.algorithms.insert(small_sorted_data, choices);
     }
@@ -1287,11 +1401,11 @@ impl OptimizationDatabase {
         if let Some(choices) = self.algorithms.get(data_characteristics) {
             return choices.clone();
         }
-        
+
         // Fall back to generating choices based on algorithm type and characteristics
         self.generate_algorithm_choices(algorithm_type, data_characteristics)
     }
-    
+
     fn generate_algorithm_choices(
         &self,
         algorithm_type: &AlgorithmType,
@@ -1306,10 +1420,10 @@ impl OptimizationDatabase {
             _ => vec![], // Other types would be implemented here
         }
     }
-    
+
     fn generate_sort_choices(&self, characteristics: &DataCharacteristics) -> Vec<AlgorithmChoice> {
         let mut choices = Vec::new();
-        
+
         match characteristics.size {
             DataSize::Small => {
                 choices.push(AlgorithmChoice {
@@ -1331,7 +1445,10 @@ impl OptimizationDatabase {
                 });
             }
             DataSize::Medium | DataSize::Large => {
-                if matches!(characteristics.distribution, DataDistribution::PartiallySorted) {
+                if matches!(
+                    characteristics.distribution,
+                    DataDistribution::PartiallySorted
+                ) {
                     choices.push(AlgorithmChoice {
                         implementation: AlgorithmImpl::MergeSort,
                         score: 0.95,
@@ -1371,13 +1488,16 @@ impl OptimizationDatabase {
             }
             _ => {}
         }
-        
+
         choices
     }
-    
-    fn generate_search_choices(&self, characteristics: &DataCharacteristics) -> Vec<AlgorithmChoice> {
+
+    fn generate_search_choices(
+        &self,
+        characteristics: &DataCharacteristics,
+    ) -> Vec<AlgorithmChoice> {
         let mut choices = Vec::new();
-        
+
         if matches!(characteristics.distribution, DataDistribution::Sorted) {
             choices.push(AlgorithmChoice {
                 implementation: AlgorithmImpl::BinarySearch,
@@ -1415,14 +1535,20 @@ impl OptimizationDatabase {
                 },
             });
         }
-        
+
         choices
     }
-    
-    fn generate_transform_choices(&self, characteristics: &DataCharacteristics) -> Vec<AlgorithmChoice> {
+
+    fn generate_transform_choices(
+        &self,
+        characteristics: &DataCharacteristics,
+    ) -> Vec<AlgorithmChoice> {
         let mut choices = Vec::new();
-        
-        if matches!(characteristics.access_pattern, DataAccessPattern::Sequential) {
+
+        if matches!(
+            characteristics.access_pattern,
+            DataAccessPattern::Sequential
+        ) {
             choices.push(AlgorithmChoice {
                 implementation: AlgorithmImpl::VectorizedMap,
                 score: 0.9,
@@ -1441,13 +1567,16 @@ impl OptimizationDatabase {
                 },
             });
         }
-        
+
         choices
     }
-    
-    fn generate_reduce_choices(&self, characteristics: &DataCharacteristics) -> Vec<AlgorithmChoice> {
+
+    fn generate_reduce_choices(
+        &self,
+        characteristics: &DataCharacteristics,
+    ) -> Vec<AlgorithmChoice> {
         let mut choices = Vec::new();
-        
+
         match characteristics.size {
             DataSize::Large | DataSize::Huge => {
                 choices.push(AlgorithmChoice {
@@ -1488,13 +1617,13 @@ impl OptimizationDatabase {
                 });
             }
         }
-        
+
         choices
     }
-    
+
     fn generate_math_choices(&self, characteristics: &DataCharacteristics) -> Vec<AlgorithmChoice> {
         let mut choices = Vec::new();
-        
+
         if characteristics.data_type.contains("matrix") {
             choices.push(AlgorithmChoice {
                 implementation: AlgorithmImpl::MatrixMultiplication,
@@ -1514,7 +1643,7 @@ impl OptimizationDatabase {
                 },
             });
         }
-        
+
         if characteristics.data_type.contains("signal") {
             choices.push(AlgorithmChoice {
                 implementation: AlgorithmImpl::FFT,
@@ -1534,7 +1663,7 @@ impl OptimizationDatabase {
                 },
             });
         }
-        
+
         choices
     }
 }
@@ -1574,7 +1703,7 @@ mod tests {
         let mut engine = ComptimeEngine::new();
         let expr = Expr::Literal(Literal::Integer(42));
         let result = engine.evaluate_expression(&expr).unwrap();
-        
+
         match result {
             ComptimeValue::Integer(value) => assert_eq!(value, 42),
             _ => panic!("Expected integer value"),
@@ -1590,9 +1719,9 @@ mod tests {
             domain_end: 6.28,
             precision: 0.01,
         };
-        
+
         let result = engine.generate_lookup_table(table_type, 100).unwrap();
-        
+
         match result {
             ComptimeValue::LookupTable { data, .. } => {
                 assert_eq!(data.len(), 100);
@@ -1611,7 +1740,7 @@ mod tests {
             data_type: "i32".to_string(),
             constraints: vec![],
         };
-        
+
         let result = engine.select_optimal_algorithm(AlgorithmType::Search, characteristics);
         // This would fail in the current implementation due to empty algorithm database
         // In a full implementation, this would return a valid algorithm choice

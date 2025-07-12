@@ -1,5 +1,5 @@
 //! Eä Standard Library - SIMD-Accelerated Collections
-//! 
+//!
 //! High-performance data structures with native SIMD optimization
 //! providing 2-4x speedup over scalar implementations through
 //! vectorized operations and hardware-specific instruction selection.
@@ -9,7 +9,7 @@ pub mod io;
 pub mod math;
 pub mod string;
 
-pub use collections::{Vec, HashMap, HashSet};
+pub use collections::{HashMap, HashSet, Vec};
 pub use io::{print, println, read_line, File};
 pub use math::{simd_math, MathError};
 pub use string::{String as EaString, StringOps};
@@ -40,17 +40,17 @@ pub struct SIMDFeatures {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OptimizationLevel {
-    Debug,       // No SIMD optimization
-    Release,     // Standard SIMD optimization
-    Aggressive,  // Maximum SIMD optimization with unrolling
+    Debug,      // No SIMD optimization
+    Release,    // Standard SIMD optimization
+    Aggressive, // Maximum SIMD optimization with unrolling
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AllocatorType {
-    System,      // System malloc/free
-    Pool,        // Memory pool allocation
-    SIMD,        // SIMD-aligned allocation
-    Custom,      // User-defined allocator
+    System, // System malloc/free
+    Pool,   // Memory pool allocation
+    SIMD,   // SIMD-aligned allocation
+    Custom, // User-defined allocator
 }
 
 impl StandardLibrary {
@@ -85,25 +85,37 @@ impl StandardLibrary {
     fn check_avx_support() -> bool {
         // In real implementation, would use cpuid instruction
         #[cfg(target_feature = "avx")]
-        { true }
+        {
+            true
+        }
         #[cfg(not(target_feature = "avx"))]
-        { false }
+        {
+            false
+        }
     }
 
     /// Check AVX2 support (placeholder for actual cpuid check)
     fn check_avx2_support() -> bool {
         #[cfg(target_feature = "avx2")]
-        { true }
+        {
+            true
+        }
         #[cfg(not(target_feature = "avx2"))]
-        { false }
+        {
+            false
+        }
     }
 
     /// Check AVX-512 support (placeholder for actual cpuid check)
     fn check_avx512_support() -> bool {
         #[cfg(target_feature = "avx512f")]
-        { true }
+        {
+            true
+        }
         #[cfg(not(target_feature = "avx512f"))]
-        { false }
+        {
+            false
+        }
     }
 
     /// Get optimal vector width for current CPU
@@ -111,11 +123,11 @@ impl StandardLibrary {
         if self.simd_features.avx512 {
             64 // 512-bit vectors
         } else if self.simd_features.avx2 {
-            32 // 256-bit vectors  
+            32 // 256-bit vectors
         } else if self.simd_features.sse2 {
             16 // 128-bit vectors
         } else {
-            8  // Fallback to scalar with 64-bit operations
+            8 // Fallback to scalar with 64-bit operations
         }
     }
 
@@ -152,14 +164,14 @@ mod tests {
     #[test]
     fn test_stdlib_initialization() {
         let stdlib = StandardLibrary::new();
-        
+
         // Should always have basic SSE support on x86
         #[cfg(target_arch = "x86_64")]
         {
             assert!(stdlib.simd_features.sse);
             assert!(stdlib.simd_features.sse2);
         }
-        
+
         // Should have reasonable defaults
         assert_eq!(stdlib.optimization_level, OptimizationLevel::Release);
         assert_eq!(stdlib.allocator, AllocatorType::SIMD);
@@ -169,7 +181,7 @@ mod tests {
     fn test_vector_width_detection() {
         let stdlib = StandardLibrary::new();
         let width = stdlib.optimal_vector_width();
-        
+
         // Should return a power of 2 between 8 and 64
         assert!(width >= 8 && width <= 64);
         assert!(width.is_power_of_two());
@@ -178,11 +190,11 @@ mod tests {
     #[test]
     fn test_optimization_configuration() {
         let mut stdlib = StandardLibrary::new();
-        
+
         stdlib.set_optimization_level(OptimizationLevel::Aggressive);
         assert_eq!(stdlib.optimization_level, OptimizationLevel::Aggressive);
         assert_eq!(stdlib.optimal_unroll_factor(), 8);
-        
+
         stdlib.set_optimization_level(OptimizationLevel::Debug);
         assert_eq!(stdlib.optimal_unroll_factor(), 1);
     }

@@ -39,7 +39,10 @@ impl<T> Vec<T> {
     /// Create a new empty vector with SIMD optimization
     pub fn new() -> Self {
         let stdlib = StandardLibrary::new();
-        Self::with_simd_config(stdlib.optimal_vector_width(), stdlib.optimal_unroll_factor())
+        Self::with_simd_config(
+            stdlib.optimal_vector_width(),
+            stdlib.optimal_unroll_factor(),
+        )
     }
 
     /// Create vector with specific SIMD configuration
@@ -52,7 +55,11 @@ impl<T> Vec<T> {
                 vector_width,
                 unroll_factor,
                 use_simd: mem::size_of::<T>() <= 8, // Only SIMD for small types
-                alignment: if mem::size_of::<T>() <= 8 { 32 } else { mem::align_of::<T>() },
+                alignment: if mem::size_of::<T>() <= 8 {
+                    32
+                } else {
+                    mem::align_of::<T>()
+                },
             },
         }
     }
@@ -74,7 +81,10 @@ impl<T> Vec<T> {
         let new_capacity = if self.capacity == 0 {
             required_cap.max(4)
         } else {
-            self.capacity.checked_mul(2).unwrap_or(required_cap).max(required_cap)
+            self.capacity
+                .checked_mul(2)
+                .unwrap_or(required_cap)
+                .max(required_cap)
         };
 
         self.grow(new_capacity);
@@ -87,7 +97,8 @@ impl<T> Vec<T> {
         let new_layout = Layout::from_size_align(
             new_capacity * mem::size_of::<T>(),
             self.simd_config.alignment,
-        ).expect("invalid layout");
+        )
+        .expect("invalid layout");
 
         let new_ptr = if self.capacity == 0 {
             unsafe { alloc(new_layout) as *mut T }
@@ -95,11 +106,10 @@ impl<T> Vec<T> {
             let old_layout = Layout::from_size_align(
                 self.capacity * mem::size_of::<T>(),
                 self.simd_config.alignment,
-            ).expect("invalid layout");
+            )
+            .expect("invalid layout");
 
-            unsafe {
-                realloc(self.ptr as *mut u8, old_layout, new_layout.size()) as *mut T
-            }
+            unsafe { realloc(self.ptr as *mut u8, old_layout, new_layout.size()) as *mut T }
         };
 
         if new_ptr.is_null() {
@@ -204,15 +214,15 @@ impl Vec<f32> {
         F: Fn(f32) -> f32,
     {
         let mut result = Vec::with_capacity(self.len);
-        
+
         if self.simd_config.use_simd && self.len >= self.simd_config.vector_width {
             // Process in SIMD chunks
             let chunk_size = self.simd_config.vector_width;
             let chunks = self.len / chunk_size;
-            
+
             for chunk in 0..chunks {
                 let start = chunk * chunk_size;
-                
+
                 // SIMD processing (simplified - would use actual SIMD intrinsics)
                 for i in 0..chunk_size {
                     let val = unsafe { *self.ptr.add(start + i) };
@@ -220,7 +230,7 @@ impl Vec<f32> {
                     result.push(mapped);
                 }
             }
-            
+
             // Process remaining elements
             for i in (chunks * chunk_size)..self.len {
                 let val = unsafe { *self.ptr.add(i) };
@@ -233,7 +243,7 @@ impl Vec<f32> {
                 result.push(f(val));
             }
         }
-        
+
         result
     }
 
@@ -244,15 +254,15 @@ impl Vec<f32> {
         }
 
         let mut result = Vec::with_capacity(self.len);
-        
+
         if self.simd_config.use_simd && self.len >= self.simd_config.vector_width {
             // SIMD vector addition
             let chunk_size = self.simd_config.vector_width;
             let chunks = self.len / chunk_size;
-            
+
             for chunk in 0..chunks {
                 let start = chunk * chunk_size;
-                
+
                 // Would use actual SIMD intrinsics like _mm256_add_ps for AVX2
                 for i in 0..chunk_size {
                     let a = unsafe { *self.ptr.add(start + i) };
@@ -260,7 +270,7 @@ impl Vec<f32> {
                     result.push(a + b);
                 }
             }
-            
+
             // Process remaining elements
             for i in (chunks * chunk_size)..self.len {
                 let a = unsafe { *self.ptr.add(i) };
@@ -275,7 +285,7 @@ impl Vec<f32> {
                 result.push(a + b);
             }
         }
-        
+
         Ok(result)
     }
 
@@ -289,7 +299,7 @@ impl Vec<f32> {
             let chunk_size = self.simd_config.vector_width;
             let chunks = self.len / chunk_size;
             let mut partial_sums = vec![0.0f32; chunk_size];
-            
+
             // Accumulate into SIMD lanes
             for chunk in 0..chunks {
                 let start = chunk * chunk_size;
@@ -297,15 +307,15 @@ impl Vec<f32> {
                     partial_sums[i] += unsafe { *self.ptr.add(start + i) };
                 }
             }
-            
+
             // Sum the partial sums
             let mut total: f32 = partial_sums.iter().sum();
-            
+
             // Add remaining elements
             for i in (chunks * chunk_size)..self.len {
                 total += unsafe { *self.ptr.add(i) };
             }
-            
+
             total
         } else {
             // Scalar reduction
@@ -331,7 +341,7 @@ impl Vec<f32> {
             let chunk_size = self.simd_config.vector_width;
             let chunks = self.len / chunk_size;
             let mut partial_sums = vec![0.0f32; chunk_size];
-            
+
             // SIMD multiply-accumulate
             for chunk in 0..chunks {
                 let start = chunk * chunk_size;
@@ -341,16 +351,16 @@ impl Vec<f32> {
                     partial_sums[i] += a * b;
                 }
             }
-            
+
             let mut total: f32 = partial_sums.iter().sum();
-            
+
             // Process remaining elements
             for i in (chunks * chunk_size)..self.len {
                 let a = unsafe { *self.ptr.add(i) };
                 let b = unsafe { *other.ptr.add(i) };
                 total += a * b;
             }
-            
+
             Ok(total)
         } else {
             // Scalar dot product
@@ -372,7 +382,8 @@ impl<T> Drop for Vec<T> {
             let layout = Layout::from_size_align(
                 self.capacity * mem::size_of::<T>(),
                 self.simd_config.alignment,
-            ).expect("invalid layout");
+            )
+            .expect("invalid layout");
             unsafe {
                 dealloc(self.ptr as *mut u8, layout);
             }
@@ -501,7 +512,7 @@ where
     /// SIMD-accelerated batch lookup
     pub fn simd_batch_get(&self, keys: &[K]) -> Vec<Option<V>> {
         let mut results = Vec::with_capacity(keys.len());
-        
+
         if keys.len() >= self.simd_config.vector_width {
             // Batch processing for cache efficiency
             let batch_size = self.simd_config.vector_width;
@@ -516,7 +527,7 @@ where
                 results.push(self.inner.get(key).cloned());
             }
         }
-        
+
         results
     }
 }
@@ -637,7 +648,7 @@ mod tests {
         // Test SIMD addition
         let result = vec1.simd_add(&vec2).unwrap();
         assert_eq!(result.len(), 16);
-        
+
         for i in 0..16 {
             let expected = (i + i * 2) as f32;
             assert_eq!(result.get(i), Some(&expected));
@@ -663,7 +674,7 @@ mod tests {
 
         let squared = vec.simd_map(|x| x * x);
         assert_eq!(squared.len(), 10);
-        
+
         for i in 0..10 {
             let expected = (i * i) as f32;
             assert_eq!(squared.get(i), Some(&expected));
@@ -694,21 +705,35 @@ mod tests {
     #[test]
     fn test_hashmap_simd_batch_operations() {
         let mut map = HashMap::new();
-        
+
         // Test batch insert
         let pairs = vec![
-            ("a".to_string(), 1), ("b".to_string(), 2), ("c".to_string(), 3), ("d".to_string(), 4),
-            ("e".to_string(), 5), ("f".to_string(), 6), ("g".to_string(), 7), ("h".to_string(), 8),
+            ("a".to_string(), 1),
+            ("b".to_string(), 2),
+            ("c".to_string(), 3),
+            ("d".to_string(), 4),
+            ("e".to_string(), 5),
+            ("f".to_string(), 6),
+            ("g".to_string(), 7),
+            ("h".to_string(), 8),
         ];
-        
+
         map.simd_batch_insert(&pairs);
         assert_eq!(map.len(), 8);
-        
+
         // Test batch get
-        let keys = vec!["a".to_string(), "b".to_string(), "c".to_string(), "d".to_string(), 
-                       "e".to_string(), "f".to_string(), "g".to_string(), "h".to_string()];
+        let keys = vec![
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "d".to_string(),
+            "e".to_string(),
+            "f".to_string(),
+            "g".to_string(),
+            "h".to_string(),
+        ];
         let results = map.simd_batch_get(&keys);
-        
+
         assert_eq!(results.len(), 8);
         for (i, result) in results.iter().enumerate() {
             assert_eq!(*result, Some(i + 1));

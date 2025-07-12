@@ -9,7 +9,7 @@ use crate::ast::{
     StructFieldInit, TypeAnnotation, UnaryOp,
 };
 use crate::error::{CompileError, Result};
-use crate::memory_profiler::{record_memory_usage, CompilationPhase, check_memory_limit};
+use crate::memory_profiler::{check_memory_limit, record_memory_usage, CompilationPhase};
 // Removed unused import per DEVELOPMENT_PROCESS.md - no placeholder comments
 use inkwell::{
     basic_block::BasicBlock,
@@ -133,7 +133,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // Add all builtin functions for complete functionality
         codegen.add_builtin_functions();
-        
+
         // Add standard library functions for complete stdlib integration
         codegen.add_stdlib_functions();
 
@@ -143,7 +143,7 @@ impl<'ctx> CodeGenerator<'ctx> {
     fn add_minimal_builtin_functions(&mut self) {
         // Add only the most essential functions for JIT
         let string_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        
+
         // Add external puts function declaration (for println support)
         let puts_type = self
             .context
@@ -151,60 +151,58 @@ impl<'ctx> CodeGenerator<'ctx> {
             .fn_type(&[string_type.into()], false);
         let puts_function = self.module.add_function("puts", puts_type, None);
         self.functions.insert("puts".to_string(), puts_function);
-        
+
         // Add external printf function declaration
         let printf_type = self.context.i32_type().fn_type(&[string_type.into()], true); // variadic
         let printf_function = self.module.add_function("printf", printf_type, None);
         self.functions.insert("printf".to_string(), printf_function);
-        
+
         // Add println function that maps to puts
         let println_type = self
             .context
             .void_type()
             .fn_type(&[string_type.into()], false);
         let println_function = self.module.add_function("println", println_type, None);
-        self.functions.insert("println".to_string(), println_function);
-        
+        self.functions
+            .insert("println".to_string(), println_function);
+
         // Implement println function using puts
         let println_entry = self.context.append_basic_block(println_function, "entry");
         let current_block = self.builder.get_insert_block();
-        
+
         self.builder.position_at_end(println_entry);
         let param = println_function.get_nth_param(0).unwrap();
-        
+
         // Use puts for string output
         let _puts_call = self
             .builder
-            .build_call(
-                puts_function,
-                &[param.into()],
-                "puts_call",
-            );
+            .build_call(puts_function, &[param.into()], "puts_call");
         self.builder.build_return(None).unwrap();
-        
+
         // Add print_i32 function that maps to printf
         let i32_type = self.context.i32_type();
         let print_i32_type = self.context.void_type().fn_type(&[i32_type.into()], false);
         let print_i32_function = self.module.add_function("print_i32", print_i32_type, None);
-        self.functions.insert("print_i32".to_string(), print_i32_function);
-        
+        self.functions
+            .insert("print_i32".to_string(), print_i32_function);
+
         // Implement print_i32 function using printf
         let print_i32_entry = self.context.append_basic_block(print_i32_function, "entry");
         self.builder.position_at_end(print_i32_entry);
-        
+
         let i32_param = print_i32_function.get_nth_param(0).unwrap();
         let format_str = self
             .builder
             .build_global_string_ptr("%d\n", "i32_format")
             .unwrap();
-        
+
         let _printf_call = self.builder.build_call(
             printf_function,
             &[format_str.as_pointer_value().into(), i32_param.into()],
             "printf_call",
         );
         self.builder.build_return(None).unwrap();
-        
+
         // Add print(string) -> void function
         let print_type = self
             .context
@@ -212,202 +210,298 @@ impl<'ctx> CodeGenerator<'ctx> {
             .fn_type(&[string_type.into()], false);
         let print_function = self.module.add_function("print", print_type, None);
         self.functions.insert("print".to_string(), print_function);
-        
+
         // Implement print(string) function using puts
         let print_entry = self.context.append_basic_block(print_function, "entry");
         let current_block_print = self.builder.get_insert_block();
-        
+
         self.builder.position_at_end(print_entry);
         let param = print_function.get_nth_param(0).unwrap();
-        
+
         // Use puts for string output (puts automatically adds newline)
         let _puts_call = self
             .builder
-            .build_call(
-                puts_function,
-                &[param.into()],
-                "puts_call",
-            );
+            .build_call(puts_function, &[param.into()], "puts_call");
         self.builder.build_return(None).unwrap();
-        
+
         // Restore builder position if needed
         if let Some(block) = current_block_print {
             self.builder.position_at_end(block);
         }
-        
+
         // Add essential I/O functions for production use
-        
+
         // Add strlen function declaration first (used by other functions)
-        let strlen_type = self.context.i64_type().fn_type(&[string_type.into()], false);
+        let strlen_type = self
+            .context
+            .i64_type()
+            .fn_type(&[string_type.into()], false);
         let strlen_function = self.module.add_function("strlen", strlen_type, None);
         self.functions.insert("strlen".to_string(), strlen_function);
-        
+
         // Add file I/O functions - external declarations from C library
-        let fopen_type = self.context.i8_type().ptr_type(AddressSpace::default()).fn_type(
-            &[string_type.into(), string_type.into()], false);
+        let fopen_type = self
+            .context
+            .i8_type()
+            .ptr_type(AddressSpace::default())
+            .fn_type(&[string_type.into(), string_type.into()], false);
         let fopen_function = self.module.add_function("fopen", fopen_type, None);
         self.functions.insert("fopen".to_string(), fopen_function);
-        
+
         let fclose_type = self.context.i32_type().fn_type(
-            &[self.context.i8_type().ptr_type(AddressSpace::default()).into()], false);
+            &[self
+                .context
+                .i8_type()
+                .ptr_type(AddressSpace::default())
+                .into()],
+            false,
+        );
         let fclose_function = self.module.add_function("fclose", fclose_type, None);
         self.functions.insert("fclose".to_string(), fclose_function);
-        
-        let fread_type = self.context.i64_type().fn_type(&[
-            self.context.i8_type().ptr_type(AddressSpace::default()).into(), // ptr
-            self.context.i64_type().into(), // size
-            self.context.i64_type().into(), // nmemb
-            self.context.i8_type().ptr_type(AddressSpace::default()).into(), // stream
-        ], false);
+
+        let fread_type = self.context.i64_type().fn_type(
+            &[
+                self.context
+                    .i8_type()
+                    .ptr_type(AddressSpace::default())
+                    .into(), // ptr
+                self.context.i64_type().into(), // size
+                self.context.i64_type().into(), // nmemb
+                self.context
+                    .i8_type()
+                    .ptr_type(AddressSpace::default())
+                    .into(), // stream
+            ],
+            false,
+        );
         let fread_function = self.module.add_function("fread", fread_type, None);
         self.functions.insert("fread".to_string(), fread_function);
-        
-        let fwrite_type = self.context.i64_type().fn_type(&[
-            self.context.i8_type().ptr_type(AddressSpace::default()).into(), // ptr
-            self.context.i64_type().into(), // size
-            self.context.i64_type().into(), // nmemb
-            self.context.i8_type().ptr_type(AddressSpace::default()).into(), // stream
-        ], false);
+
+        let fwrite_type = self.context.i64_type().fn_type(
+            &[
+                self.context
+                    .i8_type()
+                    .ptr_type(AddressSpace::default())
+                    .into(), // ptr
+                self.context.i64_type().into(), // size
+                self.context.i64_type().into(), // nmemb
+                self.context
+                    .i8_type()
+                    .ptr_type(AddressSpace::default())
+                    .into(), // stream
+            ],
+            false,
+        );
         let fwrite_function = self.module.add_function("fwrite", fwrite_type, None);
         self.functions.insert("fwrite".to_string(), fwrite_function);
-        
+
         // Add malloc and free for memory management
-        let malloc_type = self.context.i8_type().ptr_type(AddressSpace::default()).fn_type(
-            &[self.context.i64_type().into()], false);
+        let malloc_type = self
+            .context
+            .i8_type()
+            .ptr_type(AddressSpace::default())
+            .fn_type(&[self.context.i64_type().into()], false);
         let malloc_function = self.module.add_function("malloc", malloc_type, None);
         self.functions.insert("malloc".to_string(), malloc_function);
-        
+
         let free_type = self.context.void_type().fn_type(
-            &[self.context.i8_type().ptr_type(AddressSpace::default()).into()], false);
+            &[self
+                .context
+                .i8_type()
+                .ptr_type(AddressSpace::default())
+                .into()],
+            false,
+        );
         let free_function = self.module.add_function("free", free_type, None);
         self.functions.insert("free".to_string(), free_function);
-        
+
         // Implement read_file(string) -> string function
         let read_file_type = string_type.fn_type(&[string_type.into()], false);
         let read_file_function = self.module.add_function("read_file", read_file_type, None);
-        self.functions.insert("read_file".to_string(), read_file_function);
-        
+        self.functions
+            .insert("read_file".to_string(), read_file_function);
+
         let read_file_entry = self.context.append_basic_block(read_file_function, "entry");
         self.builder.position_at_end(read_file_entry);
-        
+
         let filename_param = read_file_function.get_nth_param(0).unwrap();
-        let read_mode = self.builder.build_global_string_ptr("r", "read_mode").unwrap();
-        
+        let read_mode = self
+            .builder
+            .build_global_string_ptr("r", "read_mode")
+            .unwrap();
+
         // Open file
-        let file_ptr = self.builder.build_call(
-            fopen_function,
-            &[filename_param.into(), read_mode.as_pointer_value().into()],
-            "file_ptr"
-        ).unwrap().try_as_basic_value().unwrap_left().into_pointer_value();
-        
+        let file_ptr = self
+            .builder
+            .build_call(
+                fopen_function,
+                &[filename_param.into(), read_mode.as_pointer_value().into()],
+                "file_ptr",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .unwrap_left()
+            .into_pointer_value();
+
         // Check if file opened successfully
         let _null_ptr = string_type.const_null();
-        let file_is_null = self.builder.build_is_null(file_ptr, "file_is_null").unwrap();
-        
-        let file_null_bb = self.context.append_basic_block(read_file_function, "file_null");
-        let file_open_bb = self.context.append_basic_block(read_file_function, "file_open");
-        
-        self.builder.build_conditional_branch(file_is_null, file_null_bb, file_open_bb).unwrap();
-        
+        let file_is_null = self
+            .builder
+            .build_is_null(file_ptr, "file_is_null")
+            .unwrap();
+
+        let file_null_bb = self
+            .context
+            .append_basic_block(read_file_function, "file_null");
+        let file_open_bb = self
+            .context
+            .append_basic_block(read_file_function, "file_open");
+
+        self.builder
+            .build_conditional_branch(file_is_null, file_null_bb, file_open_bb)
+            .unwrap();
+
         // File is null - return empty string
         self.builder.position_at_end(file_null_bb);
-        let empty_string = self.builder.build_global_string_ptr("", "empty_content").unwrap();
-        self.builder.build_return(Some(&empty_string.as_pointer_value())).unwrap();
-        
+        let empty_string = self
+            .builder
+            .build_global_string_ptr("", "empty_content")
+            .unwrap();
+        self.builder
+            .build_return(Some(&empty_string.as_pointer_value()))
+            .unwrap();
+
         // File opened successfully - read content
         self.builder.position_at_end(file_open_bb);
-        
+
         // Allocate buffer (simplified - 1024 bytes)
         let buffer_size = self.context.i64_type().const_int(1024, false);
-        let buffer = self.builder.build_call(
-            malloc_function,
-            &[buffer_size.into()],
-            "buffer"
-        ).unwrap().try_as_basic_value().unwrap_left().into_pointer_value();
-        
+        let buffer = self
+            .builder
+            .build_call(malloc_function, &[buffer_size.into()], "buffer")
+            .unwrap()
+            .try_as_basic_value()
+            .unwrap_left()
+            .into_pointer_value();
+
         // Read file content
-        let _bytes_read = self.builder.build_call(
-            fread_function,
-            &[
-                buffer.into(),
-                self.context.i64_type().const_int(1, false).into(),
-                buffer_size.into(),
-                file_ptr.into()
-            ],
-            "bytes_read"
-        ).unwrap();
-        
+        let _bytes_read = self
+            .builder
+            .build_call(
+                fread_function,
+                &[
+                    buffer.into(),
+                    self.context.i64_type().const_int(1, false).into(),
+                    buffer_size.into(),
+                    file_ptr.into(),
+                ],
+                "bytes_read",
+            )
+            .unwrap();
+
         // Close file
-        self.builder.build_call(
-            fclose_function,
-            &[file_ptr.into()],
-            "close_result"
-        ).unwrap();
-        
+        self.builder
+            .build_call(fclose_function, &[file_ptr.into()], "close_result")
+            .unwrap();
+
         self.builder.build_return(Some(&buffer)).unwrap();
-        
+
         // Implement write_file(string, string) -> void function
-        let write_file_type = self.context.void_type().fn_type(
-            &[string_type.into(), string_type.into()], false);
-        let write_file_function = self.module.add_function("write_file", write_file_type, None);
-        self.functions.insert("write_file".to_string(), write_file_function);
-        
-        let write_file_entry = self.context.append_basic_block(write_file_function, "entry");
+        let write_file_type = self
+            .context
+            .void_type()
+            .fn_type(&[string_type.into(), string_type.into()], false);
+        let write_file_function = self
+            .module
+            .add_function("write_file", write_file_type, None);
+        self.functions
+            .insert("write_file".to_string(), write_file_function);
+
+        let write_file_entry = self
+            .context
+            .append_basic_block(write_file_function, "entry");
         self.builder.position_at_end(write_file_entry);
-        
+
         let write_filename_param = write_file_function.get_nth_param(0).unwrap();
         let write_content_param = write_file_function.get_nth_param(1).unwrap();
-        let write_mode = self.builder.build_global_string_ptr("w", "write_mode").unwrap();
-        
+        let write_mode = self
+            .builder
+            .build_global_string_ptr("w", "write_mode")
+            .unwrap();
+
         // Open file for writing
-        let write_file_ptr = self.builder.build_call(
-            fopen_function,
-            &[write_filename_param.into(), write_mode.as_pointer_value().into()],
-            "write_file_ptr"
-        ).unwrap().try_as_basic_value().unwrap_left().into_pointer_value();
-        
+        let write_file_ptr = self
+            .builder
+            .build_call(
+                fopen_function,
+                &[
+                    write_filename_param.into(),
+                    write_mode.as_pointer_value().into(),
+                ],
+                "write_file_ptr",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .unwrap_left()
+            .into_pointer_value();
+
         // Check if file opened successfully
-        let write_file_is_null = self.builder.build_is_null(write_file_ptr, "write_file_is_null").unwrap();
-        
-        let write_file_null_bb = self.context.append_basic_block(write_file_function, "write_file_null");
-        let write_file_open_bb = self.context.append_basic_block(write_file_function, "write_file_open");
-        
-        self.builder.build_conditional_branch(write_file_is_null, write_file_null_bb, write_file_open_bb).unwrap();
-        
+        let write_file_is_null = self
+            .builder
+            .build_is_null(write_file_ptr, "write_file_is_null")
+            .unwrap();
+
+        let write_file_null_bb = self
+            .context
+            .append_basic_block(write_file_function, "write_file_null");
+        let write_file_open_bb = self
+            .context
+            .append_basic_block(write_file_function, "write_file_open");
+
+        self.builder
+            .build_conditional_branch(write_file_is_null, write_file_null_bb, write_file_open_bb)
+            .unwrap();
+
         // File is null - return early
         self.builder.position_at_end(write_file_null_bb);
         self.builder.build_return(None).unwrap();
-        
+
         // File opened successfully - write content
         self.builder.position_at_end(write_file_open_bb);
-        
+
         // Get content length using strlen (we need to get it from the function map)
         let strlen_fn = self.functions.get("strlen").unwrap().clone();
-        let content_length = self.builder.build_call(
-            strlen_fn,
-            &[write_content_param.into()],
-            "content_length"
-        ).unwrap().try_as_basic_value().unwrap_left().into_int_value();
-        
+        let content_length = self
+            .builder
+            .build_call(strlen_fn, &[write_content_param.into()], "content_length")
+            .unwrap()
+            .try_as_basic_value()
+            .unwrap_left()
+            .into_int_value();
+
         // Write content to file
-        self.builder.build_call(
-            fwrite_function,
-            &[
-                write_content_param.into(),
-                self.context.i64_type().const_int(1, false).into(),
-                content_length.into(),
-                write_file_ptr.into()
-            ],
-            "write_result"
-        ).unwrap();
-        
+        self.builder
+            .build_call(
+                fwrite_function,
+                &[
+                    write_content_param.into(),
+                    self.context.i64_type().const_int(1, false).into(),
+                    content_length.into(),
+                    write_file_ptr.into(),
+                ],
+                "write_result",
+            )
+            .unwrap();
+
         // Close file
-        self.builder.build_call(
-            fclose_function,
-            &[write_file_ptr.into()],
-            "write_close_result"
-        ).unwrap();
-        
+        self.builder
+            .build_call(
+                fclose_function,
+                &[write_file_ptr.into()],
+                "write_close_result",
+            )
+            .unwrap();
+
         self.builder.build_return(None).unwrap();
 
         // Add basic Vec runtime function declarations for Vec functionality
@@ -416,145 +510,370 @@ impl<'ctx> CodeGenerator<'ctx> {
         let i32_type = self.context.i32_type();
         let i64_type = self.context.i64_type();
         let void_type = self.context.void_type();
-        
+
         // External vec_new() -> *Vec
         let vec_new_type = opaque_ptr_type.fn_type(&[], false);
         let vec_new_function = self.module.add_function("vec_new", vec_new_type, None);
-        self.functions.insert("vec_new".to_string(), vec_new_function);
-        
+        self.functions
+            .insert("vec_new".to_string(), vec_new_function);
+
         // External vec_push(vec: *Vec, item: i32) -> void (fixed type mismatch)
         let vec_push_type = void_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
         let vec_push_function = self.module.add_function("vec_push", vec_push_type, None);
-        self.functions.insert("vec_push".to_string(), vec_push_function);
-        
+        self.functions
+            .insert("vec_push".to_string(), vec_push_function);
+
         // External vec_len(vec: *Vec) -> i32
         let vec_len_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
         let vec_len_function = self.module.add_function("vec_len", vec_len_type, None);
-        self.functions.insert("vec_len".to_string(), vec_len_function);
-        
+        self.functions
+            .insert("vec_len".to_string(), vec_len_function);
+
         // External vec_get(vec: *Vec, index: i32) -> *i32 (pointer to element or null)
-        let vec_get_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let vec_get_type =
+            opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
         let vec_get_function = self.module.add_function("vec_get", vec_get_type, None);
-        self.functions.insert("vec_get".to_string(), vec_get_function);
-        
+        self.functions
+            .insert("vec_get".to_string(), vec_get_function);
+
         // External vec_pop(vec: *Vec) -> *i32 (pointer to popped element or null)
         let vec_pop_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
         let vec_pop_function = self.module.add_function("vec_pop", vec_pop_type, None);
-        self.functions.insert("vec_pop".to_string(), vec_pop_function);
-        
+        self.functions
+            .insert("vec_pop".to_string(), vec_pop_function);
+
         // External vec_free(vec: *Vec) -> void
         let vec_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
         let vec_free_function = self.module.add_function("vec_free", vec_free_type, None);
-        self.functions.insert("vec_free".to_string(), vec_free_function);
+        self.functions
+            .insert("vec_free".to_string(), vec_free_function);
 
         // HashMap runtime functions
         // External hashmap_new() -> *HashMap
         let hashmap_new_type = opaque_ptr_type.fn_type(&[], false);
-        let hashmap_new_function = self.module.add_function("hashmap_new", hashmap_new_type, None);
-        self.functions.insert("hashmap_new".to_string(), hashmap_new_function);
-        
+        let hashmap_new_function = self
+            .module
+            .add_function("hashmap_new", hashmap_new_type, None);
+        self.functions
+            .insert("hashmap_new".to_string(), hashmap_new_function);
+
         // External hashmap_insert(map: *HashMap, key: i32, value: i32) -> void
-        let hashmap_insert_type = void_type.fn_type(&[opaque_ptr_type.into(), i32_type.into(), i32_type.into()], false);
-        let hashmap_insert_function = self.module.add_function("hashmap_insert", hashmap_insert_type, None);
-        self.functions.insert("hashmap_insert".to_string(), hashmap_insert_function);
-        
+        let hashmap_insert_type = void_type.fn_type(
+            &[opaque_ptr_type.into(), i32_type.into(), i32_type.into()],
+            false,
+        );
+        let hashmap_insert_function =
+            self.module
+                .add_function("hashmap_insert", hashmap_insert_type, None);
+        self.functions
+            .insert("hashmap_insert".to_string(), hashmap_insert_function);
+
         // External hashmap_get(map: *HashMap, key: i32) -> i32
         let hashmap_get_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
-        let hashmap_get_function = self.module.add_function("hashmap_get", hashmap_get_type, None);
-        self.functions.insert("hashmap_get".to_string(), hashmap_get_function);
-        
+        let hashmap_get_function = self
+            .module
+            .add_function("hashmap_get", hashmap_get_type, None);
+        self.functions
+            .insert("hashmap_get".to_string(), hashmap_get_function);
+
         // External hashmap_len(map: *HashMap) -> i32
         let hashmap_len_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
-        let hashmap_len_function = self.module.add_function("hashmap_len", hashmap_len_type, None);
-        self.functions.insert("hashmap_len".to_string(), hashmap_len_function);
-        
+        let hashmap_len_function = self
+            .module
+            .add_function("hashmap_len", hashmap_len_type, None);
+        self.functions
+            .insert("hashmap_len".to_string(), hashmap_len_function);
+
         // External hashmap_contains_key(map: *HashMap, key: i32) -> i32
-        let hashmap_contains_key_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
-        let hashmap_contains_key_function = self.module.add_function("hashmap_contains_key", hashmap_contains_key_type, None);
-        self.functions.insert("hashmap_contains_key".to_string(), hashmap_contains_key_function);
-        
+        let hashmap_contains_key_type =
+            i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashmap_contains_key_function =
+            self.module
+                .add_function("hashmap_contains_key", hashmap_contains_key_type, None);
+        self.functions.insert(
+            "hashmap_contains_key".to_string(),
+            hashmap_contains_key_function,
+        );
+
         // External hashmap_remove(map: *HashMap, key: i32) -> i32
-        let hashmap_remove_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
-        let hashmap_remove_function = self.module.add_function("hashmap_remove", hashmap_remove_type, None);
-        self.functions.insert("hashmap_remove".to_string(), hashmap_remove_function);
-        
+        let hashmap_remove_type =
+            i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashmap_remove_function =
+            self.module
+                .add_function("hashmap_remove", hashmap_remove_type, None);
+        self.functions
+            .insert("hashmap_remove".to_string(), hashmap_remove_function);
+
         // External hashmap_free(map: *HashMap) -> void
         let hashmap_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
-        let hashmap_free_function = self.module.add_function("hashmap_free", hashmap_free_type, None);
-        self.functions.insert("hashmap_free".to_string(), hashmap_free_function);
+        let hashmap_free_function =
+            self.module
+                .add_function("hashmap_free", hashmap_free_type, None);
+        self.functions
+            .insert("hashmap_free".to_string(), hashmap_free_function);
 
         // String runtime functions
         // External string_new() -> *String
         let string_new_type = opaque_ptr_type.fn_type(&[], false);
-        let string_new_function = self.module.add_function("string_new", string_new_type, None);
-        self.functions.insert("string_new".to_string(), string_new_function);
-        
+        let string_new_function = self
+            .module
+            .add_function("string_new", string_new_type, None);
+        self.functions
+            .insert("string_new".to_string(), string_new_function);
+
         // External string_from(str: *i8) -> *String
         let string_from_type = opaque_ptr_type.fn_type(&[string_ptr_type.into()], false);
-        let string_from_function = self.module.add_function("string_from", string_from_type, None);
-        self.functions.insert("string_from".to_string(), string_from_function);
-        
+        let string_from_function = self
+            .module
+            .add_function("string_from", string_from_type, None);
+        self.functions
+            .insert("string_from".to_string(), string_from_function);
+
         // External string_len(str: *String) -> i32
         let string_len_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
-        let string_len_function = self.module.add_function("string_len", string_len_type, None);
-        self.functions.insert("string_len".to_string(), string_len_function);
-        
+        let string_len_function = self
+            .module
+            .add_function("string_len", string_len_type, None);
+        self.functions
+            .insert("string_len".to_string(), string_len_function);
+
         // External string_push_str(str: *String, other: *i8) -> void
-        let string_push_str_type = void_type.fn_type(&[opaque_ptr_type.into(), string_ptr_type.into()], false);
-        let string_push_str_function = self.module.add_function("string_push_str", string_push_str_type, None);
-        self.functions.insert("string_push_str".to_string(), string_push_str_function);
-        
+        let string_push_str_type =
+            void_type.fn_type(&[opaque_ptr_type.into(), string_ptr_type.into()], false);
+        let string_push_str_function =
+            self.module
+                .add_function("string_push_str", string_push_str_type, None);
+        self.functions
+            .insert("string_push_str".to_string(), string_push_str_function);
+
         // External string_as_str(str: *String) -> *i8
         let string_as_str_type = string_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
-        let string_as_str_function = self.module.add_function("string_as_str", string_as_str_type, None);
-        self.functions.insert("string_as_str".to_string(), string_as_str_function);
-        
+        let string_as_str_function =
+            self.module
+                .add_function("string_as_str", string_as_str_type, None);
+        self.functions
+            .insert("string_as_str".to_string(), string_as_str_function);
+
         // External string_clone(str: *String) -> *String
         let string_clone_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
-        let string_clone_function = self.module.add_function("string_clone", string_clone_type, None);
-        self.functions.insert("string_clone".to_string(), string_clone_function);
-        
+        let string_clone_function =
+            self.module
+                .add_function("string_clone", string_clone_type, None);
+        self.functions
+            .insert("string_clone".to_string(), string_clone_function);
+
         // External string_substring(str: *String, start: i32, end: i32) -> *String
-        let string_substring_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), i32_type.into(), i32_type.into()], false);
-        let string_substring_function = self.module.add_function("string_substring", string_substring_type, None);
-        self.functions.insert("string_substring".to_string(), string_substring_function);
-        
+        let string_substring_type = opaque_ptr_type.fn_type(
+            &[opaque_ptr_type.into(), i32_type.into(), i32_type.into()],
+            false,
+        );
+        let string_substring_function =
+            self.module
+                .add_function("string_substring", string_substring_type, None);
+        self.functions
+            .insert("string_substring".to_string(), string_substring_function);
+
         // External string_find(str: *String, needle: *i8) -> i32
-        let string_find_type = i32_type.fn_type(&[opaque_ptr_type.into(), string_ptr_type.into()], false);
-        let string_find_function = self.module.add_function("string_find", string_find_type, None);
-        self.functions.insert("string_find".to_string(), string_find_function);
-        
+        let string_find_type =
+            i32_type.fn_type(&[opaque_ptr_type.into(), string_ptr_type.into()], false);
+        let string_find_function = self
+            .module
+            .add_function("string_find", string_find_type, None);
+        self.functions
+            .insert("string_find".to_string(), string_find_function);
+
         // External string_replace(str: *String, from: *i8, to: *i8) -> *String
-        let string_replace_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), string_ptr_type.into(), string_ptr_type.into()], false);
-        let string_replace_function = self.module.add_function("string_replace", string_replace_type, None);
-        self.functions.insert("string_replace".to_string(), string_replace_function);
-        
+        let string_replace_type = opaque_ptr_type.fn_type(
+            &[
+                opaque_ptr_type.into(),
+                string_ptr_type.into(),
+                string_ptr_type.into(),
+            ],
+            false,
+        );
+        let string_replace_function =
+            self.module
+                .add_function("string_replace", string_replace_type, None);
+        self.functions
+            .insert("string_replace".to_string(), string_replace_function);
+
         // External string_to_uppercase(str: *String) -> *String
         let string_to_uppercase_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
-        let string_to_uppercase_function = self.module.add_function("string_to_uppercase", string_to_uppercase_type, None);
-        self.functions.insert("string_to_uppercase".to_string(), string_to_uppercase_function);
-        
+        let string_to_uppercase_function =
+            self.module
+                .add_function("string_to_uppercase", string_to_uppercase_type, None);
+        self.functions.insert(
+            "string_to_uppercase".to_string(),
+            string_to_uppercase_function,
+        );
+
         // External string_to_lowercase(str: *String) -> *String
         let string_to_lowercase_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
-        let string_to_lowercase_function = self.module.add_function("string_to_lowercase", string_to_lowercase_type, None);
-        self.functions.insert("string_to_lowercase".to_string(), string_to_lowercase_function);
-        
+        let string_to_lowercase_function =
+            self.module
+                .add_function("string_to_lowercase", string_to_lowercase_type, None);
+        self.functions.insert(
+            "string_to_lowercase".to_string(),
+            string_to_lowercase_function,
+        );
+
         // External string_trim(str: *String) -> *String
         let string_trim_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
-        let string_trim_function = self.module.add_function("string_trim", string_trim_type, None);
-        self.functions.insert("string_trim".to_string(), string_trim_function);
-        
+        let string_trim_function = self
+            .module
+            .add_function("string_trim", string_trim_type, None);
+        self.functions
+            .insert("string_trim".to_string(), string_trim_function);
+
         // External string_free(str: *String) -> void
         let string_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
-        let string_free_function = self.module.add_function("string_free", string_free_type, None);
-        self.functions.insert("string_free".to_string(), string_free_function);
+        let string_free_function = self
+            .module
+            .add_function("string_free", string_free_type, None);
+        self.functions
+            .insert("string_free".to_string(), string_free_function);
+
+        // File runtime functions
+        // External file_open(filename: *i8, mode: *i8) -> *File
+        let file_open_type =
+            opaque_ptr_type.fn_type(&[string_ptr_type.into(), string_ptr_type.into()], false);
+        let file_open_function = self.module.add_function("file_open", file_open_type, None);
+        self.functions
+            .insert("file_open".to_string(), file_open_function);
+
+        // External file_exists(filename: *i8) -> i32 (boolean)
+        let file_exists_type = i32_type.fn_type(&[string_ptr_type.into()], false);
+        let file_exists_function = self
+            .module
+            .add_function("file_exists", file_exists_type, None);
+        self.functions
+            .insert("file_exists".to_string(), file_exists_function);
+
+        // External file_size(filename: *i8) -> i64
+        let file_size_type = i64_type.fn_type(&[string_ptr_type.into()], false);
+        let file_size_function = self.module.add_function("file_size", file_size_type, None);
+        self.functions
+            .insert("file_size".to_string(), file_size_function);
+
+        // External file_delete(filename: *i8) -> void
+        let file_delete_type = void_type.fn_type(&[string_ptr_type.into()], false);
+        let file_delete_function = self
+            .module
+            .add_function("file_delete", file_delete_type, None);
+        self.functions
+            .insert("file_delete".to_string(), file_delete_function);
+
+        // External file_write(file: *File, data: *i8) -> void
+        let file_write_type =
+            void_type.fn_type(&[opaque_ptr_type.into(), string_ptr_type.into()], false);
+        let file_write_function = self
+            .module
+            .add_function("file_write", file_write_type, None);
+        self.functions
+            .insert("file_write".to_string(), file_write_function);
+
+        // External file_read_line(file: *File) -> *i8
+        let file_read_line_type = string_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
+        let file_read_line_function =
+            self.module
+                .add_function("file_read_line", file_read_line_type, None);
+        self.functions
+            .insert("file_read_line".to_string(), file_read_line_function);
+
+        // External file_read_all(file: *File) -> *i8
+        let file_read_all_type = string_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
+        let file_read_all_function =
+            self.module
+                .add_function("file_read_all", file_read_all_type, None);
+        self.functions
+            .insert("file_read_all".to_string(), file_read_all_function);
+
+        // External file_close(file: *File) -> void
+        let file_close_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
+        let file_close_function = self
+            .module
+            .add_function("file_close", file_close_type, None);
+        self.functions
+            .insert("file_close".to_string(), file_close_function);
+
+        // HashSet functions for stdlib support
+        let opaque_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i32_type = self.context.i32_type();
+        let void_type = self.context.void_type();
+
+        // HashSet_new() -> *HashSet
+        let hashset_new_type = opaque_ptr_type.fn_type(&[], false);
+        let hashset_new_function = self
+            .module
+            .add_function("HashSet_new", hashset_new_type, None);
+        self.functions
+            .insert("HashSet_new".to_string(), hashset_new_function);
+
+        // HashSet_insert(*HashSet, i32) -> i32 (bool as i32)
+        let hashset_insert_type =
+            i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashset_insert_function =
+            self.module
+                .add_function("HashSet_insert", hashset_insert_type, None);
+        self.functions
+            .insert("HashSet_insert".to_string(), hashset_insert_function);
+
+        // HashSet_contains(*HashSet, i32) -> i32 (bool as i32)
+        let hashset_contains_type =
+            i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashset_contains_function =
+            self.module
+                .add_function("HashSet_contains", hashset_contains_type, None);
+        self.functions
+            .insert("HashSet_contains".to_string(), hashset_contains_function);
+
+        // HashSet_remove(*HashSet, i32) -> i32 (bool as i32)
+        let hashset_remove_type =
+            i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashset_remove_function =
+            self.module
+                .add_function("HashSet_remove", hashset_remove_type, None);
+        self.functions
+            .insert("HashSet_remove".to_string(), hashset_remove_function);
+
+        // HashSet_len(*HashSet) -> i32
+        let hashset_len_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let hashset_len_function = self
+            .module
+            .add_function("HashSet_len", hashset_len_type, None);
+        self.functions
+            .insert("HashSet_len".to_string(), hashset_len_function);
+
+        // HashSet_is_empty(*HashSet) -> i32 (bool as i32)
+        let hashset_is_empty_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let hashset_is_empty_function =
+            self.module
+                .add_function("HashSet_is_empty", hashset_is_empty_type, None);
+        self.functions
+            .insert("HashSet_is_empty".to_string(), hashset_is_empty_function);
+
+        // HashSet_clear(*HashSet) -> void
+        let hashset_clear_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
+        let hashset_clear_function =
+            self.module
+                .add_function("HashSet_clear", hashset_clear_type, None);
+        self.functions
+            .insert("HashSet_clear".to_string(), hashset_clear_function);
+
+        // HashSet_free(*HashSet) -> void
+        let hashset_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
+        let hashset_free_function =
+            self.module
+                .add_function("HashSet_free", hashset_free_type, None);
+        self.functions
+            .insert("HashSet_free".to_string(), hashset_free_function);
 
         // Restore builder position
         if let Some(block) = current_block {
             self.builder.position_at_end(block);
         }
     }
-    
+
     /// Adds built-in functions to the code generator
     fn add_builtin_functions(&mut self) {
         // Add external printf function declaration
@@ -570,7 +889,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             .fn_type(&[string_type.into()], false);
         let puts_function = self.module.add_function("puts", puts_type, None);
         self.functions.insert("puts".to_string(), puts_function);
-        
+
         // Add direct system call functions for self-contained I/O
         let write_type = self.context.i64_type().fn_type(
             &[
@@ -582,9 +901,12 @@ impl<'ctx> CodeGenerator<'ctx> {
         );
         let write_function = self.module.add_function("write", write_type, None);
         self.functions.insert("write".to_string(), write_function);
-        
+
         // Add strlen function
-        let strlen_type = self.context.i64_type().fn_type(&[string_type.into()], false);
+        let strlen_type = self
+            .context
+            .i64_type()
+            .fn_type(&[string_type.into()], false);
         let strlen_function = self.module.add_function("strlen", strlen_type, None);
         self.functions.insert("strlen".to_string(), strlen_function);
 
@@ -606,11 +928,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Use puts for safer string output - puts automatically adds newline
         let _puts_call = self
             .builder
-            .build_call(
-                puts_function,
-                &[param.into()],
-                "puts_call",
-            );
+            .build_call(puts_function, &[param.into()], "puts_call");
         self.builder.build_return(None).unwrap();
 
         // Add print_i32(i32) -> void function
@@ -685,7 +1003,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.builder.position_at_end(println_entry);
 
         let param = println_function.get_nth_param(0).unwrap();
-        
+
         // Get string length
         let str_len = self
             .builder
@@ -697,37 +1015,42 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // Write the string to stdout (fd = 1)
         let stdout_fd = self.context.i32_type().const_int(1, false);
-        let _write_call = self
-            .builder
-            .build_call(
-                write_function,
-                &[stdout_fd.into(), param.into(), str_len.into()],
-                "write_call",
-            );
+        let _write_call = self.builder.build_call(
+            write_function,
+            &[stdout_fd.into(), param.into(), str_len.into()],
+            "write_call",
+        );
 
         // Write newline
-        let newline = self.builder.build_global_string_ptr("\n", "newline").unwrap();
-        let one = self.context.i64_type().const_int(1, false);
-        let _newline_write = self
+        let newline = self
             .builder
-            .build_call(
-                write_function,
-                &[stdout_fd.into(), newline.as_pointer_value().into(), one.into()],
-                "write_newline",
-            );
-        
+            .build_global_string_ptr("\n", "newline")
+            .unwrap();
+        let one = self.context.i64_type().const_int(1, false);
+        let _newline_write = self.builder.build_call(
+            write_function,
+            &[
+                stdout_fd.into(),
+                newline.as_pointer_value().into(),
+                one.into(),
+            ],
+            "write_newline",
+        );
+
         self.builder.build_return(None).unwrap();
 
         // Add external fgets function for reading lines
+        // fgets(char *str, int size, FILE *stream) - FILE* is i8*
+        let file_ptr_type = string_type;
         let fgets_type = string_type.fn_type(
-            &[string_type.into(), i32_type.into(), string_type.into()],
+            &[string_type.into(), i32_type.into(), file_ptr_type.into()],
             false,
         );
         let fgets_function = self.module.add_function("fgets", fgets_type, None);
         self.functions.insert("fgets".to_string(), fgets_function);
 
-        // Add external stdin global variable
-        let stdin_type = string_type;
+        // Add external stdin global variable - FILE* (i8*)
+        let stdin_type = file_ptr_type;
         let stdin_global =
             self.module
                 .add_global(stdin_type, Some(AddressSpace::default()), "stdin");
@@ -750,10 +1073,10 @@ impl<'ctx> CodeGenerator<'ctx> {
             .unwrap();
 
         // Call fgets to read a line
-        let stdin_ptr = stdin_global.as_pointer_value();
+        // stdin_global should be passed directly as it's declared as FILE* (i8*)
         let _fgets_call = self.builder.build_call(
             fgets_function,
-            &[buffer.into(), buffer_size.into(), stdin_ptr.into()],
+            &[buffer.into(), buffer_size.into(), stdin_global.as_pointer_value().into()],
             "fgets_call",
         );
 
@@ -1768,7 +2091,7 @@ impl<'ctx> CodeGenerator<'ctx> {
     /// Adds standard library functions for SIMD-accelerated collections and I/O
     /// This integrates the high-performance stdlib with the compiler's code generation
     fn add_stdlib_functions(&mut self) {
-        // Save current position  
+        // Save current position
         let current_block = self.builder.get_insert_block();
 
         // Get basic types
@@ -1779,30 +2102,29 @@ impl<'ctx> CodeGenerator<'ctx> {
         let void_type = self.context.void_type();
         let bool_type = self.context.bool_type();
         let string_type = i8_type.ptr_type(AddressSpace::default());
-        
+
         // Opaque pointer type for collections (used for Vec, HashMap, etc.)
         let opaque_ptr_type = i8_type.ptr_type(AddressSpace::default());
 
         // ========================
-        // Standard Library I/O Functions  
+        // Standard Library I/O Functions
         // ========================
 
         // Enhanced println function that supports multiple types
         let println_type = void_type.fn_type(&[string_type.into()], false);
         let println_function = self.module.add_function("println", println_type, None);
-        self.functions.insert("println".to_string(), println_function);
+        self.functions
+            .insert("println".to_string(), println_function);
 
         // Implement println using puts (which adds newline automatically)
         let println_entry = self.context.append_basic_block(println_function, "entry");
         self.builder.position_at_end(println_entry);
-        
+
         let println_param = println_function.get_nth_param(0).unwrap();
         if let Some(&puts_fn) = self.functions.get("puts") {
-            let _puts_call = self.builder.build_call(
-                puts_fn,
-                &[println_param.into()],
-                "puts_call",
-            );
+            let _puts_call = self
+                .builder
+                .build_call(puts_fn, &[println_param.into()], "puts_call");
         }
         self.builder.build_return(None).unwrap();
 
@@ -1813,308 +2135,425 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Vec::new() -> *Vec (calls external C runtime)
         let vec_new_type = opaque_ptr_type.fn_type(&[], false);
         let vec_new_function = self.module.add_function("Vec::new", vec_new_type, None);
-        self.functions.insert("Vec::new".to_string(), vec_new_function);
+        self.functions
+            .insert("Vec::new".to_string(), vec_new_function);
 
         // Add external vec_new runtime function
         let vec_new_runtime_type = opaque_ptr_type.fn_type(&[], false);
-        let vec_new_runtime_function = self.module.add_function("vec_new", vec_new_runtime_type, None);
-        self.functions.insert("vec_new".to_string(), vec_new_runtime_function);
+        let vec_new_runtime_function =
+            self.module
+                .add_function("vec_new", vec_new_runtime_type, None);
+        self.functions
+            .insert("vec_new".to_string(), vec_new_runtime_function);
 
         // Implement Vec::new - calls runtime vec_new
         let vec_new_entry = self.context.append_basic_block(vec_new_function, "entry");
         self.builder.position_at_end(vec_new_entry);
 
-        let runtime_result = self.builder.build_call(
-            vec_new_runtime_function,
-            &[],
-            "vec_new_call",
-        ).unwrap().try_as_basic_value().unwrap_left();
-        
+        let runtime_result = self
+            .builder
+            .build_call(vec_new_runtime_function, &[], "vec_new_call")
+            .unwrap()
+            .try_as_basic_value()
+            .unwrap_left();
+
         self.builder.build_return(Some(&runtime_result)).unwrap();
 
         // Vec::push(vec: *Vec, item: T) -> void
-        let vec_push_type = void_type.fn_type(&[
-            opaque_ptr_type.into(), // vec pointer
-            i32_type.into(),        // item (assuming i32 for now)
-        ], false);
+        let vec_push_type = void_type.fn_type(
+            &[
+                opaque_ptr_type.into(), // vec pointer
+                i32_type.into(),        // item (assuming i32 for now)
+            ],
+            false,
+        );
         let vec_push_function = self.module.add_function("Vec::push", vec_push_type, None);
-        self.functions.insert("Vec::push".to_string(), vec_push_function);
+        self.functions
+            .insert("Vec::push".to_string(), vec_push_function);
 
         // Add external vec_push runtime function
-        let vec_push_runtime_type = void_type.fn_type(&[
-            opaque_ptr_type.into(),
-            i32_type.into(),
-        ], false);
-        let vec_push_runtime_function = self.module.add_function("vec_push", vec_push_runtime_type, None);
-        self.functions.insert("vec_push".to_string(), vec_push_runtime_function);
+        let vec_push_runtime_type =
+            void_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let vec_push_runtime_function =
+            self.module
+                .add_function("vec_push", vec_push_runtime_type, None);
+        self.functions
+            .insert("vec_push".to_string(), vec_push_runtime_function);
 
         // Implement Vec::push - calls runtime vec_push
         let vec_push_entry = self.context.append_basic_block(vec_push_function, "entry");
         self.builder.position_at_end(vec_push_entry);
-        
+
         let vec_param = vec_push_function.get_nth_param(0).unwrap();
         let item_param = vec_push_function.get_nth_param(1).unwrap();
-        
-        let _runtime_result = self.builder.build_call(
-            vec_push_runtime_function,
-            &[vec_param.into(), item_param.into()],
-            "vec_push_call",
-        ).unwrap();
-        
+
+        let _runtime_result = self
+            .builder
+            .build_call(
+                vec_push_runtime_function,
+                &[vec_param.into(), item_param.into()],
+                "vec_push_call",
+            )
+            .unwrap();
+
         self.builder.build_return(None).unwrap();
 
         // Vec::len(vec: *Vec) -> i32
         let vec_len_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
         let vec_len_function = self.module.add_function("Vec::len", vec_len_type, None);
-        self.functions.insert("Vec::len".to_string(), vec_len_function);
+        self.functions
+            .insert("Vec::len".to_string(), vec_len_function);
 
         // Add external vec_len runtime function - make it match the wrapper (i32 return)
         let vec_len_runtime_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
-        let vec_len_runtime_function = self.module.add_function("vec_len", vec_len_runtime_type, None);
-        self.functions.insert("vec_len".to_string(), vec_len_runtime_function);
+        let vec_len_runtime_function =
+            self.module
+                .add_function("vec_len", vec_len_runtime_type, None);
+        self.functions
+            .insert("vec_len".to_string(), vec_len_runtime_function);
 
         // Implement Vec::len - calls runtime vec_len
         let vec_len_entry = self.context.append_basic_block(vec_len_function, "entry");
         self.builder.position_at_end(vec_len_entry);
-        
+
         let vec_param = vec_len_function.get_nth_param(0).unwrap();
-        
-        let len_result = self.builder.build_call(
-            vec_len_runtime_function,
-            &[vec_param.into()],
-            "vec_len_call",
-        ).unwrap().try_as_basic_value().unwrap_left();
-        
+
+        let len_result = self
+            .builder
+            .build_call(
+                vec_len_runtime_function,
+                &[vec_param.into()],
+                "vec_len_call",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .unwrap_left();
+
         // No type conversion needed - both are i32
         self.builder.build_return(Some(&len_result)).unwrap();
 
         // Vec::get(vec: *Vec, index: i32) -> i32 (returns value or 0 if out of bounds)
-        let vec_get_type = i32_type.fn_type(&[
-            opaque_ptr_type.into(),
-            i32_type.into(),
-        ], false);
+        let vec_get_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
         let vec_get_function = self.module.add_function("Vec::get", vec_get_type, None);
-        self.functions.insert("Vec::get".to_string(), vec_get_function);
+        self.functions
+            .insert("Vec::get".to_string(), vec_get_function);
 
         // Add external vec_get runtime function (returns pointer) - use i32 index
-        let vec_get_runtime_type = opaque_ptr_type.fn_type(&[
-            opaque_ptr_type.into(),
-            i32_type.into(),
-        ], false);
-        let vec_get_runtime_function = self.module.add_function("vec_get", vec_get_runtime_type, None);
-        self.functions.insert("vec_get".to_string(), vec_get_runtime_function);
+        let vec_get_runtime_type =
+            opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let vec_get_runtime_function =
+            self.module
+                .add_function("vec_get", vec_get_runtime_type, None);
+        self.functions
+            .insert("vec_get".to_string(), vec_get_runtime_function);
 
         // Implement Vec::get
         let vec_get_entry = self.context.append_basic_block(vec_get_function, "entry");
         self.builder.position_at_end(vec_get_entry);
-        
+
         let vec_param = vec_get_function.get_nth_param(0).unwrap();
         let index_param = vec_get_function.get_nth_param(1).unwrap();
-        
+
         // No type conversion needed - both are i32
-        
-        let ptr_result = self.builder.build_call(
-            vec_get_runtime_function,
-            &[vec_param.into(), index_param.into()],
-            "vec_get_call",
-        ).unwrap().try_as_basic_value().unwrap_left();
-        
+
+        let ptr_result = self
+            .builder
+            .build_call(
+                vec_get_runtime_function,
+                &[vec_param.into(), index_param.into()],
+                "vec_get_call",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .unwrap_left();
+
         // Check if pointer is null
         let null_ptr = opaque_ptr_type.const_null();
-        let is_null = self.builder.build_int_compare(
-            IntPredicate::EQ,
-            ptr_result.into_pointer_value(),
-            null_ptr,
-            "is_null",
-        ).unwrap();
-        
+        let is_null = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                ptr_result.into_pointer_value(),
+                null_ptr,
+                "is_null",
+            )
+            .unwrap();
+
         // Return 0 if null, otherwise dereference and return value
         let then_block = self.context.append_basic_block(vec_get_function, "then");
         let else_block = self.context.append_basic_block(vec_get_function, "else");
         let merge_block = self.context.append_basic_block(vec_get_function, "merge");
-        
-        self.builder.build_conditional_branch(is_null, then_block, else_block).unwrap();
-        
+
+        self.builder
+            .build_conditional_branch(is_null, then_block, else_block)
+            .unwrap();
+
         // Then block (null pointer)
         self.builder.position_at_end(then_block);
         let zero = i32_type.const_int(0, false);
-        self.builder.build_unconditional_branch(merge_block).unwrap();
-        
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+
         // Else block (valid pointer)
         self.builder.position_at_end(else_block);
-        let value = self.builder.build_load(ptr_result.into_pointer_value(), "value").unwrap();
-        self.builder.build_unconditional_branch(merge_block).unwrap();
-        
+        let i32_ptr = self
+            .builder
+            .build_pointer_cast(
+                ptr_result.into_pointer_value(),
+                i32_type.ptr_type(AddressSpace::default()),
+                "i32_ptr",
+            )
+            .unwrap();
+        let value = self.builder.build_load(i32_ptr, "value").unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+
         // Merge block
         self.builder.position_at_end(merge_block);
         let phi = self.builder.build_phi(i32_type, "result").unwrap();
         phi.add_incoming(&[(&zero, then_block), (&value, else_block)]);
-        
-        self.builder.build_return(Some(&phi.as_basic_value())).unwrap();
+
+        self.builder
+            .build_return(Some(&phi.as_basic_value()))
+            .unwrap();
 
         // Vec::pop(vec: *Vec) -> i32 (returns popped value or 0 if empty)
         let vec_pop_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
         let vec_pop_function = self.module.add_function("Vec::pop", vec_pop_type, None);
-        self.functions.insert("Vec::pop".to_string(), vec_pop_function);
+        self.functions
+            .insert("Vec::pop".to_string(), vec_pop_function);
 
         // Add external vec_pop runtime function
-        let vec_pop_runtime_type = i32_type.fn_type(&[
-            opaque_ptr_type.into(),
-            opaque_ptr_type.into(), // out_item pointer
-        ], false);
-        let vec_pop_runtime_function = self.module.add_function("vec_pop", vec_pop_runtime_type, None);
-        self.functions.insert("vec_pop".to_string(), vec_pop_runtime_function);
+        let vec_pop_runtime_type = i32_type.fn_type(
+            &[
+                opaque_ptr_type.into(),
+                opaque_ptr_type.into(), // out_item pointer
+            ],
+            false,
+        );
+        let vec_pop_runtime_function =
+            self.module
+                .add_function("vec_pop", vec_pop_runtime_type, None);
+        self.functions
+            .insert("vec_pop".to_string(), vec_pop_runtime_function);
 
         // Implement Vec::pop
         let vec_pop_entry = self.context.append_basic_block(vec_pop_function, "entry");
         self.builder.position_at_end(vec_pop_entry);
-        
+
         let vec_param = vec_pop_function.get_nth_param(0).unwrap();
-        
+
         // Allocate space for out_item
         let out_item = self.builder.build_alloca(i32_type, "out_item").unwrap();
-        
-        let pop_result = self.builder.build_call(
-            vec_pop_runtime_function,
-            &[vec_param.into(), out_item.into()],
-            "vec_pop_call",
-        ).unwrap().try_as_basic_value().unwrap_left();
-        
+
+        let pop_result = self
+            .builder
+            .build_call(
+                vec_pop_runtime_function,
+                &[vec_param.into(), out_item.into()],
+                "vec_pop_call",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .unwrap_left();
+
         // Check if pop succeeded (returns 1 for success, 0 for failure)
         let one = i32_type.const_int(1, false);
-        let pop_succeeded = self.builder.build_int_compare(
-            IntPredicate::EQ,
-            pop_result.into_int_value(),
-            one,
-            "pop_succeeded",
-        ).unwrap();
-        
+        let pop_succeeded = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                pop_result.into_int_value(),
+                one,
+                "pop_succeeded",
+            )
+            .unwrap();
+
         let success_block = self.context.append_basic_block(vec_pop_function, "success");
         let fail_block = self.context.append_basic_block(vec_pop_function, "fail");
-        let pop_merge_block = self.context.append_basic_block(vec_pop_function, "pop_merge");
-        
-        self.builder.build_conditional_branch(pop_succeeded, success_block, fail_block).unwrap();
-        
+        let pop_merge_block = self
+            .context
+            .append_basic_block(vec_pop_function, "pop_merge");
+
+        self.builder
+            .build_conditional_branch(pop_succeeded, success_block, fail_block)
+            .unwrap();
+
         // Success block
         self.builder.position_at_end(success_block);
         let popped_value = self.builder.build_load(out_item, "popped_value").unwrap();
-        self.builder.build_unconditional_branch(pop_merge_block).unwrap();
-        
+        self.builder
+            .build_unconditional_branch(pop_merge_block)
+            .unwrap();
+
         // Fail block
         self.builder.position_at_end(fail_block);
         let zero_pop = i32_type.const_int(0, false);
-        self.builder.build_unconditional_branch(pop_merge_block).unwrap();
-        
+        self.builder
+            .build_unconditional_branch(pop_merge_block)
+            .unwrap();
+
         // Merge block
         self.builder.position_at_end(pop_merge_block);
         let pop_phi = self.builder.build_phi(i32_type, "pop_result").unwrap();
         pop_phi.add_incoming(&[(&popped_value, success_block), (&zero_pop, fail_block)]);
-        
-        self.builder.build_return(Some(&pop_phi.as_basic_value())).unwrap();
+
+        self.builder
+            .build_return(Some(&pop_phi.as_basic_value()))
+            .unwrap();
 
         // Vec::is_empty(vec: *Vec) -> bool
         let vec_is_empty_type = bool_type.fn_type(&[opaque_ptr_type.into()], false);
-        let vec_is_empty_function = self.module.add_function("Vec::is_empty", vec_is_empty_type, None);
-        self.functions.insert("Vec::is_empty".to_string(), vec_is_empty_function);
+        let vec_is_empty_function =
+            self.module
+                .add_function("Vec::is_empty", vec_is_empty_type, None);
+        self.functions
+            .insert("Vec::is_empty".to_string(), vec_is_empty_function);
 
         // Add external vec_is_empty runtime function
         let vec_is_empty_runtime_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
-        let vec_is_empty_runtime_function = self.module.add_function("vec_is_empty", vec_is_empty_runtime_type, None);
-        self.functions.insert("vec_is_empty".to_string(), vec_is_empty_runtime_function);
+        let vec_is_empty_runtime_function =
+            self.module
+                .add_function("vec_is_empty", vec_is_empty_runtime_type, None);
+        self.functions
+            .insert("vec_is_empty".to_string(), vec_is_empty_runtime_function);
 
         // Implement Vec::is_empty
-        let vec_is_empty_entry = self.context.append_basic_block(vec_is_empty_function, "entry");
+        let vec_is_empty_entry = self
+            .context
+            .append_basic_block(vec_is_empty_function, "entry");
         self.builder.position_at_end(vec_is_empty_entry);
-        
+
         let vec_param = vec_is_empty_function.get_nth_param(0).unwrap();
-        
-        let empty_result = self.builder.build_call(
-            vec_is_empty_runtime_function,
-            &[vec_param.into()],
-            "vec_is_empty_call",
-        ).unwrap().try_as_basic_value().unwrap_left();
-        
+
+        let empty_result = self
+            .builder
+            .build_call(
+                vec_is_empty_runtime_function,
+                &[vec_param.into()],
+                "vec_is_empty_call",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .unwrap_left();
+
         // Convert i32 to bool
-        let bool_result = self.builder.build_int_truncate(
-            empty_result.into_int_value(),
-            bool_type,
-            "bool_result",
-        ).unwrap();
-        
+        let bool_result = self
+            .builder
+            .build_int_truncate(empty_result.into_int_value(), bool_type, "bool_result")
+            .unwrap();
+
         self.builder.build_return(Some(&bool_result)).unwrap();
 
         // Vec::capacity(vec: *Vec) -> i32
         let vec_capacity_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
-        let vec_capacity_function = self.module.add_function("Vec::capacity", vec_capacity_type, None);
-        self.functions.insert("Vec::capacity".to_string(), vec_capacity_function);
+        let vec_capacity_function =
+            self.module
+                .add_function("Vec::capacity", vec_capacity_type, None);
+        self.functions
+            .insert("Vec::capacity".to_string(), vec_capacity_function);
 
         // Add external vec_capacity runtime function - use i32 return
         let vec_capacity_runtime_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
-        let vec_capacity_runtime_function = self.module.add_function("vec_capacity", vec_capacity_runtime_type, None);
-        self.functions.insert("vec_capacity".to_string(), vec_capacity_runtime_function);
+        let vec_capacity_runtime_function =
+            self.module
+                .add_function("vec_capacity", vec_capacity_runtime_type, None);
+        self.functions
+            .insert("vec_capacity".to_string(), vec_capacity_runtime_function);
 
         // Implement Vec::capacity
-        let vec_capacity_entry = self.context.append_basic_block(vec_capacity_function, "entry");
+        let vec_capacity_entry = self
+            .context
+            .append_basic_block(vec_capacity_function, "entry");
         self.builder.position_at_end(vec_capacity_entry);
-        
+
         let vec_param = vec_capacity_function.get_nth_param(0).unwrap();
-        
-        let capacity_result = self.builder.build_call(
-            vec_capacity_runtime_function,
-            &[vec_param.into()],
-            "vec_capacity_call",
-        ).unwrap().try_as_basic_value().unwrap_left();
-        
+
+        let capacity_result = self
+            .builder
+            .build_call(
+                vec_capacity_runtime_function,
+                &[vec_param.into()],
+                "vec_capacity_call",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .unwrap_left();
+
         // No type conversion needed - both are i32
         self.builder.build_return(Some(&capacity_result)).unwrap();
 
         // Vec::clear(vec: *Vec) -> void
         let vec_clear_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
         let vec_clear_function = self.module.add_function("Vec::clear", vec_clear_type, None);
-        self.functions.insert("Vec::clear".to_string(), vec_clear_function);
+        self.functions
+            .insert("Vec::clear".to_string(), vec_clear_function);
 
         // Add external vec_clear runtime function
         let vec_clear_runtime_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
-        let vec_clear_runtime_function = self.module.add_function("vec_clear", vec_clear_runtime_type, None);
-        self.functions.insert("vec_clear".to_string(), vec_clear_runtime_function);
+        let vec_clear_runtime_function =
+            self.module
+                .add_function("vec_clear", vec_clear_runtime_type, None);
+        self.functions
+            .insert("vec_clear".to_string(), vec_clear_runtime_function);
 
         // Implement Vec::clear
         let vec_clear_entry = self.context.append_basic_block(vec_clear_function, "entry");
         self.builder.position_at_end(vec_clear_entry);
-        
+
         let vec_param = vec_clear_function.get_nth_param(0).unwrap();
-        
-        let _clear_result = self.builder.build_call(
-            vec_clear_runtime_function,
-            &[vec_param.into()],
-            "vec_clear_call",
-        ).unwrap();
-        
+
+        let _clear_result = self
+            .builder
+            .build_call(
+                vec_clear_runtime_function,
+                &[vec_param.into()],
+                "vec_clear_call",
+            )
+            .unwrap();
+
         self.builder.build_return(None).unwrap();
 
         // Vec::with_capacity(capacity: i32) -> *Vec
         let vec_with_capacity_type = opaque_ptr_type.fn_type(&[i32_type.into()], false);
-        let vec_with_capacity_function = self.module.add_function("Vec::with_capacity", vec_with_capacity_type, None);
-        self.functions.insert("Vec::with_capacity".to_string(), vec_with_capacity_function);
+        let vec_with_capacity_function =
+            self.module
+                .add_function("Vec::with_capacity", vec_with_capacity_type, None);
+        self.functions
+            .insert("Vec::with_capacity".to_string(), vec_with_capacity_function);
 
         // Add external vec_with_capacity runtime function - use i32 parameter
         let vec_with_capacity_runtime_type = opaque_ptr_type.fn_type(&[i32_type.into()], false);
-        let vec_with_capacity_runtime_function = self.module.add_function("vec_with_capacity", vec_with_capacity_runtime_type, None);
-        self.functions.insert("vec_with_capacity".to_string(), vec_with_capacity_runtime_function);
+        let vec_with_capacity_runtime_function =
+            self.module
+                .add_function("vec_with_capacity", vec_with_capacity_runtime_type, None);
+        self.functions.insert(
+            "vec_with_capacity".to_string(),
+            vec_with_capacity_runtime_function,
+        );
 
         // Implement Vec::with_capacity
-        let vec_with_capacity_entry = self.context.append_basic_block(vec_with_capacity_function, "entry");
+        let vec_with_capacity_entry = self
+            .context
+            .append_basic_block(vec_with_capacity_function, "entry");
         self.builder.position_at_end(vec_with_capacity_entry);
-        
+
         let capacity_param = vec_with_capacity_function.get_nth_param(0).unwrap();
-        
+
         // No type conversion needed - both are i32
-        let vec_result = self.builder.build_call(
-            vec_with_capacity_runtime_function,
-            &[capacity_param.into()],
-            "vec_with_capacity_call",
-        ).unwrap().try_as_basic_value().unwrap_left();
-        
+        let vec_result = self
+            .builder
+            .build_call(
+                vec_with_capacity_runtime_function,
+                &[capacity_param.into()],
+                "vec_with_capacity_call",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .unwrap_left();
+
         self.builder.build_return(Some(&vec_result)).unwrap();
 
         // ========================
@@ -2123,22 +2562,28 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // HashMap::new() -> *HashMap
         let hashmap_new_type = opaque_ptr_type.fn_type(&[], false);
-        let hashmap_new_function = self.module.add_function("HashMap::new", hashmap_new_type, None);
-        self.functions.insert("HashMap::new".to_string(), hashmap_new_function);
+        let hashmap_new_function = self
+            .module
+            .add_function("HashMap::new", hashmap_new_type, None);
+        self.functions
+            .insert("HashMap::new".to_string(), hashmap_new_function);
 
         // Implement HashMap::new - allocates memory for HashMap structure
-        let hashmap_new_entry = self.context.append_basic_block(hashmap_new_function, "entry");
+        let hashmap_new_entry = self
+            .context
+            .append_basic_block(hashmap_new_function, "entry");
         self.builder.position_at_end(hashmap_new_entry);
 
         // Allocate memory for HashMap structure (simplified: 32 bytes)
         let hashmap_size = i64_type.const_int(32, false);
         if let Some(&malloc_fn) = self.functions.get("malloc") {
-            let hashmap_ptr = self.builder.build_call(
-                malloc_fn,
-                &[hashmap_size.into()],
-                "hashmap_alloc",
-            ).unwrap().try_as_basic_value().unwrap_left();
-            
+            let hashmap_ptr = self
+                .builder
+                .build_call(malloc_fn, &[hashmap_size.into()], "hashmap_alloc")
+                .unwrap()
+                .try_as_basic_value()
+                .unwrap_left();
+
             self.builder.build_return(Some(&hashmap_ptr)).unwrap();
         } else {
             let null_ptr = opaque_ptr_type.const_null();
@@ -2146,29 +2591,45 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
 
         // HashMap::insert(map: *HashMap, key: T, value: T) -> void
-        let hashmap_insert_type = void_type.fn_type(&[
-            opaque_ptr_type.into(), // map pointer
-            i32_type.into(),        // key (assuming i32)
-            i32_type.into(),        // value (assuming i32)
-        ], false);
-        let hashmap_insert_function = self.module.add_function("HashMap::insert", hashmap_insert_type, None);
-        self.functions.insert("HashMap::insert".to_string(), hashmap_insert_function);
+        let hashmap_insert_type = void_type.fn_type(
+            &[
+                opaque_ptr_type.into(), // map pointer
+                i32_type.into(),        // key (assuming i32)
+                i32_type.into(),        // value (assuming i32)
+            ],
+            false,
+        );
+        let hashmap_insert_function =
+            self.module
+                .add_function("HashMap::insert", hashmap_insert_type, None);
+        self.functions
+            .insert("HashMap::insert".to_string(), hashmap_insert_function);
 
         // Simplified HashMap::insert implementation (placeholder)
-        let hashmap_insert_entry = self.context.append_basic_block(hashmap_insert_function, "entry");
+        let hashmap_insert_entry = self
+            .context
+            .append_basic_block(hashmap_insert_function, "entry");
         self.builder.position_at_end(hashmap_insert_entry);
         self.builder.build_return(None).unwrap();
 
         // HashMap::get(map: *HashMap, key: T) -> T (returns 0 if not found for now)
-        let hashmap_get_type = i32_type.fn_type(&[
-            opaque_ptr_type.into(), // map pointer
-            i32_type.into(),        // key
-        ], false);
-        let hashmap_get_function = self.module.add_function("HashMap::get", hashmap_get_type, None);
-        self.functions.insert("HashMap::get".to_string(), hashmap_get_function);
+        let hashmap_get_type = i32_type.fn_type(
+            &[
+                opaque_ptr_type.into(), // map pointer
+                i32_type.into(),        // key
+            ],
+            false,
+        );
+        let hashmap_get_function = self
+            .module
+            .add_function("HashMap::get", hashmap_get_type, None);
+        self.functions
+            .insert("HashMap::get".to_string(), hashmap_get_function);
 
         // Simplified HashMap::get implementation (returns 0)
-        let hashmap_get_entry = self.context.append_basic_block(hashmap_get_function, "entry");
+        let hashmap_get_entry = self
+            .context
+            .append_basic_block(hashmap_get_function, "entry");
         self.builder.position_at_end(hashmap_get_entry);
         let zero = i32_type.const_int(0, false);
         self.builder.build_return(Some(&zero)).unwrap();
@@ -2184,75 +2645,100 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // HashSet_new() -> *HashSet
         let hashset_new_type = opaque_ptr_type.fn_type(&[], false);
-        let hashset_new_function = self.module.add_function("HashSet_new", hashset_new_type, None);
-        self.functions.insert("HashSet_new".to_string(), hashset_new_function);
+        let hashset_new_function = self
+            .module
+            .add_function("HashSet_new", hashset_new_type, None);
+        self.functions
+            .insert("HashSet_new".to_string(), hashset_new_function);
 
         // HashSet_insert(*HashSet, i32) -> i32 (bool as i32)
-        let hashset_insert_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
-        let hashset_insert_function = self.module.add_function("HashSet_insert", hashset_insert_type, None);
-        self.functions.insert("HashSet_insert".to_string(), hashset_insert_function);
+        let hashset_insert_type =
+            i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashset_insert_function =
+            self.module
+                .add_function("HashSet_insert", hashset_insert_type, None);
+        self.functions
+            .insert("HashSet_insert".to_string(), hashset_insert_function);
 
         // HashSet_contains(*HashSet, i32) -> i32 (bool as i32)
-        let hashset_contains_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
-        let hashset_contains_function = self.module.add_function("HashSet_contains", hashset_contains_type, None);
-        self.functions.insert("HashSet_contains".to_string(), hashset_contains_function);
+        let hashset_contains_type =
+            i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashset_contains_function =
+            self.module
+                .add_function("HashSet_contains", hashset_contains_type, None);
+        self.functions
+            .insert("HashSet_contains".to_string(), hashset_contains_function);
 
         // HashSet_remove(*HashSet, i32) -> i32 (bool as i32)
-        let hashset_remove_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
-        let hashset_remove_function = self.module.add_function("HashSet_remove", hashset_remove_type, None);
-        self.functions.insert("HashSet_remove".to_string(), hashset_remove_function);
+        let hashset_remove_type =
+            i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        let hashset_remove_function =
+            self.module
+                .add_function("HashSet_remove", hashset_remove_type, None);
+        self.functions
+            .insert("HashSet_remove".to_string(), hashset_remove_function);
 
         // HashSet_len(*HashSet) -> i32
         let hashset_len_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
-        let hashset_len_function = self.module.add_function("HashSet_len", hashset_len_type, None);
-        self.functions.insert("HashSet_len".to_string(), hashset_len_function);
+        let hashset_len_function = self
+            .module
+            .add_function("HashSet_len", hashset_len_type, None);
+        self.functions
+            .insert("HashSet_len".to_string(), hashset_len_function);
 
         // HashSet_is_empty(*HashSet) -> i32 (bool as i32)
         let hashset_is_empty_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
-        let hashset_is_empty_function = self.module.add_function("HashSet_is_empty", hashset_is_empty_type, None);
-        self.functions.insert("HashSet_is_empty".to_string(), hashset_is_empty_function);
+        let hashset_is_empty_function =
+            self.module
+                .add_function("HashSet_is_empty", hashset_is_empty_type, None);
+        self.functions
+            .insert("HashSet_is_empty".to_string(), hashset_is_empty_function);
 
         // HashSet_clear(*HashSet) -> void
         let hashset_clear_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
-        let hashset_clear_function = self.module.add_function("HashSet_clear", hashset_clear_type, None);
-        self.functions.insert("HashSet_clear".to_string(), hashset_clear_function);
+        let hashset_clear_function =
+            self.module
+                .add_function("HashSet_clear", hashset_clear_type, None);
+        self.functions
+            .insert("HashSet_clear".to_string(), hashset_clear_function);
 
         // HashSet_free(*HashSet) -> void
         let hashset_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
-        let hashset_free_function = self.module.add_function("HashSet_free", hashset_free_type, None);
-        self.functions.insert("HashSet_free".to_string(), hashset_free_function);
-
+        let hashset_free_function =
+            self.module
+                .add_function("HashSet_free", hashset_free_type, None);
+        self.functions
+            .insert("HashSet_free".to_string(), hashset_free_function);
 
         // ========================
-        // String Standard Library Functions  
+        // String Standard Library Functions
         // ========================
 
         // String::new() -> *String
         let string_new_type = string_type.fn_type(&[], false);
-        let string_new_function = self.module.add_function("String::new", string_new_type, None);
-        self.functions.insert("String::new".to_string(), string_new_function);
+        let string_new_function = self
+            .module
+            .add_function("String::new", string_new_type, None);
+        self.functions
+            .insert("String::new".to_string(), string_new_function);
 
         // Implement String::new - return empty string
-        let string_new_entry = self.context.append_basic_block(string_new_function, "entry");
+        let string_new_entry = self
+            .context
+            .append_basic_block(string_new_function, "entry");
         self.builder.position_at_end(string_new_entry);
-        
-        let empty_string = self.builder.build_global_string_ptr("", "empty_string").unwrap();
-        self.builder.build_return(Some(&empty_string.as_pointer_value())).unwrap();
+
+        let empty_string = self
+            .builder
+            .build_global_string_ptr("", "empty_string")
+            .unwrap();
+        self.builder
+            .build_return(Some(&empty_string.as_pointer_value()))
+            .unwrap();
 
         // ========================
         // File Standard Library Functions
         // ========================
-
-        // File::open(path: string) -> *File
-        let file_open_type = opaque_ptr_type.fn_type(&[string_type.into()], false);
-        let file_open_function = self.module.add_function("File::open", file_open_type, None);
-        self.functions.insert("File::open".to_string(), file_open_function);
-
-        // Simplified File::open implementation (returns null for now)
-        let file_open_entry = self.context.append_basic_block(file_open_function, "entry");
-        self.builder.position_at_end(file_open_entry);
-        let null_file = opaque_ptr_type.const_null();
-        self.builder.build_return(Some(&null_file)).unwrap();
 
         // ========================
         // SIMD Math Library Functions
@@ -2260,21 +2746,33 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // simd_add_f32x4(a: f32x4, b: f32x4) -> f32x4
         let f32x4_type = f32_type.vec_type(4);
-        let simd_add_f32x4_type = f32x4_type.fn_type(&[
-            f32x4_type.into(),
-            f32x4_type.into(),
-        ], false);
-        let simd_add_f32x4_function = self.module.add_function("simd_add_f32x4", simd_add_f32x4_type, None);
-        self.functions.insert("simd_add_f32x4".to_string(), simd_add_f32x4_function);
+        let simd_add_f32x4_type =
+            f32x4_type.fn_type(&[f32x4_type.into(), f32x4_type.into()], false);
+        let simd_add_f32x4_function =
+            self.module
+                .add_function("simd_add_f32x4", simd_add_f32x4_type, None);
+        self.functions
+            .insert("simd_add_f32x4".to_string(), simd_add_f32x4_function);
 
         // Implement SIMD addition
-        let simd_add_entry = self.context.append_basic_block(simd_add_f32x4_function, "entry");
+        let simd_add_entry = self
+            .context
+            .append_basic_block(simd_add_f32x4_function, "entry");
         self.builder.position_at_end(simd_add_entry);
-        
-        let a_param = simd_add_f32x4_function.get_nth_param(0).unwrap().into_vector_value();
-        let b_param = simd_add_f32x4_function.get_nth_param(1).unwrap().into_vector_value();
-        
-        let result = self.builder.build_float_add(a_param, b_param, "simd_add_result").unwrap();
+
+        let a_param = simd_add_f32x4_function
+            .get_nth_param(0)
+            .unwrap()
+            .into_vector_value();
+        let b_param = simd_add_f32x4_function
+            .get_nth_param(1)
+            .unwrap()
+            .into_vector_value();
+
+        let result = self
+            .builder
+            .build_float_add(a_param, b_param, "simd_add_result")
+            .unwrap();
         self.builder.build_return(Some(&result)).unwrap();
 
         // ========================
@@ -3341,7 +3839,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let opt_entry = self
             .context
             .append_basic_block(read_file_optimized_function, "entry");
-        // COMMENTED OUT: size_check_block causing unreachable block LLVM IR issues  
+        // COMMENTED OUT: size_check_block causing unreachable block LLVM IR issues
         // let size_check_block = self
         //     .context
         //     .append_basic_block(read_file_optimized_function, "size_check");
@@ -3999,26 +4497,38 @@ impl<'ctx> CodeGenerator<'ctx> {
         Self::initialize_native_target();
 
         // Record initial memory usage for code generation
-        let initial_memory = std::mem::size_of::<Module>() + program.len() * std::mem::size_of::<Stmt>();
-        record_memory_usage(CompilationPhase::CodeGeneration, initial_memory, "Started code generation");
+        let initial_memory =
+            std::mem::size_of::<Module>() + program.len() * std::mem::size_of::<Stmt>();
+        record_memory_usage(
+            CompilationPhase::CodeGeneration,
+            initial_memory,
+            "Started code generation",
+        );
 
         // Generate code for each statement in the program
         for (i, stmt) in program.iter().enumerate() {
             self.generate_statement(stmt)?;
-            
+
             // Check memory usage periodically
             if i % 25 == 0 {
-                let current_memory = std::mem::size_of::<Module>() + 
-                    self.variables.len() * std::mem::size_of::<PointerValue>() +
-                    self.functions.len() * std::mem::size_of::<FunctionValue>();
-                record_memory_usage(CompilationPhase::CodeGeneration, current_memory, 
-                    &format!("Code generation progress: {}/{} statements", i + 1, program.len()));
-                
+                let current_memory = std::mem::size_of::<Module>()
+                    + self.variables.len() * std::mem::size_of::<PointerValue>()
+                    + self.functions.len() * std::mem::size_of::<FunctionValue>();
+                record_memory_usage(
+                    CompilationPhase::CodeGeneration,
+                    current_memory,
+                    &format!(
+                        "Code generation progress: {}/{} statements",
+                        i + 1,
+                        program.len()
+                    ),
+                );
+
                 // Check memory limits
                 if let Err(e) = check_memory_limit() {
-                    return Err(CompileError::MemoryExhausted { 
-                        phase: "code generation".to_string(), 
-                        details: e.to_string() 
+                    return Err(CompileError::MemoryExhausted {
+                        phase: "code generation".to_string(),
+                        details: e.to_string(),
                     });
                 }
             }
@@ -5900,8 +6410,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let right_value = self.generate_expression(right)?;
 
                 // Handle String concatenation (+ operator)
-                if let (BasicValueEnum::PointerValue(left_ptr), BasicValueEnum::PointerValue(right_ptr)) =
-                    (left_value, right_value)
+                if let (
+                    BasicValueEnum::PointerValue(left_ptr),
+                    BasicValueEnum::PointerValue(right_ptr),
+                ) = (left_value, right_value)
                 {
                     if matches!(op, BinaryOp::Add) {
                         // String concatenation: call string_concat function
@@ -6048,9 +6560,64 @@ impl<'ctx> CodeGenerator<'ctx> {
                             Ok(result.into())
                         }
                         BinaryOp::Equal => {
+                            // Handle type coercion for integer comparisons
+                            let left_type = left_int.get_type();
+                            let right_type = right_int.get_type();
+
+                            let (coerced_left, coerced_right) = if left_type.get_bit_width()
+                                != right_type.get_bit_width()
+                            {
+                                // Promote to the larger type
+                                if left_type.get_bit_width() > right_type.get_bit_width() {
+                                    // Promote right to left's type
+                                    let coerced_right = if left_type.get_bit_width() == 64
+                                        && right_type.get_bit_width() == 32
+                                    {
+                                        self.builder
+                                            .build_int_z_extend(right_int, left_type, "promote_right")
+                                            .map_err(|e| {
+                                                CompileError::codegen_error(
+                                                    format!("Failed to promote integer: {:?}", e),
+                                                    None,
+                                                )
+                                            })?
+                                    } else {
+                                        return Err(CompileError::codegen_error(
+                                            format!("Unsupported integer type promotion: {} to {}", 
+                                                    right_type.get_bit_width(), left_type.get_bit_width()),
+                                            None,
+                                        ));
+                                    };
+                                    (left_int, coerced_right)
+                                } else {
+                                    // Promote left to right's type
+                                    let coerced_left = if right_type.get_bit_width() == 64
+                                        && left_type.get_bit_width() == 32
+                                    {
+                                        self.builder
+                                            .build_int_z_extend(left_int, right_type, "promote_left")
+                                            .map_err(|e| {
+                                                CompileError::codegen_error(
+                                                    format!("Failed to promote integer: {:?}", e),
+                                                    None,
+                                                )
+                                            })?
+                                    } else {
+                                        return Err(CompileError::codegen_error(
+                                            format!("Unsupported integer type promotion: {} to {}", 
+                                                    left_type.get_bit_width(), right_type.get_bit_width()),
+                                            None,
+                                        ));
+                                    };
+                                    (coerced_left, right_int)
+                                }
+                            } else {
+                                (left_int, right_int)
+                            };
+
                             let result = self
                                 .builder
-                                .build_int_compare(IntPredicate::EQ, left_int, right_int, "cmp_eq")
+                                .build_int_compare(IntPredicate::EQ, coerced_left, coerced_right, "cmp_eq")
                                 .map_err(|e| {
                                     CompileError::codegen_error(
                                         format!("Failed to build comparison: {:?}", e),
@@ -6425,121 +6992,243 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                 } else {
                     // Handle mixed integer types with coercion
-                    if let (BasicValueEnum::IntValue(left_int), BasicValueEnum::IntValue(right_int)) = 
-                        (left_value, right_value) {
+                    if let (
+                        BasicValueEnum::IntValue(left_int),
+                        BasicValueEnum::IntValue(right_int),
+                    ) = (left_value, right_value)
+                    {
                         // Get the types and promote to larger type if needed
                         let left_type = left_int.get_type();
                         let right_type = right_int.get_type();
-                        
-                        let (coerced_left, coerced_right) = if left_type.get_bit_width() != right_type.get_bit_width() {
+
+                        let (coerced_left, coerced_right) = if left_type.get_bit_width()
+                            != right_type.get_bit_width()
+                        {
                             // Promote to the larger type
                             if left_type.get_bit_width() > right_type.get_bit_width() {
                                 // Promote right to left's type
-                                let coerced_right = if left_type.get_bit_width() == 64 && right_type.get_bit_width() == 32 {
-                                    self.builder.build_int_z_extend(right_int, left_type, "promote_right")
-                                        .map_err(|e| CompileError::codegen_error(
-                                            format!("Failed to promote integer: {:?}", e), None))?
+                                let coerced_right = if left_type.get_bit_width() == 64
+                                    && right_type.get_bit_width() == 32
+                                {
+                                    self.builder
+                                        .build_int_z_extend(right_int, left_type, "promote_right")
+                                        .map_err(|e| {
+                                            CompileError::codegen_error(
+                                                format!("Failed to promote integer: {:?}", e),
+                                                None,
+                                            )
+                                        })?
                                 } else {
-                                    self.builder.build_int_truncate(right_int, left_type, "truncate_right")
-                                        .map_err(|e| CompileError::codegen_error(
-                                            format!("Failed to truncate integer: {:?}", e), None))?
+                                    self.builder
+                                        .build_int_truncate(right_int, left_type, "truncate_right")
+                                        .map_err(|e| {
+                                            CompileError::codegen_error(
+                                                format!("Failed to truncate integer: {:?}", e),
+                                                None,
+                                            )
+                                        })?
                                 };
                                 (left_int, coerced_right)
                             } else {
                                 // Promote left to right's type
-                                let coerced_left = if right_type.get_bit_width() == 64 && left_type.get_bit_width() == 32 {
-                                    self.builder.build_int_z_extend(left_int, right_type, "promote_left")
-                                        .map_err(|e| CompileError::codegen_error(
-                                            format!("Failed to promote integer: {:?}", e), None))?
+                                let coerced_left = if right_type.get_bit_width() == 64
+                                    && left_type.get_bit_width() == 32
+                                {
+                                    self.builder
+                                        .build_int_z_extend(left_int, right_type, "promote_left")
+                                        .map_err(|e| {
+                                            CompileError::codegen_error(
+                                                format!("Failed to promote integer: {:?}", e),
+                                                None,
+                                            )
+                                        })?
                                 } else {
-                                    self.builder.build_int_truncate(left_int, right_type, "truncate_left")
-                                        .map_err(|e| CompileError::codegen_error(
-                                            format!("Failed to truncate integer: {:?}", e), None))?
+                                    self.builder
+                                        .build_int_truncate(left_int, right_type, "truncate_left")
+                                        .map_err(|e| {
+                                            CompileError::codegen_error(
+                                                format!("Failed to truncate integer: {:?}", e),
+                                                None,
+                                            )
+                                        })?
                                 };
                                 (coerced_left, right_int)
                             }
                         } else {
                             (left_int, right_int)
                         };
-                        
+
                         // Now perform the operation with coerced types
                         match op {
                             BinaryOp::Equal => {
-                                let result = self.builder.build_int_compare(
-                                    IntPredicate::EQ, coerced_left, coerced_right, "cmp_eq")
-                                    .map_err(|e| CompileError::codegen_error(
-                                        format!("Failed to build comparison: {:?}", e), None))?;
+                                let result = self
+                                    .builder
+                                    .build_int_compare(
+                                        IntPredicate::EQ,
+                                        coerced_left,
+                                        coerced_right,
+                                        "cmp_eq",
+                                    )
+                                    .map_err(|e| {
+                                        CompileError::codegen_error(
+                                            format!("Failed to build comparison: {:?}", e),
+                                            None,
+                                        )
+                                    })?;
                                 Ok(result.into())
                             }
                             BinaryOp::NotEqual => {
-                                let result = self.builder.build_int_compare(
-                                    IntPredicate::NE, coerced_left, coerced_right, "cmp_ne")
-                                    .map_err(|e| CompileError::codegen_error(
-                                        format!("Failed to build comparison: {:?}", e), None))?;
+                                let result = self
+                                    .builder
+                                    .build_int_compare(
+                                        IntPredicate::NE,
+                                        coerced_left,
+                                        coerced_right,
+                                        "cmp_ne",
+                                    )
+                                    .map_err(|e| {
+                                        CompileError::codegen_error(
+                                            format!("Failed to build comparison: {:?}", e),
+                                            None,
+                                        )
+                                    })?;
                                 Ok(result.into())
                             }
                             BinaryOp::Less => {
-                                let result = self.builder.build_int_compare(
-                                    IntPredicate::SLT, coerced_left, coerced_right, "cmp_lt")
-                                    .map_err(|e| CompileError::codegen_error(
-                                        format!("Failed to build comparison: {:?}", e), None))?;
+                                let result = self
+                                    .builder
+                                    .build_int_compare(
+                                        IntPredicate::SLT,
+                                        coerced_left,
+                                        coerced_right,
+                                        "cmp_lt",
+                                    )
+                                    .map_err(|e| {
+                                        CompileError::codegen_error(
+                                            format!("Failed to build comparison: {:?}", e),
+                                            None,
+                                        )
+                                    })?;
                                 Ok(result.into())
                             }
                             BinaryOp::LessEqual => {
-                                let result = self.builder.build_int_compare(
-                                    IntPredicate::SLE, coerced_left, coerced_right, "cmp_le")
-                                    .map_err(|e| CompileError::codegen_error(
-                                        format!("Failed to build comparison: {:?}", e), None))?;
+                                let result = self
+                                    .builder
+                                    .build_int_compare(
+                                        IntPredicate::SLE,
+                                        coerced_left,
+                                        coerced_right,
+                                        "cmp_le",
+                                    )
+                                    .map_err(|e| {
+                                        CompileError::codegen_error(
+                                            format!("Failed to build comparison: {:?}", e),
+                                            None,
+                                        )
+                                    })?;
                                 Ok(result.into())
                             }
                             BinaryOp::Greater => {
-                                let result = self.builder.build_int_compare(
-                                    IntPredicate::SGT, coerced_left, coerced_right, "cmp_gt")
-                                    .map_err(|e| CompileError::codegen_error(
-                                        format!("Failed to build comparison: {:?}", e), None))?;
+                                let result = self
+                                    .builder
+                                    .build_int_compare(
+                                        IntPredicate::SGT,
+                                        coerced_left,
+                                        coerced_right,
+                                        "cmp_gt",
+                                    )
+                                    .map_err(|e| {
+                                        CompileError::codegen_error(
+                                            format!("Failed to build comparison: {:?}", e),
+                                            None,
+                                        )
+                                    })?;
                                 Ok(result.into())
                             }
                             BinaryOp::GreaterEqual => {
-                                let result = self.builder.build_int_compare(
-                                    IntPredicate::SGE, coerced_left, coerced_right, "cmp_ge")
-                                    .map_err(|e| CompileError::codegen_error(
-                                        format!("Failed to build comparison: {:?}", e), None))?;
+                                let result = self
+                                    .builder
+                                    .build_int_compare(
+                                        IntPredicate::SGE,
+                                        coerced_left,
+                                        coerced_right,
+                                        "cmp_ge",
+                                    )
+                                    .map_err(|e| {
+                                        CompileError::codegen_error(
+                                            format!("Failed to build comparison: {:?}", e),
+                                            None,
+                                        )
+                                    })?;
                                 Ok(result.into())
                             }
                             BinaryOp::Add => {
-                                let result = self.builder.build_int_add(coerced_left, coerced_right, "add")
-                                    .map_err(|e| CompileError::codegen_error(
-                                        format!("Failed to build add: {:?}", e), None))?;
+                                let result = self
+                                    .builder
+                                    .build_int_add(coerced_left, coerced_right, "add")
+                                    .map_err(|e| {
+                                        CompileError::codegen_error(
+                                            format!("Failed to build add: {:?}", e),
+                                            None,
+                                        )
+                                    })?;
                                 Ok(result.into())
                             }
                             BinaryOp::Subtract => {
-                                let result = self.builder.build_int_sub(coerced_left, coerced_right, "sub")
-                                    .map_err(|e| CompileError::codegen_error(
-                                        format!("Failed to build sub: {:?}", e), None))?;
+                                let result = self
+                                    .builder
+                                    .build_int_sub(coerced_left, coerced_right, "sub")
+                                    .map_err(|e| {
+                                        CompileError::codegen_error(
+                                            format!("Failed to build sub: {:?}", e),
+                                            None,
+                                        )
+                                    })?;
                                 Ok(result.into())
                             }
                             BinaryOp::Multiply => {
-                                let result = self.builder.build_int_mul(coerced_left, coerced_right, "mul")
-                                    .map_err(|e| CompileError::codegen_error(
-                                        format!("Failed to build mul: {:?}", e), None))?;
+                                let result = self
+                                    .builder
+                                    .build_int_mul(coerced_left, coerced_right, "mul")
+                                    .map_err(|e| {
+                                        CompileError::codegen_error(
+                                            format!("Failed to build mul: {:?}", e),
+                                            None,
+                                        )
+                                    })?;
                                 Ok(result.into())
                             }
                             BinaryOp::Divide => {
-                                let result = self.builder.build_int_signed_div(coerced_left, coerced_right, "div")
-                                    .map_err(|e| CompileError::codegen_error(
-                                        format!("Failed to build div: {:?}", e), None))?;
+                                let result = self
+                                    .builder
+                                    .build_int_signed_div(coerced_left, coerced_right, "div")
+                                    .map_err(|e| {
+                                        CompileError::codegen_error(
+                                            format!("Failed to build div: {:?}", e),
+                                            None,
+                                        )
+                                    })?;
                                 Ok(result.into())
                             }
                             BinaryOp::Modulo => {
-                                let result = self.builder.build_int_signed_rem(coerced_left, coerced_right, "rem")
-                                    .map_err(|e| CompileError::codegen_error(
-                                        format!("Failed to build rem: {:?}", e), None))?;
+                                let result = self
+                                    .builder
+                                    .build_int_signed_rem(coerced_left, coerced_right, "rem")
+                                    .map_err(|e| {
+                                        CompileError::codegen_error(
+                                            format!("Failed to build rem: {:?}", e),
+                                            None,
+                                        )
+                                    })?;
                                 Ok(result.into())
                             }
                             _ => Err(CompileError::codegen_error(
-                                format!("Binary operation {:?} not yet implemented for mixed integers", op),
+                                format!(
+                                    "Binary operation {:?} not yet implemented for mixed integers",
+                                    op
+                                ),
                                 None,
-                            ))
+                            )),
                         }
                     } else {
                         // Truly mixed types (e.g., int and float)
@@ -6617,7 +7306,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let function_name = match &**callee {
             // Direct function call: func_name()
             Expr::Variable(func_name) => func_name.clone(),
-            
+
             // Module-scoped function call: Vec::new(), HashMap::new()
             // OR method call on instance: vec.push(), vec.len()
             Expr::FieldAccess(base_expr, method_name) => {
@@ -6633,13 +7322,21 @@ impl<'ctx> CodeGenerator<'ctx> {
                             ("HashSet", "new") => "HashSet_new".to_string(),
                             ("String", "new") => "string_new".to_string(),
                             ("String", "from") => "string_from".to_string(),
-                            _ => format!("{}::{}", module_name, method_name)
+                            ("File", "open") => "file_open".to_string(),
+                            ("File", "exists") => "file_exists".to_string(),
+                            ("File", "size") => "file_size".to_string(),
+                            ("File", "delete") => "file_delete".to_string(),
+                            ("File", "write") => "file_write".to_string(),
+                            ("File", "readline") => "file_read_line".to_string(),
+                            ("File", "read_all") => "file_read_all".to_string(),
+                            ("File", "close") => "file_close".to_string(),
+                            _ => format!("{}::{}", module_name, method_name),
                         }
                     } else {
                         // Instance method call: vec.push(), vec.len()
                         // Generate the object value and pass it as first argument
                         let object_value = self.generate_expression(base_expr)?;
-                        
+
                         // Get the method function
                         // Map Vec and HashMap method names to runtime function names
                         // For now, we'll determine the type based on the variable name pattern
@@ -6654,7 +7351,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     "len" => "HashSet_len".to_string(),
                                     "is_empty" => "HashSet_is_empty".to_string(),
                                     "clear" => "HashSet_clear".to_string(),
-                                    _ => format!("HashSet::{}", method_name)
+                                    _ => format!("HashSet::{}", method_name),
                                 }
                             } else if var_name.contains("map") || var_name.starts_with("hash") {
                                 // HashMap methods
@@ -6666,7 +7363,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     "remove" => "hashmap_remove".to_string(),
                                     "is_empty" => "hashmap_is_empty".to_string(),
                                     "clear" => "hashmap_clear".to_string(),
-                                    _ => format!("HashMap::{}", method_name)
+                                    _ => format!("HashMap::{}", method_name),
                                 }
                             } else if var_name.contains("string") || var_name.starts_with("s") {
                                 // String methods
@@ -6681,7 +7378,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     "to_uppercase" => "string_to_uppercase".to_string(),
                                     "to_lowercase" => "string_to_lowercase".to_string(),
                                     "trim" => "string_trim".to_string(),
-                                    _ => format!("String::{}", method_name)
+                                    _ => format!("String::{}", method_name),
                                 }
                             } else {
                                 // Vec methods (default)
@@ -6693,7 +7390,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     "capacity" => "vec_capacity".to_string(),
                                     "is_empty" => "vec_is_empty".to_string(),
                                     "clear" => "vec_clear".to_string(),
-                                    _ => format!("Vec::{}", method_name)
+                                    _ => format!("Vec::{}", method_name),
                                 }
                             }
                         } else {
@@ -6706,7 +7403,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 "capacity" => "vec_capacity".to_string(),
                                 "is_empty" => "vec_is_empty".to_string(),
                                 "clear" => "vec_clear".to_string(),
-                                _ => format!("Vec::{}", method_name)
+                                _ => format!("Vec::{}", method_name),
                             }
                         };
                         if let Some(&function) = self.functions.get(&method_func_name) {
@@ -6743,7 +7440,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         }
                                         "len" => {
                                             // hashmap_len returns i32, no conversion needed
-                                            if let BasicValueEnum::IntValue(len_i32) = return_value {
+                                            if let BasicValueEnum::IntValue(len_i32) = return_value
+                                            {
                                                 return Ok(len_i32.into());
                                             }
                                             return Ok(return_value);
@@ -6757,7 +7455,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         }
                                         "insert" => {
                                             // hashmap_insert returns void, create a dummy success value
-                                            let success_value = self.context.i32_type().const_int(1, false);
+                                            let success_value =
+                                                self.context.i32_type().const_int(1, false);
                                             return Ok(success_value.into());
                                         }
                                         _ => {
@@ -6776,7 +7475,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         }
                                         "len" => {
                                             // HashSet_len returns i32, no conversion needed
-                                            if let BasicValueEnum::IntValue(len_i32) = return_value {
+                                            if let BasicValueEnum::IntValue(len_i32) = return_value
+                                            {
                                                 return Ok(len_i32.into());
                                             }
                                             return Ok(return_value);
@@ -6790,7 +7490,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         }
                                         "clear" => {
                                             // HashSet_clear returns void, create a dummy success value
-                                            let success_value = self.context.i32_type().const_int(1, false);
+                                            let success_value =
+                                                self.context.i32_type().const_int(1, false);
                                             return Ok(success_value.into());
                                         }
                                         _ => {
@@ -6802,75 +7503,133 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     match method_name.as_str() {
                                         "len" => {
                                             // vec_len returns i32, no conversion needed
-                                            if let BasicValueEnum::IntValue(len_i32) = return_value {
+                                            if let BasicValueEnum::IntValue(len_i32) = return_value
+                                            {
                                                 return Ok(len_i32.into());
                                             }
                                             return Ok(return_value);
                                         }
-                                    "get" => {
-                                        // vec_get returns pointer, dereference to get value
-                                        if let BasicValueEnum::PointerValue(ptr) = return_value {
-                                            // Check if pointer is null first
-                                            let null_ptr = self.context.i8_type().ptr_type(AddressSpace::default()).const_null();
-                                            let is_null = self.builder.build_int_compare(
+                                        "get" => {
+                                            // vec_get returns pointer, dereference to get value
+                                            if let BasicValueEnum::PointerValue(ptr) = return_value
+                                            {
+                                                // Check if pointer is null first
+                                                let null_ptr = self
+                                                    .context
+                                                    .i8_type()
+                                                    .ptr_type(AddressSpace::default())
+                                                    .const_null();
+                                                let is_null = self.builder.build_int_compare(
                                                 IntPredicate::EQ,
                                                 ptr,
                                                 null_ptr,
                                                 "is_null"
                                             ).map_err(|e| CompileError::codegen_error(
                                                 format!("Failed to check null pointer: {:?}", e), None))?;
-                                            
-                                            // Create conditional to return 0 if null, otherwise dereference
-                                            let current_function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
-                                            let then_block = self.context.append_basic_block(current_function, "null_case");
-                                            let else_block = self.context.append_basic_block(current_function, "valid_case");
-                                            let merge_block = self.context.append_basic_block(current_function, "merge");
-                                            
-                                            self.builder.build_conditional_branch(is_null, then_block, else_block)
-                                                .map_err(|e| CompileError::codegen_error(
-                                                    format!("Failed to build conditional: {:?}", e), None))?;
-                                            
-                                            // Null case: return 0
-                                            self.builder.position_at_end(then_block);
-                                            let zero = self.context.i32_type().const_int(0, false);
-                                            self.builder.build_unconditional_branch(merge_block)
-                                                .map_err(|e| CompileError::codegen_error(
-                                                    format!("Failed to build branch: {:?}", e), None))?;
-                                            
-                                            // Valid case: dereference pointer
-                                            self.builder.position_at_end(else_block);
-                                            
-                                            // Cast the i8* pointer to i32* and load the i32 value
-                                            let i32_ptr = self.builder.build_pointer_cast(
+
+                                                // Create conditional to return 0 if null, otherwise dereference
+                                                let current_function = self
+                                                    .builder
+                                                    .get_insert_block()
+                                                    .unwrap()
+                                                    .get_parent()
+                                                    .unwrap();
+                                                let then_block = self.context.append_basic_block(
+                                                    current_function,
+                                                    "null_case",
+                                                );
+                                                let else_block = self.context.append_basic_block(
+                                                    current_function,
+                                                    "valid_case",
+                                                );
+                                                let merge_block = self
+                                                    .context
+                                                    .append_basic_block(current_function, "merge");
+
+                                                self.builder
+                                                    .build_conditional_branch(
+                                                        is_null, then_block, else_block,
+                                                    )
+                                                    .map_err(|e| {
+                                                        CompileError::codegen_error(
+                                                            format!(
+                                                                "Failed to build conditional: {:?}",
+                                                                e
+                                                            ),
+                                                            None,
+                                                        )
+                                                    })?;
+
+                                                // Null case: return 0
+                                                self.builder.position_at_end(then_block);
+                                                let zero =
+                                                    self.context.i32_type().const_int(0, false);
+                                                self.builder
+                                                    .build_unconditional_branch(merge_block)
+                                                    .map_err(|e| {
+                                                        CompileError::codegen_error(
+                                                            format!(
+                                                                "Failed to build branch: {:?}",
+                                                                e
+                                                            ),
+                                                            None,
+                                                        )
+                                                    })?;
+
+                                                // Valid case: dereference pointer
+                                                self.builder.position_at_end(else_block);
+
+                                                // Cast the i8* pointer to i32* and load the i32 value
+                                                let i32_ptr = self.builder.build_pointer_cast(
                                                 ptr,
                                                 self.context.i32_type().ptr_type(AddressSpace::default()),
                                                 "i32_ptr"
                                             ).map_err(|e| CompileError::codegen_error(
                                                 format!("Failed to cast pointer to i32*: {:?}", e), None))?;
-                                            
-                                            let value = self.builder.build_load(i32_ptr, "deref_value")
+
+                                                let value = self.builder.build_load(i32_ptr, "deref_value")
                                                 .map_err(|e| CompileError::codegen_error(
                                                     format!("Failed to dereference pointer: {:?}", e), None))?;
-                                            
-                                            self.builder.build_unconditional_branch(merge_block)
-                                                .map_err(|e| CompileError::codegen_error(
-                                                    format!("Failed to build branch: {:?}", e), None))?;
-                                            
-                                            // Merge block: PHI node to select result
-                                            self.builder.position_at_end(merge_block);
-                                            let phi = self.builder.build_phi(self.context.i32_type(), "get_result")
-                                                .map_err(|e| CompileError::codegen_error(
-                                                    format!("Failed to build phi: {:?}", e), None))?;
-                                            phi.add_incoming(&[(&zero, then_block), (&value, else_block)]);
-                                            
-                                            return Ok(phi.as_basic_value());
+
+                                                self.builder
+                                                    .build_unconditional_branch(merge_block)
+                                                    .map_err(|e| {
+                                                        CompileError::codegen_error(
+                                                            format!(
+                                                                "Failed to build branch: {:?}",
+                                                                e
+                                                            ),
+                                                            None,
+                                                        )
+                                                    })?;
+
+                                                // Merge block: PHI node to select result
+                                                self.builder.position_at_end(merge_block);
+                                                let phi = self
+                                                    .builder
+                                                    .build_phi(
+                                                        self.context.i32_type(),
+                                                        "get_result",
+                                                    )
+                                                    .map_err(|e| {
+                                                        CompileError::codegen_error(
+                                                            format!("Failed to build phi: {:?}", e),
+                                                            None,
+                                                        )
+                                                    })?;
+                                                phi.add_incoming(&[
+                                                    (&zero, then_block),
+                                                    (&value, else_block),
+                                                ]);
+
+                                                return Ok(phi.as_basic_value());
+                                            }
+                                            return Ok(return_value);
                                         }
-                                        return Ok(return_value);
-                                    }
-                                    "push" => {
-                                        // vec_push returns i32 success indicator, which is fine
-                                        return Ok(return_value);
-                                    }
+                                        "push" => {
+                                            // vec_push returns i32 success indicator, which is fine
+                                            return Ok(return_value);
+                                        }
                                         _ => {
                                             return Ok(return_value);
                                         }
@@ -6894,7 +7653,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     ));
                 }
             }
-            
+
             _ => {
                 return Err(CompileError::codegen_error(
                     "Unsupported function call syntax".to_string(),

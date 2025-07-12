@@ -7,7 +7,7 @@ use std::fmt;
 pub mod tokens;
 
 use crate::error::CompileError;
-use crate::memory_profiler::{record_memory_usage, CompilationPhase, check_memory_limit};
+use crate::memory_profiler::{check_memory_limit, record_memory_usage, CompilationPhase};
 
 /// Position information for tokens
 #[derive(Debug, Clone, PartialEq)]
@@ -840,14 +840,17 @@ impl<'source> Lexer<'source> {
             // Check memory limits periodically
             if tokens.len() % 1000 == 0 {
                 let current_memory = tokens.len() * std::mem::size_of::<Token>();
-                record_memory_usage(CompilationPhase::Lexing, current_memory, 
-                    &format!("Lexing progress: {} tokens", tokens.len()));
-                
+                record_memory_usage(
+                    CompilationPhase::Lexing,
+                    current_memory,
+                    &format!("Lexing progress: {} tokens", tokens.len()),
+                );
+
                 // Check if we're exceeding memory limits
                 if let Err(e) = check_memory_limit() {
-                    return Err(CompileError::MemoryExhausted { 
-                        phase: "lexing".to_string(), 
-                        details: e.to_string() 
+                    return Err(CompileError::MemoryExhausted {
+                        phase: "lexing".to_string(),
+                        details: e.to_string(),
                     });
                 }
             }
@@ -859,8 +862,11 @@ impl<'source> Lexer<'source> {
 
         // Record final memory usage
         let final_memory = tokens.len() * std::mem::size_of::<Token>();
-        record_memory_usage(CompilationPhase::Lexing, final_memory, 
-            &format!("Completed lexing: {} tokens", tokens.len()));
+        record_memory_usage(
+            CompilationPhase::Lexing,
+            final_memory,
+            &format!("Completed lexing: {} tokens", tokens.len()),
+        );
 
         Ok(tokens)
     }

@@ -1,5 +1,5 @@
 //! Compilation Performance Benchmarks
-//! 
+//!
 //! These benchmarks measure LLVM compilation performance safely,
 //! with proper resource management and no context leaks.
 
@@ -13,14 +13,21 @@ use ea_compiler::compile_to_llvm;
 #[cfg(feature = "llvm")]
 fn bench_llvm_compilation(c: &mut Criterion) {
     let mut group = c.benchmark_group("llvm_compilation");
-    
+
     let test_programs = vec![
-        ("simple", "simple_test", r#"
+        (
+            "simple",
+            "simple_test",
+            r#"
 func main() -> i32 {
     return 42;
 }
-"#),
-        ("arithmetic", "arithmetic_test", r#"
+"#,
+        ),
+        (
+            "arithmetic",
+            "arithmetic_test",
+            r#"
 func calculate() -> i32 {
     let a = 10;
     let b = 20;
@@ -28,8 +35,12 @@ func calculate() -> i32 {
     let d = c * 2;
     return d - 5;
 }
-"#),
-        ("control_flow", "control_test", r#"
+"#,
+        ),
+        (
+            "control_flow",
+            "control_test",
+            r#"
 func abs_value(x: i32) -> i32 {
     if (x >= 0) {
         return x;
@@ -37,8 +48,12 @@ func abs_value(x: i32) -> i32 {
         return -x;
     }
 }
-"#),
-        ("simple_loop", "loop_test", r#"
+"#,
+        ),
+        (
+            "simple_loop",
+            "loop_test",
+            r#"
 func sum_numbers() -> i32 {
     let sum = 0;
     for (let i: i32 = 1; i <= 10; i += 1) {
@@ -46,7 +61,8 @@ func sum_numbers() -> i32 {
     }
     return sum;
 }
-"#),
+"#,
+        ),
     ];
 
     for (name, filename, source) in test_programs {
@@ -59,7 +75,7 @@ func sum_numbers() -> i32 {
             })
         });
     }
-    
+
     group.finish();
 }
 
@@ -67,22 +83,30 @@ func sum_numbers() -> i32 {
 #[cfg(feature = "llvm")]
 fn bench_simd_compilation(c: &mut Criterion) {
     let mut group = c.benchmark_group("simd_compilation");
-    
+
     let simd_programs = vec![
-        ("f32x4_add", "f32x4_test", r#"
+        (
+            "f32x4_add",
+            "f32x4_test",
+            r#"
 func simd_add() -> f32x4 {
     let v1 = [1.0, 2.0, 3.0, 4.0]f32x4;
     let v2 = [5.0, 6.0, 7.0, 8.0]f32x4;
     return v1 .+ v2;
 }
-"#),
-        ("i32x4_multiply", "i32x4_test", r#"
+"#,
+        ),
+        (
+            "i32x4_multiply",
+            "i32x4_test",
+            r#"
 func simd_multiply() -> i32x4 {
     let v1 = [1, 2, 3, 4]i32x4;
     let v2 = [2, 3, 4, 5]i32x4;
     return v1 .* v2;
 }
-"#),
+"#,
+        ),
     ];
 
     for (name, filename, source) in simd_programs {
@@ -95,7 +119,7 @@ func simd_multiply() -> i32x4 {
             })
         });
     }
-    
+
     group.finish();
 }
 
@@ -103,13 +127,13 @@ func simd_multiply() -> i32x4 {
 #[cfg(feature = "llvm")]
 fn bench_compilation_complexity(c: &mut Criterion) {
     let mut group = c.benchmark_group("compilation_complexity");
-    
+
     let complexities = vec![1, 3, 5];
-    
+
     for complexity in complexities {
         let program = generate_complex_program(complexity);
         let filename = format!("complex_{}", complexity);
-        
+
         group.bench_with_input(
             BenchmarkId::new("functions", complexity),
             &(program, filename),
@@ -123,7 +147,7 @@ fn bench_compilation_complexity(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
@@ -131,18 +155,26 @@ fn bench_compilation_complexity(c: &mut Criterion) {
 #[cfg(feature = "llvm")]
 fn bench_compilation_errors(c: &mut Criterion) {
     let mut group = c.benchmark_group("compilation_errors");
-    
+
     let error_cases = vec![
-        ("type_error", "type_error_test", r#"
+        (
+            "type_error",
+            "type_error_test",
+            r#"
 func bad_function() -> i32 {
     return "not an integer";
 }
-"#),
-        ("undefined_variable", "undefined_test", r#"
+"#,
+        ),
+        (
+            "undefined_variable",
+            "undefined_test",
+            r#"
 func bad_function() -> i32 {
     return undefined_variable;
 }
-"#),
+"#,
+        ),
     ];
 
     for (name, filename, source) in error_cases {
@@ -155,14 +187,14 @@ func bad_function() -> i32 {
             })
         });
     }
-    
+
     group.finish();
 }
 
 // Helper function to generate programs of different complexities
 fn generate_complex_program(complexity: usize) -> String {
     let mut program = String::new();
-    
+
     for i in 0..complexity {
         program.push_str(&format!(
             r#"
@@ -179,16 +211,19 @@ func helper_{}(x: i32) -> i32 {{
     }}
 }}
 "#,
-            i, i * 10
+            i,
+            i * 10
         ));
     }
-    
-    program.push_str(r#"
+
+    program.push_str(
+        r#"
 func main() -> i32 {
     return helper_0(5);
 }
-"#);
-    
+"#,
+    );
+
     program
 }
 

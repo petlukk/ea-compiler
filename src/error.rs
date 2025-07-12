@@ -21,10 +21,7 @@ pub enum CompileError {
         position: Option<Position>,
     },
     /// Memory exhaustion error
-    MemoryExhausted {
-        phase: String,
-        details: String,
-    },
+    MemoryExhausted { phase: String, details: String },
 }
 
 impl CompileError {

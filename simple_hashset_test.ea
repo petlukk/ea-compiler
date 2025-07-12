@@ -1,5 +1,0 @@
-func main() {
-    print("Testing HashSet");
-    let set = HashSet::new();
-    print("HashSet created");
-}

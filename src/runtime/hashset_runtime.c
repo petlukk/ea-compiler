@@ -211,24 +211,24 @@ extern HashSet* HashSet_new() {
     return hashset_new();
 }
 
-extern bool HashSet_insert(HashSet* set, int key) {
-    return hashset_insert(set, key);
+extern int HashSet_insert(HashSet* set, int key) {
+    return hashset_insert(set, key) ? 1 : 0;
 }
 
-extern bool HashSet_contains(HashSet* set, int key) {
-    return hashset_contains(set, key);
+extern int HashSet_contains(HashSet* set, int key) {
+    return hashset_contains(set, key) ? 1 : 0;
 }
 
-extern bool HashSet_remove(HashSet* set, int key) {
-    return hashset_remove(set, key);
+extern int HashSet_remove(HashSet* set, int key) {
+    return hashset_remove(set, key) ? 1 : 0;
 }
 
 extern int HashSet_len(HashSet* set) {
     return hashset_len(set);
 }
 
-extern bool HashSet_is_empty(HashSet* set) {
-    return hashset_is_empty(set);
+extern int HashSet_is_empty(HashSet* set) {
+    return hashset_is_empty(set) ? 1 : 0;
 }
 
 extern void HashSet_clear(HashSet* set) {

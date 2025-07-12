@@ -1,5 +1,5 @@
 //! Compilation Tests
-//! 
+//!
 //! These tests validate LLVM compilation in a safe, controlled manner
 //! without creating multiple contexts or hanging.
 
@@ -17,7 +17,7 @@ func main() -> i32 {
 
     let result = compile_to_llvm(source, "test_simple");
     assert!(result.is_ok(), "Simple function should compile to LLVM");
-    
+
     // Clean up the generated file
     let _ = std::fs::remove_file("test_simple.ll");
 }
@@ -35,7 +35,7 @@ func calculate() -> i32 {
 
     let result = compile_to_llvm(source, "test_arithmetic");
     assert!(result.is_ok(), "Arithmetic should compile to LLVM");
-    
+
     // Clean up
     let _ = std::fs::remove_file("test_arithmetic.ll");
 }
@@ -55,7 +55,7 @@ func abs_value(x: i32) -> i32 {
 
     let result = compile_to_llvm(source, "test_control_flow");
     assert!(result.is_ok(), "Control flow should compile to LLVM");
-    
+
     // Clean up
     let _ = std::fs::remove_file("test_control_flow.ll");
 }
@@ -73,7 +73,7 @@ func simd_add() -> f32x4 {
 
     let result = compile_to_llvm(source, "test_simd");
     assert!(result.is_ok(), "Basic SIMD should compile to LLVM");
-    
+
     // Clean up
     let _ = std::fs::remove_file("test_simd.ll");
 }
@@ -93,7 +93,7 @@ func sum_loop() -> i32 {
 
     let result = compile_to_llvm(source, "test_loop");
     assert!(result.is_ok(), "Loop should compile to LLVM");
-    
+
     // Clean up
     let _ = std::fs::remove_file("test_loop.ll");
 }
@@ -113,7 +113,7 @@ func main() -> i32 {
 
     let result = compile_to_llvm(source, "test_multiple");
     assert!(result.is_ok(), "Multiple functions should compile to LLVM");
-    
+
     // Clean up
     let _ = std::fs::remove_file("test_multiple.ll");
 }
@@ -128,8 +128,11 @@ func bad_function() -> i32 {
 "#;
 
     let result = compile_to_llvm(source, "test_error");
-    assert!(result.is_err(), "Should detect type errors during compilation");
-    
+    assert!(
+        result.is_err(),
+        "Should detect type errors during compilation"
+    );
+
     // Clean up (might not exist due to error)
     let _ = std::fs::remove_file("test_error.ll");
 }

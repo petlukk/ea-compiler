@@ -6,9 +6,9 @@
 //! compilations and stores compiled machine code for immediate reuse.
 
 use crate::error::Result;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -16,25 +16,29 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 mod instant_serde {
     use super::*;
     use serde::{Deserialize, Deserializer, Serializer};
-    
+
     pub fn serialize<S>(instant: &Instant, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         // Convert to SystemTime for serialization
-        let duration_since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+        let duration_since_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
         let instant_duration = instant.elapsed();
         let timestamp = duration_since_epoch.saturating_sub(instant_duration);
         serializer.serialize_u64(timestamp.as_secs())
     }
-    
+
     pub fn deserialize<'de, D>(deserializer: D) -> std::result::Result<Instant, D::Error>
     where
         D: Deserializer<'de>,
     {
         let timestamp_secs = u64::deserialize(deserializer)?;
         let timestamp_duration = Duration::from_secs(timestamp_secs);
-        let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
         let elapsed = current_time.saturating_sub(timestamp_duration);
         Ok(Instant::now() - elapsed)
     }
@@ -44,14 +48,14 @@ mod instant_serde {
 mod duration_serde {
     use super::*;
     use serde::{Deserialize, Deserializer, Serializer};
-    
+
     pub fn serialize<S>(duration: &Duration, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         serializer.serialize_u64(duration.as_nanos() as u64)
     }
-    
+
     pub fn deserialize<'de, D>(deserializer: D) -> std::result::Result<Duration, D::Error>
     where
         D: Deserializer<'de>,
@@ -154,25 +158,25 @@ impl JITCache {
     pub fn new() -> Self {
         Self::with_config(JITCacheConfig::default())
     }
-    
+
     /// Create a new JIT cache with custom configuration
     pub fn with_config(config: JITCacheConfig) -> Self {
         // Create cache directory if it doesn't exist
         if config.enable_persistence && !config.cache_directory.exists() {
             let _ = std::fs::create_dir_all(&config.cache_directory);
         }
-        
+
         let cache = Self {
             cache: Arc::new(RwLock::new(HashMap::new())),
             config,
             stats: Arc::new(RwLock::new(JITCacheStats::default())),
         };
-        
+
         // Load persisted cache if enabled
         if cache.config.enable_persistence {
             cache.load_from_disk();
         }
-        
+
         cache
     }
 
@@ -196,19 +200,19 @@ impl JITCache {
             let cache = self.cache.read().unwrap();
             cache.len()
         };
-        
+
         if cache_size <= self.config.max_cache_size {
             return; // No eviction needed
         }
-        
+
         // Now acquire write locks for eviction
         let mut cache = self.cache.write().unwrap();
         let mut stats = self.stats.write().unwrap();
-        
+
         // Remove expired entries
         let now = Instant::now();
         let max_age = Duration::from_secs(self.config.max_cache_age_seconds);
-        
+
         cache.retain(|_, cached_jit| {
             // Fix: Use checked_duration_since to avoid panic on clock skew
             let keep = match cached_jit.compiled_at.checked_duration_since(now) {
@@ -220,16 +224,20 @@ impl JITCache {
             }
             keep
         });
-        
+
         // If still over capacity, remove least recently used entries
         if cache.len() > self.config.max_cache_size {
             let entries: Vec<_> = cache.iter().map(|(k, v)| (*k, v.compiled_at)).collect();
             let mut sorted_entries = entries;
             sorted_entries.sort_by_key(|(_, compiled_at)| *compiled_at);
-            
+
             let evict_count = cache.len() - self.config.max_cache_size;
-            let to_remove: Vec<_> = sorted_entries.iter().take(evict_count).map(|(hash, _)| *hash).collect();
-            
+            let to_remove: Vec<_> = sorted_entries
+                .iter()
+                .take(evict_count)
+                .map(|(hash, _)| *hash)
+                .collect();
+
             for hash in to_remove {
                 cache.remove(&hash);
                 stats.evictions += 1;
@@ -240,14 +248,14 @@ impl JITCache {
     /// Look up cached JIT compilation result
     pub fn get(&self, source: &str) -> Option<CachedJIT> {
         let source_hash = self.hash_source(source);
-        
+
         if self.config.enable_statistics {
             let mut stats = self.stats.write().unwrap();
             stats.total_lookups += 1;
         }
-        
+
         let cache = self.cache.read().unwrap();
-        
+
         if let Some(cached_jit) = cache.get(&source_hash) {
             if self.is_cache_entry_valid(cached_jit) {
                 if self.config.enable_statistics {
@@ -256,29 +264,35 @@ impl JITCache {
                     stats.time_saved += cached_jit.compilation_time;
                     stats.memory_saved += cached_jit.memory_usage;
                 }
-                
+
                 // Update hit count
                 let mut cached_jit = cached_jit.clone();
                 cached_jit.hit_count += 1;
-                
+
                 return Some(cached_jit);
             }
         }
-        
+
         if self.config.enable_statistics {
             let mut stats = self.stats.write().unwrap();
             stats.cache_misses += 1;
         }
-        
+
         None
     }
 
     /// Store a JIT compilation result in the cache
-    pub fn put(&self, source: &str, machine_code: Vec<u8>, main_entry_point: usize, 
-               symbol_table: HashMap<String, usize>, memory_usage: u64, 
-               compilation_time: Duration) -> Result<()> {
+    pub fn put(
+        &self,
+        source: &str,
+        machine_code: Vec<u8>,
+        main_entry_point: usize,
+        symbol_table: HashMap<String, usize>,
+        memory_usage: u64,
+        compilation_time: Duration,
+    ) -> Result<()> {
         let source_hash = self.hash_source(source);
-        
+
         let cached_jit = CachedJIT {
             source_hash,
             machine_code,
@@ -289,20 +303,20 @@ impl JITCache {
             compilation_time,
             hit_count: 0,
         };
-        
+
         // Store the new entry
         let mut cache = self.cache.write().unwrap();
         cache.insert(source_hash, cached_jit);
         drop(cache); // Release the lock before eviction
-        
+
         // Evict old entries if needed (after adding the new entry)
         self.evict_old_entries();
-        
+
         // Save to disk if persistence is enabled
         if self.config.enable_persistence {
             self.save_to_disk();
         }
-        
+
         Ok(())
     }
 
@@ -310,7 +324,7 @@ impl JITCache {
     pub fn clear(&self) {
         let mut cache = self.cache.write().unwrap();
         cache.clear();
-        
+
         if self.config.enable_statistics {
             let mut stats = self.stats.write().unwrap();
             *stats = JITCacheStats::default();
@@ -375,9 +389,9 @@ impl JITCache {
 
         let cache_file = self.config.cache_directory.join("jit_cache.json");
         let cache = self.cache.read().unwrap();
-        
+
         let entries: Vec<(u64, &CachedJIT)> = cache.iter().map(|(k, v)| (*k, v)).collect();
-        
+
         match serde_json::to_string_pretty(&entries) {
             Ok(contents) => {
                 if let Err(e) = std::fs::write(&cache_file, contents) {
@@ -397,17 +411,17 @@ static CACHE_INIT: std::sync::Once = std::sync::Once::new();
 
 /// Initialize the global JIT cache
 pub fn initialize_jit_cache(config: JITCacheConfig) {
-    CACHE_INIT.call_once(|| {
-        unsafe {
-            GLOBAL_JIT_CACHE = Some(JITCache::with_config(config));
-        }
+    CACHE_INIT.call_once(|| unsafe {
+        GLOBAL_JIT_CACHE = Some(JITCache::with_config(config));
     });
 }
 
 /// Get reference to the global JIT cache
 pub fn get_jit_cache() -> &'static JITCache {
     unsafe {
-        GLOBAL_JIT_CACHE.as_ref().expect("JIT cache not initialized")
+        GLOBAL_JIT_CACHE
+            .as_ref()
+            .expect("JIT cache not initialized")
     }
 }
 
@@ -432,15 +446,24 @@ mod tests {
             cache_directory: std::path::PathBuf::from(".test_cache"),
         };
         let cache = JITCache::with_config(config);
-        
+
         // Test cache miss
         assert!(cache.get("test_code").is_none());
-        
+
         // Store entry
         let machine_code = vec![0x48, 0x89, 0xE5]; // Sample machine code
         let symbol_table = HashMap::new();
-        cache.put("test_code", machine_code.clone(), 0x1000, symbol_table.clone(), 1024, Duration::from_millis(100)).unwrap();
-        
+        cache
+            .put(
+                "test_code",
+                machine_code.clone(),
+                0x1000,
+                symbol_table.clone(),
+                1024,
+                Duration::from_millis(100),
+            )
+            .unwrap();
+
         // Test cache hit
         let cached = cache.get("test_code").unwrap();
         assert_eq!(cached.machine_code, machine_code);
@@ -459,7 +482,7 @@ mod tests {
             cache_directory: std::path::PathBuf::from(".test_cache"),
         };
         let cache = JITCache::with_config(config);
-        
+
         // Test miss
         cache.get("non_existent");
         let stats = cache.get_stats();
@@ -467,11 +490,20 @@ mod tests {
         assert_eq!(stats.cache_misses, 1);
         assert_eq!(stats.cache_hits, 0);
         assert_eq!(stats.hit_ratio(), 0.0);
-        
+
         // Store and hit
-        cache.put("test", vec![0x90], 0x1000, HashMap::new(), 512, Duration::from_millis(50)).unwrap();
+        cache
+            .put(
+                "test",
+                vec![0x90],
+                0x1000,
+                HashMap::new(),
+                512,
+                Duration::from_millis(50),
+            )
+            .unwrap();
         cache.get("test");
-        
+
         let stats = cache.get_stats();
         assert_eq!(stats.total_lookups, 2);
         assert_eq!(stats.cache_hits, 1);
@@ -489,17 +521,44 @@ mod tests {
             cache_directory: std::path::PathBuf::from(".test_cache"),
         };
         let cache = JITCache::with_config(config);
-        
+
         // Fill cache to capacity
-        cache.put("code1", vec![0x90], 0x1000, HashMap::new(), 512, Duration::from_millis(10)).unwrap();
-        cache.put("code2", vec![0x90], 0x2000, HashMap::new(), 512, Duration::from_millis(10)).unwrap();
+        cache
+            .put(
+                "code1",
+                vec![0x90],
+                0x1000,
+                HashMap::new(),
+                512,
+                Duration::from_millis(10),
+            )
+            .unwrap();
+        cache
+            .put(
+                "code2",
+                vec![0x90],
+                0x2000,
+                HashMap::new(),
+                512,
+                Duration::from_millis(10),
+            )
+            .unwrap();
         assert_eq!(cache.size(), 2);
-        
+
         // Add one more - should evict oldest
         thread::sleep(Duration::from_millis(1)); // Ensure different timestamps
-        cache.put("code3", vec![0x90], 0x3000, HashMap::new(), 512, Duration::from_millis(10)).unwrap();
+        cache
+            .put(
+                "code3",
+                vec![0x90],
+                0x3000,
+                HashMap::new(),
+                512,
+                Duration::from_millis(10),
+            )
+            .unwrap();
         assert_eq!(cache.size(), 2);
-        
+
         // Oldest should be evicted
         assert!(cache.get("code1").is_none());
         assert!(cache.get("code2").is_some());
@@ -516,10 +575,19 @@ mod tests {
             cache_directory: std::path::PathBuf::from(".test_cache"),
         };
         let cache = JITCache::with_config(config);
-        
+
         // Store entry
-        cache.put("test", vec![0x90], 0x1000, HashMap::new(), 512, Duration::from_millis(10)).unwrap();
-        
+        cache
+            .put(
+                "test",
+                vec![0x90],
+                0x1000,
+                HashMap::new(),
+                512,
+                Duration::from_millis(10),
+            )
+            .unwrap();
+
         // Should be expired immediately
         thread::sleep(Duration::from_millis(1));
         assert!(cache.get("test").is_none());
@@ -535,12 +603,12 @@ mod tests {
             cache_directory: std::path::PathBuf::from(".test_cache"),
         };
         let cache = JITCache::with_config(config);
-        
+
         // Same source should have same hash
         let hash1 = cache.hash_source("fn main() { print(42); }");
         let hash2 = cache.hash_source("fn main() { print(42); }");
         assert_eq!(hash1, hash2);
-        
+
         // Different source should have different hash
         let hash3 = cache.hash_source("fn main() { print(43); }");
         assert_ne!(hash1, hash3);

@@ -1,12 +1,12 @@
 //! Eä Advanced Features vs Full Pipeline Comparison
-//! 
+//!
 //! This benchmark showcases Eä's core advantages:
 //! - SIMD-optimized operations vs scalar equivalents
 //! - JIT compilation and caching vs traditional compilation
 //! - Compile-time optimization vs runtime optimization
 //! - Full pipeline performance with advanced features enabled
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::fs;
 use std::process::Command;
 use std::time::Duration;
@@ -348,7 +348,7 @@ fn is_compiler_available(compiler: &str) -> bool {
         "go" => "version",
         _ => "--version",
     };
-    
+
     Command::new(compiler)
         .arg(version_arg)
         .output()
@@ -360,9 +360,14 @@ fn is_compiler_available(compiler: &str) -> bool {
 fn bench_ea_advanced_frontend(c: &mut Criterion) {
     let mut group = c.benchmark_group("ea_advanced_frontend");
     group.measurement_time(Duration::from_secs(10));
-    
-    let tests = [SIMD_VECTOR_ADD, COMPLEX_ARITHMETIC, RECURSIVE_FIBONACCI, ARRAY_INTENSIVE];
-    
+
+    let tests = [
+        SIMD_VECTOR_ADD,
+        COMPLEX_ARITHMETIC,
+        RECURSIVE_FIBONACCI,
+        ARRAY_INTENSIVE,
+    ];
+
     for test in tests {
         group.bench_function(&format!("ea_tokenize_{}", test.name), |b| {
             b.iter(|| {
@@ -370,7 +375,7 @@ fn bench_ea_advanced_frontend(c: &mut Criterion) {
                 black_box(tokens.unwrap().len())
             })
         });
-        
+
         group.bench_function(&format!("ea_parse_{}", test.name), |b| {
             b.iter(|| {
                 let (ast, _) = compile_to_ast(black_box(test.ea_code)).unwrap();
@@ -378,7 +383,7 @@ fn bench_ea_advanced_frontend(c: &mut Criterion) {
             })
         });
     }
-    
+
     group.finish();
 }
 
@@ -388,87 +393,97 @@ fn bench_full_compilation_pipeline(c: &mut Criterion) {
     let mut group = c.benchmark_group("full_compilation_pipeline");
     group.measurement_time(Duration::from_secs(15));
     group.sample_size(20);
-    
-    let tests = [SIMD_VECTOR_ADD, COMPLEX_ARITHMETIC, RECURSIVE_FIBONACCI, ARRAY_INTENSIVE];
-    
+
+    let tests = [
+        SIMD_VECTOR_ADD,
+        COMPLEX_ARITHMETIC,
+        RECURSIVE_FIBONACCI,
+        ARRAY_INTENSIVE,
+    ];
+
     for test in tests {
         // Eä full pipeline with advanced features
         group.bench_function(&format!("ea_full_pipeline_{}", test.name), |b| {
             b.iter(|| {
-                let result = compile_to_llvm(black_box(test.ea_code), &format!("bench_{}", test.name));
+                let result =
+                    compile_to_llvm(black_box(test.ea_code), &format!("bench_{}", test.name));
                 // Clean up immediately
                 let _ = fs::remove_file(&format!("bench_{}.ll", test.name));
                 black_box(result.is_ok())
             })
         });
-        
+
         // Rust full pipeline
         if is_compiler_available("rustc") {
             group.bench_function(&format!("rust_full_pipeline_{}", test.name), |b| {
                 b.iter(|| {
                     let filename = format!("bench_{}.rs", test.name);
                     fs::write(&filename, test.rust_code).unwrap();
-                    
+
                     let result = Command::new("rustc")
                         .arg(&filename)
-                        .arg("-C").arg("opt-level=2") // Equivalent optimization level
-                        .arg("-o").arg(&format!("bench_{}_rust", test.name))
+                        .arg("-C")
+                        .arg("opt-level=2") // Equivalent optimization level
+                        .arg("-o")
+                        .arg(&format!("bench_{}_rust", test.name))
                         .output();
-                    
+
                     // Clean up
                     let _ = fs::remove_file(&filename);
                     let _ = fs::remove_file(&format!("bench_{}_rust", test.name));
-                    
+
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
-        
+
         // C++ full pipeline with optimization
         if is_compiler_available("g++") {
             group.bench_function(&format!("cpp_full_pipeline_{}", test.name), |b| {
                 b.iter(|| {
                     let filename = format!("bench_{}.cpp", test.name);
                     fs::write(&filename, test.cpp_code).unwrap();
-                    
+
                     let result = Command::new("g++")
                         .arg(&filename)
                         .arg("-O2") // Equivalent optimization level
-                        .arg("-o").arg(&format!("bench_{}_cpp", test.name))
+                        .arg("-o")
+                        .arg(&format!("bench_{}_cpp", test.name))
                         .output();
-                    
+
                     // Clean up
                     let _ = fs::remove_file(&filename);
                     let _ = fs::remove_file(&format!("bench_{}_cpp", test.name));
-                    
+
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
-        
+
         // Go full pipeline
         if is_compiler_available("go") {
             group.bench_function(&format!("go_full_pipeline_{}", test.name), |b| {
                 b.iter(|| {
                     let filename = format!("bench_{}.go", test.name);
                     fs::write(&filename, test.go_code).unwrap();
-                    
+
                     let result = Command::new("go")
                         .arg("build")
-                        .arg("-o").arg(&format!("bench_{}_go", test.name))
+                        .arg("-o")
+                        .arg(&format!("bench_{}_go", test.name))
                         .arg(&filename)
                         .output();
-                    
+
                     // Clean up
                     let _ = fs::remove_file(&filename);
                     let _ = fs::remove_file(&format!("bench_{}_go", test.name));
-                    
+
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
     }
-    
+
     group.finish();
 }
 
@@ -476,7 +491,7 @@ fn bench_full_compilation_pipeline(c: &mut Criterion) {
 fn bench_simd_advantages(c: &mut Criterion) {
     let mut group = c.benchmark_group("simd_advantages");
     group.measurement_time(Duration::from_secs(10));
-    
+
     // Test multiple SIMD vector sizes
     let simd_tests = [
         ("f32x4", "[1.0, 2.0, 3.0, 4.0]f32x4 .+ [5.0, 6.0, 7.0, 8.0]f32x4"),
@@ -484,7 +499,7 @@ fn bench_simd_advantages(c: &mut Criterion) {
         ("i32x4", "[1, 2, 3, 4]i32x4 .+ [5, 6, 7, 8]i32x4"),
         ("i64x2", "[100, 200]i64x2 .+ [300, 400]i64x2"),
     ];
-    
+
     for (simd_type, operation) in simd_tests {
         let ea_code = format!(
             r#"
@@ -495,7 +510,7 @@ func simd_test() -> {} {{
 "#,
             simd_type, operation
         );
-        
+
         group.bench_function(&format!("ea_simd_{}", simd_type), |b| {
             b.iter(|| {
                 let (ast, _) = compile_to_ast(black_box(&ea_code)).unwrap();
@@ -503,7 +518,7 @@ func simd_test() -> {} {{
             })
         });
     }
-    
+
     group.finish();
 }
 
@@ -511,16 +526,16 @@ func simd_test() -> {} {{
 fn bench_compilation_scaling(c: &mut Criterion) {
     let mut group = c.benchmark_group("compilation_scaling");
     group.measurement_time(Duration::from_secs(15));
-    
+
     let scales = [10, 50, 100, 200];
-    
+
     for scale in scales {
         // Generate complex Eä program
         let ea_program = generate_complex_ea_program(scale);
         let rust_program = generate_complex_rust_program(scale);
-        
+
         group.throughput(Throughput::Elements(scale as u64));
-        
+
         group.bench_with_input(
             BenchmarkId::new("ea_complex", scale),
             &ea_program,
@@ -531,7 +546,7 @@ fn bench_compilation_scaling(c: &mut Criterion) {
                 })
             },
         );
-        
+
         if is_compiler_available("rustc") {
             group.bench_with_input(
                 BenchmarkId::new("rust_complex", scale),
@@ -540,31 +555,31 @@ fn bench_compilation_scaling(c: &mut Criterion) {
                     b.iter(|| {
                         let filename = format!("complex_{}.rs", scale);
                         fs::write(&filename, prog).unwrap();
-                        
+
                         let result = Command::new("rustc")
                             .arg("--emit=metadata")
                             .arg("--crate-type=lib")
                             .arg(&filename)
                             .output();
-                        
+
                         // Clean up
                         let _ = fs::remove_file(&filename);
                         let _ = fs::remove_file(&format!("libcomplex_{}.rmeta", scale));
-                        
+
                         black_box(result.map(|o| o.status.success()).unwrap_or(false))
                     })
                 },
             );
         }
     }
-    
+
     group.finish();
 }
 
 /// Generate complex Eä program with SIMD operations
 fn generate_complex_ea_program(num_functions: usize) -> String {
     let mut program = String::new();
-    
+
     for i in 0..num_functions {
         if i % 3 == 0 {
             // SIMD function
@@ -577,7 +592,15 @@ func simd_function_{}() -> f32x4 {{
     return result .* result;
 }}
 "#,
-                i, i, i + 1, i + 2, i + 3, i + 4, i + 5, i + 6, i + 7
+                i,
+                i,
+                i + 1,
+                i + 2,
+                i + 3,
+                i + 4,
+                i + 5,
+                i + 6,
+                i + 7
             ));
         } else {
             // Regular function
@@ -592,11 +615,12 @@ func function_{}(x: i32) -> i32 {{
     }}
 }}
 "#,
-                i, i + 1
+                i,
+                i + 1
             ));
         }
     }
-    
+
     program.push_str(&format!(
         r#"
 func main() -> i32 {{
@@ -605,14 +629,14 @@ func main() -> i32 {{
 }}
 "#
     ));
-    
+
     program
 }
 
 /// Generate complex Rust program for comparison
 fn generate_complex_rust_program(num_functions: usize) -> String {
     let mut program = String::new();
-    
+
     for i in 0..num_functions {
         if i % 3 == 0 {
             // Array-based simulation of SIMD
@@ -628,7 +652,15 @@ fn simd_function_{}() -> [f32; 4] {{
     result
 }}
 "#,
-                i, i, i + 1, i + 2, i + 3, i + 4, i + 5, i + 6, i + 7
+                i,
+                i,
+                i + 1,
+                i + 2,
+                i + 3,
+                i + 4,
+                i + 5,
+                i + 6,
+                i + 7
             ));
         } else {
             // Regular function
@@ -643,11 +675,12 @@ fn function_{}(x: i32) -> i32 {{
     }}
 }}
 "#,
-                i, i + 1
+                i,
+                i + 1
             ));
         }
     }
-    
+
     program.push_str(&format!(
         r#"
 fn main() {{
@@ -655,7 +688,7 @@ fn main() {{
 }}
 "#
     ));
-    
+
     program
 }
 

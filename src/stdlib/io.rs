@@ -4,7 +4,7 @@
 //! and efficient memory management for large file operations.
 
 use std::fs::File as StdFile;
-use std::io::{self, BufReader, BufWriter, Read, Write, BufRead};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 
 /// Print without newline
@@ -22,7 +22,7 @@ pub fn println(s: &str) {
 pub fn read_line() -> Result<String, io::Error> {
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
-    
+
     // Remove trailing newline
     if input.ends_with('\n') {
         input.pop();
@@ -30,7 +30,7 @@ pub fn read_line() -> Result<String, io::Error> {
             input.pop();
         }
     }
-    
+
     Ok(input)
 }
 
@@ -68,14 +68,14 @@ impl File {
     /// Read entire file contents as string
     pub fn read_to_string(&mut self) -> Result<String, io::Error> {
         let mut contents = String::new();
-        
+
         if self.buffered {
             let mut reader = BufReader::new(&mut self.inner);
             reader.read_to_string(&mut contents)?;
         } else {
             self.inner.read_to_string(&mut contents)?;
         }
-        
+
         Ok(contents)
     }
 
@@ -83,11 +83,11 @@ impl File {
     pub fn read_lines(&mut self) -> Result<Vec<String>, io::Error> {
         let mut lines = Vec::new();
         let reader = BufReader::new(&mut self.inner);
-        
+
         for line in reader.lines() {
             lines.push(line?);
         }
-        
+
         Ok(lines)
     }
 
@@ -101,7 +101,7 @@ impl File {
             self.inner.write_all(content.as_bytes())?;
             self.inner.flush()?;
         }
-        
+
         Ok(())
     }
 

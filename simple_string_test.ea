@@ -1,4 +1,0 @@
-fn main() {
-    let s1 = String::new();
-    println("Test passed");
-}

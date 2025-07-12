@@ -1,17 +1,17 @@
 //! Core Functionality Tests
-//! 
+//!
 //! These tests validate the essential features of the Eä compiler
 //! without complex LLVM operations that might cause hangs.
 
-use ea_compiler::{tokenize, compile_to_ast};
+use ea_compiler::{compile_to_ast, tokenize};
 
 #[test]
 fn test_tokenization_works() {
     let source = "func main() -> i32 { return 42; }";
-    
+
     let result = tokenize(source);
     assert!(result.is_ok(), "Basic tokenization should work");
-    
+
     let tokens = result.unwrap();
     assert!(!tokens.is_empty(), "Should produce tokens");
 }
@@ -26,7 +26,7 @@ func add(a: i32, b: i32) -> i32 {
 
     let result = compile_to_ast(source);
     assert!(result.is_ok(), "Simple function should parse");
-    
+
     let (ast, _) = result.unwrap();
     assert_eq!(ast.len(), 1, "Should have one function");
 }
@@ -42,7 +42,7 @@ func main() -> () {
 
     let result = compile_to_ast(source);
     assert!(result.is_ok(), "Main function should parse");
-    
+
     let (ast, _) = result.unwrap();
     assert_eq!(ast.len(), 1, "Should have one function");
 }
@@ -155,7 +155,7 @@ func factorial(n: i32) -> i32 {
 #[test]
 fn test_error_detection_syntax() {
     let source = "func main() -> i32 { invalid syntax here }";
-    
+
     let result = compile_to_ast(source);
     assert!(result.is_err(), "Should detect syntax errors");
 }
@@ -168,7 +168,7 @@ func missing_return() -> i32 {
     // Missing return statement
 }
 "#;
-    
+
     let result = compile_to_ast(source);
     assert!(result.is_err(), "Should detect missing return");
 }
@@ -187,21 +187,27 @@ func main() -> i32 {
 
     let result = compile_to_ast(source);
     assert!(result.is_ok(), "Multiple functions should parse");
-    
+
     let (ast, context) = result.unwrap();
     assert_eq!(ast.len(), 2, "Should have two functions");
-    assert!(context.functions.contains_key("helper"), "Should have helper function");
-    assert!(context.functions.contains_key("main"), "Should have main function");
+    assert!(
+        context.functions.contains_key("helper"),
+        "Should have helper function"
+    );
+    assert!(
+        context.functions.contains_key("main"),
+        "Should have main function"
+    );
 }
 
 #[test]
 fn test_different_simd_types() {
     // Test only baseline SIMD types that are available on all target architectures
     let test_cases = vec![
-        ("f32x4", "[1.0, 2.0, 3.0, 4.0]f32x4"),  // SSE baseline
-        ("f32x2", "[1.0, 2.0]f32x2"),             // Basic SIMD
-        ("i32x4", "[1, 2, 3, 4]i32x4"),          // SSE2 baseline
-        ("i64x2", "[100, 200]i64x2"),             // SSE2 baseline
+        ("f32x4", "[1.0, 2.0, 3.0, 4.0]f32x4"), // SSE baseline
+        ("f32x2", "[1.0, 2.0]f32x2"),           // Basic SIMD
+        ("i32x4", "[1, 2, 3, 4]i32x4"),         // SSE2 baseline
+        ("i64x2", "[100, 200]i64x2"),           // SSE2 baseline
     ];
 
     for (type_name, vector_literal) in test_cases {

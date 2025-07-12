@@ -5,17 +5,20 @@ use std::path::Path;
 use std::process;
 use std::time::Instant;
 
-#[cfg(feature = "llvm")]
-use ea_compiler::{compile_to_llvm, diagnose_jit_execution};
+use ea_compiler::incremental_compilation::initialize_default_incremental_compiler;
 use ea_compiler::jit_cache::initialize_default_jit_cache;
 use ea_compiler::jit_cached::jit_execute_cached;
-use ea_compiler::llvm_optimization::{initialize_default_llvm_optimizer, apply_fast_optimization_preset, apply_production_optimization_preset, apply_emit_llvm_preset, initialize_llvm_optimizer};
-use ea_compiler::incremental_compilation::initialize_default_incremental_compiler;
+use ea_compiler::llvm_optimization::{
+    apply_emit_llvm_preset, apply_fast_optimization_preset, apply_production_optimization_preset,
+    initialize_default_llvm_optimizer, initialize_llvm_optimizer,
+};
 use ea_compiler::parallel_compilation::initialize_default_parallel_compiler;
+#[cfg(feature = "llvm")]
+use ea_compiler::{compile_to_llvm, diagnose_jit_execution};
 
-use ea_compiler::memory_profiler::{set_memory_limit, reset_profiler, generate_memory_report};
-use ea_compiler::resource_manager;
+use ea_compiler::memory_profiler::{generate_memory_report, reset_profiler, set_memory_limit};
 use ea_compiler::parser_optimization;
+use ea_compiler::resource_manager;
 
 /// Command line arguments
 struct Args {
@@ -349,8 +352,10 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
         }
         let (context, stats) = ea_compiler::compile_to_ast_streaming(&source)?;
         if verbose_mode {
-            eprintln!("📊 Streaming stats: {} statements, {} tokens processed", 
-                stats.total_statements_processed, stats.total_tokens_processed);
+            eprintln!(
+                "📊 Streaming stats: {} statements, {} tokens processed",
+                stats.total_statements_processed, stats.total_tokens_processed
+            );
         }
         (Vec::new(), context) // Return empty program vector for streaming
     } else {
@@ -519,7 +524,10 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
 
     // Generate parser optimization report if enabled
     if args.parser_optimization {
-        eprintln!("\n{}", parser_optimization::generate_parser_performance_report());
+        eprintln!(
+            "\n{}",
+            parser_optimization::generate_parser_performance_report()
+        );
     }
 
     Ok(())

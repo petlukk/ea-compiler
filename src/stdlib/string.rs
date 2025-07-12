@@ -99,23 +99,23 @@ impl String {
 pub trait StringOps {
     /// SIMD-accelerated substring search
     fn simd_find(&self, pattern: &str) -> Option<usize>;
-    
+
     /// SIMD-accelerated character counting
     fn simd_count_char(&self, ch: char) -> usize;
-    
+
     /// SIMD-accelerated case conversion
     fn simd_to_uppercase(&self) -> String;
     fn simd_to_lowercase(&self) -> String;
-    
+
     /// SIMD-accelerated string comparison
     fn simd_contains(&self, pattern: &str) -> bool;
-    
+
     /// SIMD-accelerated whitespace trimming
     fn simd_trim(&self) -> String;
-    
+
     /// SIMD-accelerated string splitting
     fn simd_split(&self, delimiter: char) -> Vec<String>;
-    
+
     /// SIMD-accelerated string replacement
     fn simd_replace(&self, from: &str, to: &str) -> String;
 }
@@ -128,7 +128,7 @@ impl StringOps for String {
 
         let text = self.as_str().as_bytes();
         let pattern_bytes = pattern.as_bytes();
-        
+
         if pattern_bytes.len() > text.len() {
             return None;
         }
@@ -144,7 +144,7 @@ impl StringOps for String {
 
     fn simd_count_char(&self, ch: char) -> usize {
         let text = self.as_str().as_bytes();
-        
+
         if self.simd_enabled && text.len() >= 16 && ch.is_ascii() {
             self.simd_count_byte(text, ch as u8)
         } else {
@@ -175,7 +175,7 @@ impl StringOps for String {
 
     fn simd_trim(&self) -> String {
         let text = self.as_str();
-        
+
         if self.simd_enabled && text.len() >= 16 {
             self.simd_trim_whitespace()
         } else {
@@ -187,10 +187,7 @@ impl StringOps for String {
         if self.simd_enabled && self.len() >= 16 && delimiter.is_ascii() {
             self.simd_split_char(delimiter)
         } else {
-            self.inner
-                .split(delimiter)
-                .map(String::from_str)
-                .collect()
+            self.inner.split(delimiter).map(String::from_str).collect()
         }
     }
 
@@ -210,15 +207,15 @@ impl String {
         let text_len = text.len();
         let pattern_len = pattern.len();
         let first_byte = pattern[0];
-        
+
         // Process 16 bytes at a time (SSE)
         let chunk_size = 16;
         let chunks = text_len / chunk_size;
-        
+
         for chunk in 0..chunks {
             let start = chunk * chunk_size;
             let end = (start + chunk_size).min(text_len);
-            
+
             // Look for first byte of pattern in this chunk
             for i in start..end {
                 if text[i] == first_byte {
@@ -231,7 +228,7 @@ impl String {
                 }
             }
         }
-        
+
         // Process remaining bytes
         for i in (chunks * chunk_size)..text_len {
             if text[i] == first_byte {
@@ -242,7 +239,7 @@ impl String {
                 }
             }
         }
-        
+
         None
     }
 
@@ -251,26 +248,26 @@ impl String {
         let mut count = 0;
         let chunk_size = 16;
         let chunks = text.len() / chunk_size;
-        
+
         // Process 16 bytes at a time
         for chunk in 0..chunks {
             let start = chunk * chunk_size;
             let end = start + chunk_size;
-            
+
             for &byte in &text[start..end] {
                 if byte == target {
                     count += 1;
                 }
             }
         }
-        
+
         // Process remaining bytes
         for &byte in &text[chunks * chunk_size..] {
             if byte == target {
                 count += 1;
             }
         }
-        
+
         count
     }
 
@@ -280,12 +277,12 @@ impl String {
         let text = self.as_str().as_bytes();
         let chunk_size = 16;
         let chunks = text.len() / chunk_size;
-        
+
         // Process chunks
         for chunk in 0..chunks {
             let start = chunk * chunk_size;
             let end = start + chunk_size;
-            
+
             for &byte in &text[start..end] {
                 if byte.is_ascii_alphabetic() {
                     let converted = if to_upper {
@@ -299,7 +296,7 @@ impl String {
                 }
             }
         }
-        
+
         // Process remaining bytes
         for &byte in &text[chunks * chunk_size..] {
             if byte.is_ascii_alphabetic() {
@@ -313,7 +310,7 @@ impl String {
                 result.push(byte as char);
             }
         }
-        
+
         result
     }
 
@@ -321,19 +318,19 @@ impl String {
     fn simd_trim_whitespace(&self) -> String {
         let text = self.as_str();
         let bytes = text.as_bytes();
-        
+
         // Find first non-whitespace
         let mut start = 0;
         while start < bytes.len() && bytes[start].is_ascii_whitespace() {
             start += 1;
         }
-        
+
         // Find last non-whitespace
         let mut end = bytes.len();
         while end > start && bytes[end - 1].is_ascii_whitespace() {
             end -= 1;
         }
-        
+
         if start == 0 && end == bytes.len() {
             self.clone()
         } else {
@@ -347,16 +344,16 @@ impl String {
         let text = self.as_str();
         let delimiter_byte = delimiter as u8;
         let bytes = text.as_bytes();
-        
+
         let mut start = 0;
         let chunk_size = 16;
         let chunks = bytes.len() / chunk_size;
-        
+
         // Process chunks
         for chunk in 0..chunks {
             let chunk_start = chunk * chunk_size;
             let chunk_end = chunk_start + chunk_size;
-            
+
             for i in chunk_start..chunk_end {
                 if bytes[i] == delimiter_byte {
                     if i > start {
@@ -367,7 +364,7 @@ impl String {
                 }
             }
         }
-        
+
         // Process remaining bytes
         for i in (chunks * chunk_size)..bytes.len() {
             if bytes[i] == delimiter_byte {
@@ -378,12 +375,12 @@ impl String {
                 start = i + 1;
             }
         }
-        
+
         // Add final substring
         if start < text.len() {
             result.push(String::from_str(&text[start..]));
         }
-        
+
         result
     }
 
@@ -392,14 +389,14 @@ impl String {
         let mut result = std::string::String::new();
         let text = self.as_str();
         let mut last_end = 0;
-        
+
         while let Some(pos) = text[last_end..].find(from) {
             let actual_pos = last_end + pos;
             result.push_str(&text[last_end..actual_pos]);
             result.push_str(to);
             last_end = actual_pos + from.len();
         }
-        
+
         result.push_str(&text[last_end..]);
         String::from_str(&result)
     }
@@ -446,42 +443,42 @@ pub mod benchmarks {
     /// Benchmark string search performance
     pub fn benchmark_search(text: &str, pattern: &str, iterations: usize) -> (u64, u64) {
         let ea_string = String::from_str(text);
-        
+
         // Benchmark SIMD search
         let start = Instant::now();
         for _ in 0..iterations {
             let _ = ea_string.simd_find(pattern);
         }
         let simd_time = start.elapsed().as_nanos() as u64;
-        
+
         // Benchmark standard search
         let start = Instant::now();
         for _ in 0..iterations {
             let _ = text.find(pattern);
         }
         let standard_time = start.elapsed().as_nanos() as u64;
-        
+
         (simd_time, standard_time)
     }
 
     /// Benchmark character counting performance
     pub fn benchmark_char_count(text: &str, ch: char, iterations: usize) -> (u64, u64) {
         let ea_string = String::from_str(text);
-        
+
         // Benchmark SIMD count
         let start = Instant::now();
         for _ in 0..iterations {
             let _ = ea_string.simd_count_char(ch);
         }
         let simd_time = start.elapsed().as_nanos() as u64;
-        
+
         // Benchmark standard count
         let start = Instant::now();
         for _ in 0..iterations {
             let _ = text.chars().filter(|&c| c == ch).count();
         }
         let standard_time = start.elapsed().as_nanos() as u64;
-        
+
         (simd_time, standard_time)
     }
 }
@@ -521,7 +518,7 @@ mod tests {
     #[test]
     fn test_simd_find() {
         let text = String::from("The quick brown fox jumps over the lazy dog");
-        
+
         assert_eq!(text.simd_find("quick"), Some(4));
         assert_eq!(text.simd_find("fox"), Some(16));
         assert_eq!(text.simd_find("dog"), Some(40));
@@ -532,7 +529,7 @@ mod tests {
     #[test]
     fn test_simd_count_char() {
         let text = String::from("hello world");
-        
+
         assert_eq!(text.simd_count_char('l'), 3);
         assert_eq!(text.simd_count_char('o'), 2);
         assert_eq!(text.simd_count_char('x'), 0);
@@ -542,10 +539,10 @@ mod tests {
     #[test]
     fn test_simd_case_conversion() {
         let text = String::from("Hello World!");
-        
+
         let upper = text.simd_to_uppercase();
         assert_eq!(upper.as_str(), "HELLO WORLD!");
-        
+
         let lower = text.simd_to_lowercase();
         assert_eq!(lower.as_str(), "hello world!");
     }
@@ -553,7 +550,7 @@ mod tests {
     #[test]
     fn test_simd_contains() {
         let text = String::from("The quick brown fox");
-        
+
         assert!(text.simd_contains("quick"));
         assert!(text.simd_contains("brown"));
         assert!(!text.simd_contains("slow"));
@@ -575,7 +572,7 @@ mod tests {
     fn test_simd_split() {
         let text = String::from("apple,banana,cherry,date");
         let parts = text.simd_split(',');
-        
+
         assert_eq!(parts.len(), 4);
         assert_eq!(parts[0].as_str(), "apple");
         assert_eq!(parts[1].as_str(), "banana");
@@ -614,12 +611,19 @@ mod tests {
     fn test_performance_benchmarks() {
         let large_text = "a".repeat(10000);
         let (simd_time, std_time) = benchmarks::benchmark_search(&large_text, "a", 100);
-        
+
         // SIMD should be at least as fast (times in nanoseconds)
         // In real SIMD implementation, simd_time should be significantly less
-        println!("SIMD search: {}ns, Standard search: {}ns", simd_time, std_time);
-        
-        let (simd_count_time, std_count_time) = benchmarks::benchmark_char_count(&large_text, 'a', 100);
-        println!("SIMD count: {}ns, Standard count: {}ns", simd_count_time, std_count_time);
+        println!(
+            "SIMD search: {}ns, Standard search: {}ns",
+            simd_time, std_time
+        );
+
+        let (simd_count_time, std_count_time) =
+            benchmarks::benchmark_char_count(&large_text, 'a', 100);
+        println!(
+            "SIMD count: {}ns, Standard count: {}ns",
+            simd_count_time, std_count_time
+        );
     }
 }

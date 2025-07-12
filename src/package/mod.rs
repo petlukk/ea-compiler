@@ -1,5 +1,5 @@
 //! Performance-aware package management system for Eä
-//! 
+//!
 //! This module provides dependency resolution, package building, and integrated
 //! benchmarking with a focus on performance characteristics and optimization targets.
 
@@ -425,22 +425,20 @@ impl PackageManager {
         // 3. SIMD instruction requirements
         // 4. Memory usage constraints
         // 5. Compilation time budgets
-        
+
         let mut resolution = DependencyResolution::new();
-        
+
         for (dep_name, dep_spec) in &package.dependencies {
             let compatible_versions = self.find_compatible_versions(dep_name, dep_spec)?;
-            let optimal_version = self.select_optimal_version(
-                &compatible_versions,
-                performance_requirements,
-            )?;
-            
+            let optimal_version =
+                self.select_optimal_version(&compatible_versions, performance_requirements)?;
+
             resolution.add_dependency(dep_name.clone(), optimal_version);
         }
-        
+
         // Validate global performance constraints
         self.validate_performance_constraints(&resolution, performance_requirements)?;
-        
+
         Ok(resolution)
     }
 
@@ -451,27 +449,29 @@ impl PackageManager {
         build_config: &BuildConfig,
     ) -> Result<BuildResult, PackageError> {
         let start_time = std::time::Instant::now();
-        
+
         // Check build cache
         if let Some(cached) = self.check_build_cache(package, build_config)? {
             return Ok(BuildResult::from_cache(cached));
         }
-        
+
         // Perform incremental build with performance tracking
         let mut build_metrics = BuildMetrics::new();
-        
+
         for target in &build_config.targets {
             let _target_result = self.build_target(target, &mut build_metrics)?;
             // Update performance database
-            self.performance_db.record_build_metrics(&target.name, &build_metrics);
+            self.performance_db
+                .record_build_metrics(&target.name, &build_metrics);
         }
-        
+
         let total_time = start_time.elapsed();
         build_metrics.total_build_time = total_time;
-        
+
         // Update cache
-        self.cache.store_build_result(package, build_config, &build_metrics)?;
-        
+        self.cache
+            .store_build_result(package, build_config, &build_metrics)?;
+
         Ok(BuildResult::new(build_metrics))
     }
 
@@ -482,21 +482,21 @@ impl PackageManager {
         benchmark_config: &BenchmarkConfig,
     ) -> Result<BenchmarkResults, PackageError> {
         let mut results = BenchmarkResults::new();
-        
+
         for benchmark in &package.build.bench_dirs {
             let bench_result = self.execute_benchmark(benchmark, benchmark_config)?;
-            
+
             // Check for performance regressions
             if let Some(regression) = self.detect_regression(&bench_result)? {
                 results.add_regression(regression);
             }
-            
+
             results.add_result(bench_result);
         }
-        
+
         // Update performance database
         self.performance_db.store_benchmark_results(&results);
-        
+
         Ok(results)
     }
 
@@ -511,7 +511,9 @@ impl PackageManager {
                 .iter()
                 .filter(|version| self.is_version_compatible(&version.version, &dep_spec.version))
                 .filter(|version| self.meets_feature_requirements(version, &dep_spec.features))
-                .filter(|version| self.meets_performance_requirements(version, &dep_spec.performance_requirements))
+                .filter(|version| {
+                    self.meets_performance_requirements(version, &dep_spec.performance_requirements)
+                })
                 .cloned()
                 .collect();
 
@@ -532,7 +534,7 @@ impl PackageManager {
             let spec_version = &spec[1..];
             let spec_parts: Vec<&str> = spec_version.split('.').collect();
             let version_parts: Vec<&str> = version.split('.').collect();
-            
+
             if spec_parts.len() >= 1 && version_parts.len() >= 1 {
                 return spec_parts[0] == version_parts[0] && version >= spec_version;
             }
@@ -541,22 +543,26 @@ impl PackageManager {
             let spec_version = &spec[1..];
             let spec_parts: Vec<&str> = spec_version.split('.').collect();
             let version_parts: Vec<&str> = version.split('.').collect();
-            
+
             if spec_parts.len() >= 2 && version_parts.len() >= 2 {
-                return spec_parts[0] == version_parts[0] && 
-                       spec_parts[1] == version_parts[1] && 
-                       version >= spec_version;
+                return spec_parts[0] == version_parts[0]
+                    && spec_parts[1] == version_parts[1]
+                    && version >= spec_version;
             }
         } else {
             // Exact match
             return version == spec;
         }
-        
+
         false
     }
 
     /// Check if package version supports required features
-    fn meets_feature_requirements(&self, version: &PackageVersion, required_features: &[String]) -> bool {
+    fn meets_feature_requirements(
+        &self,
+        version: &PackageVersion,
+        required_features: &[String],
+    ) -> bool {
         // Check if the package supports all required features
         for feature in required_features {
             // Check against compatibility info instead
@@ -569,27 +575,27 @@ impl PackageManager {
 
     /// Check if package version meets performance requirements
     fn meets_performance_requirements(
-        &self, 
-        version: &PackageVersion, 
-        requirements: &Option<PerformanceRequirements>
+        &self,
+        version: &PackageVersion,
+        requirements: &Option<PerformanceRequirements>,
     ) -> bool {
         if let Some(req) = requirements {
             let metrics = &version.performance_metrics;
-            
+
             // Check compilation time requirements
             if let Some(max_compile_time) = req.max_compile_time_ms {
                 if metrics.compilation_time.mean_ms > max_compile_time as f64 {
                     return false;
                 }
             }
-            
+
             // Check memory usage requirements
             if let Some(max_memory) = req.max_memory_mb {
                 if metrics.memory_usage.peak_mb > max_memory as f64 {
                     return false;
                 }
             }
-            
+
             // Check runtime performance requirements
             if let Some(min_performance) = req.min_runtime_performance {
                 // Use SIMD performance gain as a proxy for runtime performance
@@ -597,15 +603,19 @@ impl PackageManager {
                     return false;
                 }
             }
-            
+
             // Check SIMD instruction requirements
             for required_simd in &req.required_simd {
-                if !metrics.simd_utilization.instruction_types.contains_key(required_simd) {
+                if !metrics
+                    .simd_utilization
+                    .instruction_types
+                    .contains_key(required_simd)
+                {
                     return false;
                 }
             }
         }
-        
+
         true
     }
 
@@ -617,109 +627,107 @@ impl PackageManager {
     ) -> Result<Vec<PackageVersion>, PackageError> {
         // In a real implementation, this would fetch from remote registries
         // For now, create some mock compatible versions
-        Ok(vec![
-            PackageVersion {
-                version: "1.0.0".to_string(),
-                package: Package {
-                    metadata: PackageMetadata {
-                        name: dep_name.to_string(),
-                        version: "1.0.0".to_string(),
-                        description: Some(format!("Mock package {}", dep_name)),
-                        authors: vec!["mock-author".to_string()],
-                        license: Some("MIT".to_string()),
-                        repository: None,
-                        keywords: vec![],
-                        categories: vec![],
-                    },
-                    dependencies: HashMap::new(),
-                    build: BuildConfig {
-                        src_dirs: vec!["src".to_string()],
-                        test_dirs: vec!["tests".to_string()],
-                        bench_dirs: vec!["benches".to_string()],
-                        example_dirs: vec!["examples".to_string()],
-                        targets: vec![],
-                        hooks: BuildHooks {
-                            pre_build: vec![],
-                            post_build: vec![],
-                            pre_test: vec![],
-                            post_test: vec![],
-                        },
-                    },
-                    performance: PerformanceConfig {
-                        targets: HashMap::new(),
-                        benchmarks: BenchmarkConfig {
-                            timeout_seconds: 60,
-                            iterations: 100,
-                            warmup_iterations: 10,
-                            significance_level: 0.05,
-                            retention_days: 30,
-                        },
-                        regression_thresholds: RegressionThresholds {
-                            max_regression_percent: 5.0,
-                            min_improvement_percent: 1.0,
-                            compilation_time_threshold_ms: 100,
-                            memory_threshold_mb: 10,
-                        },
-                        monitoring: MonitoringConfig {
-                            enabled: false,
-                            frequency: MonitoringFrequency::OnBuild,
-                            alerts: AlertConfig {
-                                degradation_threshold_percent: 10.0,
-                                channels: vec![],
-                                severity_levels: HashMap::new(),
-                            },
-                            metrics: vec![],
-                        },
-                    },
-                    optimization: OptimizationConfig {
-                        target_cpu: "native".to_string(),
-                        simd_width: SIMDWidth::Auto,
-                        memory_layout: MemoryLayout::Default,
-                        compile_time_execution: CompileTimeExecution::Conservative,
-                        lto: false,
-                        pgo: None,
+        Ok(vec![PackageVersion {
+            version: "1.0.0".to_string(),
+            package: Package {
+                metadata: PackageMetadata {
+                    name: dep_name.to_string(),
+                    version: "1.0.0".to_string(),
+                    description: Some(format!("Mock package {}", dep_name)),
+                    authors: vec!["mock-author".to_string()],
+                    license: Some("MIT".to_string()),
+                    repository: None,
+                    keywords: vec![],
+                    categories: vec![],
+                },
+                dependencies: HashMap::new(),
+                build: BuildConfig {
+                    src_dirs: vec!["src".to_string()],
+                    test_dirs: vec!["tests".to_string()],
+                    bench_dirs: vec!["benches".to_string()],
+                    example_dirs: vec!["examples".to_string()],
+                    targets: vec![],
+                    hooks: BuildHooks {
+                        pre_build: vec![],
+                        post_build: vec![],
+                        pre_test: vec![],
+                        post_test: vec![],
                     },
                 },
-                performance_metrics: PerformanceMetrics {
-                    compilation_time: TimeStatistics {
-                        mean_ms: 500.0,
-                        median_ms: 480.0,
-                        std_dev_ms: 50.0,
-                        min_ms: 400.0,
-                        max_ms: 650.0,
-                        samples: 100,
+                performance: PerformanceConfig {
+                    targets: HashMap::new(),
+                    benchmarks: BenchmarkConfig {
+                        timeout_seconds: 60,
+                        iterations: 100,
+                        warmup_iterations: 10,
+                        significance_level: 0.05,
+                        retention_days: 30,
                     },
-                    memory_usage: MemoryStatistics {
-                        peak_mb: 25.0,
-                        average_mb: 20.0,
-                        allocation_count: 1000,
-                        deallocation_count: 950,
+                    regression_thresholds: RegressionThresholds {
+                        max_regression_percent: 5.0,
+                        min_improvement_percent: 1.0,
+                        compilation_time_threshold_ms: 100,
+                        memory_threshold_mb: 10,
                     },
-                    runtime_benchmarks: HashMap::new(),
-                    simd_utilization: SIMDMetrics {
-                        instruction_types: {
-                            let mut map = HashMap::new();
-                            map.insert("AVX2".to_string(), 150);
-                            map.insert("SSE4.2".to_string(), 300);
-                            map
+                    monitoring: MonitoringConfig {
+                        enabled: false,
+                        frequency: MonitoringFrequency::OnBuild,
+                        alerts: AlertConfig {
+                            degradation_threshold_percent: 10.0,
+                            channels: vec![],
+                            severity_levels: HashMap::new(),
                         },
-                        vector_width_utilization: {
-                            let mut map = HashMap::new();
-                            map.insert(128, 0.8);
-                            map.insert(256, 0.6);
-                            map
-                        },
-                        performance_gain: 3.2,
+                        metrics: vec![],
                     },
                 },
-                compatibility: CompatibilityInfo {
-                    min_compiler_version: "0.1.0".to_string(),
-                    supported_targets: vec!["x86_64".to_string(), "arm64".to_string()],
-                    required_features: vec!["simd".to_string()],
-                    conflicts: vec![],
+                optimization: OptimizationConfig {
+                    target_cpu: "native".to_string(),
+                    simd_width: SIMDWidth::Auto,
+                    memory_layout: MemoryLayout::Default,
+                    compile_time_execution: CompileTimeExecution::Conservative,
+                    lto: false,
+                    pgo: None,
                 },
-            }
-        ])
+            },
+            performance_metrics: PerformanceMetrics {
+                compilation_time: TimeStatistics {
+                    mean_ms: 500.0,
+                    median_ms: 480.0,
+                    std_dev_ms: 50.0,
+                    min_ms: 400.0,
+                    max_ms: 650.0,
+                    samples: 100,
+                },
+                memory_usage: MemoryStatistics {
+                    peak_mb: 25.0,
+                    average_mb: 20.0,
+                    allocation_count: 1000,
+                    deallocation_count: 950,
+                },
+                runtime_benchmarks: HashMap::new(),
+                simd_utilization: SIMDMetrics {
+                    instruction_types: {
+                        let mut map = HashMap::new();
+                        map.insert("AVX2".to_string(), 150);
+                        map.insert("SSE4.2".to_string(), 300);
+                        map
+                    },
+                    vector_width_utilization: {
+                        let mut map = HashMap::new();
+                        map.insert(128, 0.8);
+                        map.insert(256, 0.6);
+                        map
+                    },
+                    performance_gain: 3.2,
+                },
+            },
+            compatibility: CompatibilityInfo {
+                min_compiler_version: "0.1.0".to_string(),
+                supported_targets: vec!["x86_64".to_string(), "arm64".to_string()],
+                required_features: vec!["simd".to_string()],
+                conflicts: vec![],
+            },
+        }])
     }
 
     fn select_optimal_version(
@@ -751,7 +759,11 @@ impl PackageManager {
     }
 
     /// Calculate a performance score for a package version
-    fn calculate_version_score(&self, version: &PackageVersion, requirements: &PerformanceRequirements) -> f64 {
+    fn calculate_version_score(
+        &self,
+        version: &PackageVersion,
+        requirements: &PerformanceRequirements,
+    ) -> f64 {
         let mut score = 100.0; // Base score
         let metrics = &version.performance_metrics;
 
@@ -814,11 +826,12 @@ impl PackageManager {
         // Aggregate performance metrics from all dependencies
         for (_dep_name, version) in &resolution.dependencies {
             let metrics = &version.performance_metrics;
-            
+
             total_compile_time += metrics.compilation_time.mean_ms;
             total_memory_usage += metrics.memory_usage.peak_mb;
-            min_runtime_performance = min_runtime_performance.min(metrics.simd_utilization.performance_gain);
-            
+            min_runtime_performance =
+                min_runtime_performance.min(metrics.simd_utilization.performance_gain);
+
             // Collect available SIMD instructions
             for instruction in metrics.simd_utilization.instruction_types.keys() {
                 available_simd_instructions.insert(instruction.clone());
@@ -861,7 +874,7 @@ impl PackageManager {
     ) -> Result<Option<CachedArtifact>, PackageError> {
         // Generate cache key based on package content and build configuration
         let cache_key = self.generate_cache_key(package, build_config);
-        
+
         // Check if cached artifact exists
         if let Some(cached) = self.cache.artifacts.get(&cache_key) {
             // Verify cache validity
@@ -870,7 +883,7 @@ impl PackageManager {
                 return Ok(Some(cached.clone()));
             }
         }
-        
+
         // Check if any dependencies have changed
         let dependency_fingerprint = self.calculate_dependency_fingerprint(package)?;
         if let Some(fingerprint) = self.cache.fingerprints.get(&package.metadata.name) {
@@ -879,7 +892,7 @@ impl PackageManager {
                 return Ok(None);
             }
         }
-        
+
         Ok(None)
     }
 
@@ -889,53 +902,55 @@ impl PackageManager {
         metrics: &mut BuildMetrics,
     ) -> Result<TargetBuildResult, PackageError> {
         let start_time = std::time::Instant::now();
-        
+
         // Initialize result
         let mut result = TargetBuildResult::new();
         result.target_name = target.name.clone();
-        
+
         // Pre-build hooks
         self.run_pre_build_hooks(target)?;
-        
+
         // Compile source files with performance monitoring
         let compilation_start = std::time::Instant::now();
         let mut compiled_objects = Vec::new();
-        
+
         for source_file in &target.source_files {
             let object_result = self.compile_source_file(source_file, target)?;
             compiled_objects.push(object_result);
-            
+
             // Update performance metrics
             metrics.compilation_time += compilation_start.elapsed();
             metrics.peak_memory_mb = metrics.peak_memory_mb.max(self.get_current_memory_usage());
         }
-        
+
         // Link phase for executables and libraries
         let linking_start = std::time::Instant::now();
         let final_artifact = match target.target_type {
             TargetType::Executable => self.link_executable(&compiled_objects, target)?,
-            TargetType::Library | TargetType::StaticLibrary => self.create_library(&compiled_objects, target)?,
+            TargetType::Library | TargetType::StaticLibrary => {
+                self.create_library(&compiled_objects, target)?
+            }
             TargetType::DynamicLibrary => self.create_dynamic_library(&compiled_objects, target)?,
             TargetType::Benchmark => self.create_benchmark(&compiled_objects, target)?,
             TargetType::Test => self.create_test_executable(&compiled_objects, target)?,
         };
-        
+
         metrics.linking_time = linking_start.elapsed();
-        
+
         // Post-build hooks
         self.run_post_build_hooks(target, &final_artifact)?;
-        
+
         // Update result
         result.artifacts.push(final_artifact);
         result.metrics.total_build_time = start_time.elapsed();
         result.metrics.compilation_time = metrics.compilation_time;
         result.metrics.linking_time = metrics.linking_time;
         result.metrics.peak_memory_mb = metrics.peak_memory_mb;
-        
+
         // Calculate cache hit rate
         let cache_hits = self.count_cache_hits(&compiled_objects);
         result.metrics.cache_hit_rate = cache_hits as f64 / compiled_objects.len() as f64;
-        
+
         Ok(result)
     }
 
@@ -960,17 +975,19 @@ impl PackageManager {
         result: &BenchmarkResult,
     ) -> Result<Option<PerformanceRegression>, PackageError> {
         // Get historical benchmark data for comparison
-        if let Some(historical_results) = self.performance_db.benchmarks.get(&result.benchmark_name) {
+        if let Some(historical_results) = self.performance_db.benchmarks.get(&result.benchmark_name)
+        {
             if let Some(baseline) = historical_results.last() {
                 // Compare current result with recent baseline
                 let current_time = result.execution_time.as_millis() as f64;
                 let baseline_time = baseline.execution_time.as_millis() as f64;
-                
+
                 // Calculate performance change percentage
                 let change_percent = ((current_time - baseline_time) / baseline_time) * 100.0;
-                
+
                 // Check if this constitutes a regression
-                if change_percent > 5.0 { // 5% threshold for regression
+                if change_percent > 5.0 {
+                    // 5% threshold for regression
                     return Ok(Some(PerformanceRegression {
                         package_name: result.benchmark_name.clone(),
                         from_version: "baseline".to_string(),
@@ -980,15 +997,18 @@ impl PackageManager {
                         detected_at: std::time::SystemTime::now(),
                     }));
                 }
-                
+
                 // Check memory usage regression
                 let memory_change = if baseline.memory_usage > 0 {
-                    ((result.memory_usage as f64 - baseline.memory_usage as f64) / baseline.memory_usage as f64) * 100.0
+                    ((result.memory_usage as f64 - baseline.memory_usage as f64)
+                        / baseline.memory_usage as f64)
+                        * 100.0
                 } else {
                     0.0
                 };
-                
-                if memory_change > 10.0 { // 10% threshold for memory regression
+
+                if memory_change > 10.0 {
+                    // 10% threshold for memory regression
                     return Ok(Some(PerformanceRegression {
                         package_name: result.benchmark_name.clone(),
                         from_version: "baseline".to_string(),
@@ -998,23 +1018,26 @@ impl PackageManager {
                         detected_at: std::time::SystemTime::now(),
                     }));
                 }
-                
+
                 // Check cache efficiency regression
                 let cache_hit_ratio = if result.cache_hits + result.cache_misses > 0 {
                     result.cache_hits as f64 / (result.cache_hits + result.cache_misses) as f64
                 } else {
                     1.0
                 };
-                
+
                 let baseline_cache_ratio = if baseline.cache_hits + baseline.cache_misses > 0 {
-                    baseline.cache_hits as f64 / (baseline.cache_hits + baseline.cache_misses) as f64
+                    baseline.cache_hits as f64
+                        / (baseline.cache_hits + baseline.cache_misses) as f64
                 } else {
                     1.0
                 };
-                
-                let cache_efficiency_change = ((cache_hit_ratio - baseline_cache_ratio) / baseline_cache_ratio) * 100.0;
-                
-                if cache_efficiency_change < -15.0 { // 15% drop in cache efficiency
+
+                let cache_efficiency_change =
+                    ((cache_hit_ratio - baseline_cache_ratio) / baseline_cache_ratio) * 100.0;
+
+                if cache_efficiency_change < -15.0 {
+                    // 15% drop in cache efficiency
                     return Ok(Some(PerformanceRegression {
                         package_name: result.benchmark_name.clone(),
                         from_version: "baseline".to_string(),
@@ -1026,7 +1049,7 @@ impl PackageManager {
                 }
             }
         }
-        
+
         Ok(None)
     }
 
@@ -1034,16 +1057,21 @@ impl PackageManager {
     fn generate_cache_key(&self, package: &Package, build_config: &BuildConfig) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
         package.metadata.name.hash(&mut hasher);
         package.metadata.version.hash(&mut hasher);
         format!("{:?}", build_config).hash(&mut hasher);
-        
+
         format!("cache_{:x}", hasher.finish())
     }
-    
-    fn is_cache_valid(&self, cached: &CachedArtifact, package: &Package, _build_config: &BuildConfig) -> Result<bool, PackageError> {
+
+    fn is_cache_valid(
+        &self,
+        cached: &CachedArtifact,
+        package: &Package,
+        _build_config: &BuildConfig,
+    ) -> Result<bool, PackageError> {
         // Check if source files have been modified since cache creation
         for source_file in &cached.dependencies {
             if let Ok(metadata) = std::fs::metadata(source_file) {
@@ -1054,93 +1082,133 @@ impl PackageManager {
                 }
             }
         }
-        
+
         // Check if package version matches
         let current_fingerprint = self.calculate_source_fingerprint(package)?;
         if current_fingerprint != cached.fingerprint {
             return Ok(false);
         }
-        
+
         Ok(true)
     }
-    
+
     fn calculate_dependency_fingerprint(&self, package: &Package) -> Result<String, PackageError> {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
         for (dep_name, dep_spec) in &package.dependencies {
             dep_name.hash(&mut hasher);
             dep_spec.version.hash(&mut hasher);
         }
-        
+
         Ok(format!("{:x}", hasher.finish()))
     }
-    
+
     fn calculate_source_fingerprint(&self, package: &Package) -> Result<String, PackageError> {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
         package.metadata.version.hash(&mut hasher);
         // In a real implementation, this would hash all source file contents
         Ok(format!("{:x}", hasher.finish()))
     }
-    
+
     fn run_pre_build_hooks(&self, _target: &BuildTarget) -> Result<(), PackageError> {
         // Execute pre-build hooks
         Ok(())
     }
-    
-    fn run_post_build_hooks(&self, _target: &BuildTarget, _artifact: &PathBuf) -> Result<(), PackageError> {
+
+    fn run_post_build_hooks(
+        &self,
+        _target: &BuildTarget,
+        _artifact: &PathBuf,
+    ) -> Result<(), PackageError> {
         // Execute post-build hooks
         Ok(())
     }
-    
-    fn compile_source_file(&self, source_file: &str, target: &BuildTarget) -> Result<PathBuf, PackageError> {
+
+    fn compile_source_file(
+        &self,
+        source_file: &str,
+        target: &BuildTarget,
+    ) -> Result<PathBuf, PackageError> {
         // Simulate compilation process
         let object_file = source_file.replace(".ea", ".o");
-        
+
         // In a real implementation, this would:
         // 1. Parse and compile the source file
         // 2. Apply optimization level from target.optimization_level
         // 3. Use target features from target.target_features
         // 4. Generate optimized machine code
-        
+
         Ok(PathBuf::from(object_file))
     }
-    
+
     fn get_current_memory_usage(&self) -> f64 {
         // In a real implementation, this would measure actual memory usage
         // For now, simulate some memory usage based on compilation complexity
         25.0 // 25 MB simulated peak memory usage
     }
-    
-    fn link_executable(&self, objects: &[PathBuf], _target: &BuildTarget) -> Result<PathBuf, PackageError> {
+
+    fn link_executable(
+        &self,
+        objects: &[PathBuf],
+        _target: &BuildTarget,
+    ) -> Result<PathBuf, PackageError> {
         // Simulate linking process for executables
         Ok(PathBuf::from(format!("target/release/{}", objects.len())))
     }
-    
-    fn create_library(&self, objects: &[PathBuf], _target: &BuildTarget) -> Result<PathBuf, PackageError> {
+
+    fn create_library(
+        &self,
+        objects: &[PathBuf],
+        _target: &BuildTarget,
+    ) -> Result<PathBuf, PackageError> {
         // Simulate library creation
-        Ok(PathBuf::from(format!("target/release/lib{}.a", objects.len())))
+        Ok(PathBuf::from(format!(
+            "target/release/lib{}.a",
+            objects.len()
+        )))
     }
-    
-    fn create_dynamic_library(&self, objects: &[PathBuf], _target: &BuildTarget) -> Result<PathBuf, PackageError> {
+
+    fn create_dynamic_library(
+        &self,
+        objects: &[PathBuf],
+        _target: &BuildTarget,
+    ) -> Result<PathBuf, PackageError> {
         // Simulate dynamic library creation
-        Ok(PathBuf::from(format!("target/release/lib{}.so", objects.len())))
+        Ok(PathBuf::from(format!(
+            "target/release/lib{}.so",
+            objects.len()
+        )))
     }
-    
-    fn create_benchmark(&self, objects: &[PathBuf], _target: &BuildTarget) -> Result<PathBuf, PackageError> {
+
+    fn create_benchmark(
+        &self,
+        objects: &[PathBuf],
+        _target: &BuildTarget,
+    ) -> Result<PathBuf, PackageError> {
         // Simulate benchmark executable creation
-        Ok(PathBuf::from(format!("target/release/bench_{}", objects.len())))
+        Ok(PathBuf::from(format!(
+            "target/release/bench_{}",
+            objects.len()
+        )))
     }
-    
-    fn create_test_executable(&self, objects: &[PathBuf], _target: &BuildTarget) -> Result<PathBuf, PackageError> {
+
+    fn create_test_executable(
+        &self,
+        objects: &[PathBuf],
+        _target: &BuildTarget,
+    ) -> Result<PathBuf, PackageError> {
         // Simulate test executable creation
-        Ok(PathBuf::from(format!("target/release/test_{}", objects.len())))
+        Ok(PathBuf::from(format!(
+            "target/release/test_{}",
+            objects.len()
+        )))
     }
-    
+
     fn count_cache_hits(&self, objects: &[PathBuf]) -> usize {
         // In a real implementation, this would count actual cache hits
         // Simulate some cache hits based on object count

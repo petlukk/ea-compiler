@@ -12,8 +12,8 @@ use crate::{
         SIMDOperator, SIMDVectorType, Stmt, TypeAnnotation, UnaryOp,
     }, // Added Pattern and MatchArm imports
     error::{CompileError, Result},
-    lexer::{Token, TokenKind, Position}, // Re-added Position for error recovery
-    memory_profiler::{record_memory_usage, CompilationPhase, check_memory_limit},
+    lexer::{Position, Token, TokenKind}, // Re-added Position for error recovery
+    memory_profiler::{check_memory_limit, record_memory_usage, CompilationPhase},
     parser_optimization::{enter_parse_recursion, exit_parse_recursion, time_parsing_operation},
 };
 
@@ -27,9 +27,9 @@ pub struct ErrorSuggestion {
 /// Recovery action to take after a parse error
 #[derive(Debug, Clone)]
 pub enum RecoveryAction {
-    Skip,           // Skip current token and continue
-    Synchronize,    // Skip to next statement boundary
-    Insert(TokenKind), // Insert missing token
+    Skip,               // Skip current token and continue
+    Synchronize,        // Skip to next statement boundary
+    Insert(TokenKind),  // Insert missing token
     Replace(TokenKind), // Replace current token
 }
 
@@ -46,15 +46,15 @@ pub struct ErrorContext {
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
-    errors: Vec<CompileError>,     // Collect multiple errors
-    in_recovery: bool,             // Flag to prevent cascading errors
+    errors: Vec<CompileError>, // Collect multiple errors
+    in_recovery: bool,         // Flag to prevent cascading errors
 }
 
 impl Parser {
     /// Creates a new parser for the given tokens.
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { 
-            tokens, 
+        Self {
+            tokens,
             current: 0,
             errors: Vec::new(),
             in_recovery: false,
@@ -69,7 +69,7 @@ impl Parser {
     /// Parses the tokens and returns the resulting program as a list of statements.
     pub fn parse_program(&mut self) -> Result<Vec<Stmt>> {
         eprintln!("🏗️ Starting parse_program...");
-        
+
         // Record initial memory usage for parsing
         let initial_memory = std::mem::size_of::<Vec<Stmt>>();
         record_memory_usage(CompilationPhase::Parsing, initial_memory, "Started parsing");
@@ -82,13 +82,19 @@ impl Parser {
         eprintln!("🔄 Starting parsing loop...");
         while !self.is_at_end() {
             loop_count += 1;
-            eprintln!("🔄 Parse loop iteration {}, current position: {:?}", loop_count, self.current);
-            
+            eprintln!(
+                "🔄 Parse loop iteration {}, current position: {:?}",
+                loop_count, self.current
+            );
+
             // Check if we're stuck at the same position
             if self.current == last_position {
                 position_stuck_count += 1;
                 if position_stuck_count > 5 {
-                    eprintln!("❌ Parser stuck at position {} for {} iterations, forcing advance", self.current, position_stuck_count);
+                    eprintln!(
+                        "❌ Parser stuck at position {} for {} iterations, forcing advance",
+                        self.current, position_stuck_count
+                    );
                     // Force advance to prevent infinite loop
                     self.advance();
                     self.synchronize();
@@ -98,7 +104,7 @@ impl Parser {
                 position_stuck_count = 0;
             }
             last_position = self.current;
-            
+
             if loop_count > 1000 {
                 eprintln!("❌ Parse loop detected (over 1000 iterations), breaking");
                 return Err(CompileError::ParseError {
@@ -106,25 +112,28 @@ impl Parser {
                     position: self.tokens[self.current].position.clone(),
                 });
             }
-            
+
             eprintln!("🔄 Calling declaration()...");
             match self.declaration() {
                 Ok(stmt) => {
                     eprintln!("✅ Declaration successful, got statement");
                     statements.push(stmt);
                     self.in_recovery = false; // Reset recovery flag on success
-                    
+
                     // Check memory usage periodically
                     if statements.len() % 100 == 0 {
                         let current_memory = statements.len() * std::mem::size_of::<Stmt>();
-                        record_memory_usage(CompilationPhase::Parsing, current_memory, 
-                            &format!("Parsing progress: {} statements", statements.len()));
-                        
+                        record_memory_usage(
+                            CompilationPhase::Parsing,
+                            current_memory,
+                            &format!("Parsing progress: {} statements", statements.len()),
+                        );
+
                         // Check memory limits
                         if let Err(e) = check_memory_limit() {
-                            return Err(CompileError::MemoryExhausted { 
-                                phase: "parsing".to_string(), 
-                                details: e.to_string() 
+                            return Err(CompileError::MemoryExhausted {
+                                phase: "parsing".to_string(),
+                                details: e.to_string(),
                             });
                         }
                     }
@@ -142,8 +151,11 @@ impl Parser {
 
         // Record final memory usage
         let final_memory = statements.len() * std::mem::size_of::<Stmt>();
-        record_memory_usage(CompilationPhase::Parsing, final_memory, 
-            &format!("Completed parsing: {} statements", statements.len()));
+        record_memory_usage(
+            CompilationPhase::Parsing,
+            final_memory,
+            &format!("Completed parsing: {} statements", statements.len()),
+        );
 
         // Return the first error if any occurred, but we've collected all errors
         if !self.errors.is_empty() {
@@ -963,15 +975,15 @@ impl Parser {
         if !self.is_at_end() && matches!(self.peek().kind, TokenKind::Print) {
             let token = self.advance().clone();
             let func_name = "print";
-            
+
             // This should be a function call
             if self.check(&TokenKind::LeftParen) {
                 let var_expr = Expr::Variable(func_name.to_string());
                 self.advance(); // consume '('
                 return self.finish_call(var_expr);
             }
-            
-            // If not a function call, treat as variable reference  
+
+            // If not a function call, treat as variable reference
             return Ok(Expr::Variable(func_name.to_string()));
         }
 
@@ -979,37 +991,45 @@ impl Parser {
         if !self.is_at_end() && matches!(self.peek().kind, TokenKind::Println) {
             let token = self.advance().clone();
             let func_name = "println";
-            
+
             // This should be a function call
             if self.check(&TokenKind::LeftParen) {
                 let var_expr = Expr::Variable(func_name.to_string());
                 self.advance(); // consume '('
                 return self.finish_call(var_expr);
             }
-            
-            // If not a function call, treat as variable reference  
+
+            // If not a function call, treat as variable reference
             return Ok(Expr::Variable(func_name.to_string()));
         }
 
         // Handle standard library types (Vec, HashMap, etc.)
-        if !self.is_at_end() && matches!(self.peek().kind, 
-            TokenKind::VecType | TokenKind::HashMapType | TokenKind::HashSetType | 
-            TokenKind::StringType | TokenKind::FileType) {
+        if !self.is_at_end()
+            && matches!(
+                self.peek().kind,
+                TokenKind::VecType
+                    | TokenKind::HashMapType
+                    | TokenKind::HashSetType
+                    | TokenKind::StringType
+                    | TokenKind::FileType
+            )
+        {
             let token = self.advance().clone();
             let type_name = match &token.kind {
                 TokenKind::VecType => "Vec",
-                TokenKind::HashMapType => "HashMap", 
+                TokenKind::HashMapType => "HashMap",
                 TokenKind::HashSetType => "HashSet",
                 TokenKind::StringType => "String",
                 TokenKind::FileType => "File",
                 _ => unreachable!(),
             };
-            
+
             // Check if this is a module-scoped call (Vec::new())
             if !self.is_at_end() && matches!(self.peek().kind, TokenKind::DoubleColon) {
                 self.advance(); // consume '::'
-                let second_name = self.consume_identifier("Expected identifier after '::'".to_string())?;
-                
+                let second_name =
+                    self.consume_identifier("Expected identifier after '::'".to_string())?;
+
                 // Check if this is a function call (Vec::new())
                 if self.check(&TokenKind::LeftParen) {
                     // This is a module-scoped function call like Vec::new()
@@ -1019,7 +1039,7 @@ impl Parser {
                     return self.finish_call(field_access);
                 }
             }
-            
+
             // If not a static method call, treat as type literal
             return Ok(Expr::Variable(type_name.to_string()));
         }
@@ -1031,8 +1051,9 @@ impl Parser {
                 // Check if this is a module-scoped call or enum literal (Name::Something)
                 if !self.is_at_end() && matches!(self.peek().kind, TokenKind::DoubleColon) {
                     self.advance(); // consume '::'
-                    let second_name = self.consume_identifier("Expected identifier after '::'".to_string())?;
-                    
+                    let second_name =
+                        self.consume_identifier("Expected identifier after '::'".to_string())?;
+
                     // Check if this is a function call (Vec::new() or HashMap::new())
                     if self.check(&TokenKind::LeftParen) {
                         // This is a module-scoped function call like Vec::new()
@@ -1502,7 +1523,7 @@ impl Parser {
         if self.is_at_end() {
             return Ok(None);
         }
-        
+
         match self.declaration() {
             Ok(stmt) => {
                 self.in_recovery = false;
@@ -2420,7 +2441,7 @@ impl Parser {
     /// Recover from a parse error with suggestions
     fn recover_from_parse_error(&mut self, error: CompileError) -> RecoveryAction {
         let suggestions = self.suggest_fixes(&error);
-        
+
         // Log suggestions (in a real implementation, these would be shown to the user)
         for suggestion in suggestions {
             eprintln!("💡 Suggestion: {}", suggestion.message);
@@ -2453,7 +2474,10 @@ impl Parser {
         let mut suggestions = Vec::new();
 
         match error {
-            CompileError::ParseError { message, position: _ } => {
+            CompileError::ParseError {
+                message,
+                position: _,
+            } => {
                 // Common typo corrections
                 if message.contains("Expected identifier") {
                     suggestions.push(ErrorSuggestion {
@@ -2472,21 +2496,27 @@ impl Parser {
                 if message.contains("Expected ')'") {
                     suggestions.push(ErrorSuggestion {
                         message: "Unmatched parenthesis".to_string(),
-                        suggested_fix: Some("Add closing ')' or check for extra opening '('".to_string()),
+                        suggested_fix: Some(
+                            "Add closing ')' or check for extra opening '('".to_string(),
+                        ),
                     });
                 }
 
                 if message.contains("Expected '}'") {
                     suggestions.push(ErrorSuggestion {
                         message: "Unmatched brace".to_string(),
-                        suggested_fix: Some("Add closing '}' or check for extra opening '{'".to_string()),
+                        suggested_fix: Some(
+                            "Add closing '}' or check for extra opening '{'".to_string(),
+                        ),
                     });
                 }
 
                 if message.contains("Expected type") {
                     suggestions.push(ErrorSuggestion {
                         message: "Type annotation required".to_string(),
-                        suggested_fix: Some("Add type annotation like ': i32' or ': f32'".to_string()),
+                        suggested_fix: Some(
+                            "Add type annotation like ': i32' or ': f32'".to_string(),
+                        ),
                     });
                 }
 
@@ -2502,7 +2532,9 @@ impl Parser {
                 if message.contains("function") || message.contains("func") {
                     suggestions.push(ErrorSuggestion {
                         message: "Function declaration syntax".to_string(),
-                        suggested_fix: Some("Use 'func name(param: type) -> return_type { ... }'".to_string()),
+                        suggested_fix: Some(
+                            "Use 'func name(param: type) -> return_type { ... }'".to_string(),
+                        ),
                     });
                 }
 
@@ -2510,7 +2542,9 @@ impl Parser {
                 if message.contains("variable") || message.contains("let") {
                     suggestions.push(ErrorSuggestion {
                         message: "Variable declaration syntax".to_string(),
-                        suggested_fix: Some("Use 'let name: type = value;' or 'let name = value;'".to_string()),
+                        suggested_fix: Some(
+                            "Use 'let name: type = value;' or 'let name = value;'".to_string(),
+                        ),
                     });
                 }
 
@@ -2518,7 +2552,10 @@ impl Parser {
                 if message.contains("if") || message.contains("while") || message.contains("for") {
                     suggestions.push(ErrorSuggestion {
                         message: "Control flow syntax".to_string(),
-                        suggested_fix: Some("Check condition syntax and braces: 'if (condition) { ... }'".to_string()),
+                        suggested_fix: Some(
+                            "Check condition syntax and braces: 'if (condition) { ... }'"
+                                .to_string(),
+                        ),
                     });
                 }
             }
@@ -2537,23 +2574,30 @@ impl Parser {
     }
 
     /// Attempt to recover and continue parsing after an error
-    fn attempt_recovery(&mut self, expected: &[TokenKind], _context: &str) -> Option<RecoveryAction> {
+    fn attempt_recovery(
+        &mut self,
+        expected: &[TokenKind],
+        _context: &str,
+    ) -> Option<RecoveryAction> {
         // Try common recovery strategies
-        
+
         // 1. Check for missing semicolon
-        if self.check(&TokenKind::Identifier("".to_string())) || 
-           self.check(&TokenKind::Let) || 
-           self.check(&TokenKind::Func) {
+        if self.check(&TokenKind::Identifier("".to_string()))
+            || self.check(&TokenKind::Let)
+            || self.check(&TokenKind::Func)
+        {
             return Some(RecoveryAction::Insert(TokenKind::Semicolon));
         }
 
         // 2. Check for missing closing punctuation
         for expected_token in expected {
-            if matches!(expected_token, 
-                TokenKind::RightParen | 
-                TokenKind::RightBrace | 
-                TokenKind::RightBracket | 
-                TokenKind::Semicolon) {
+            if matches!(
+                expected_token,
+                TokenKind::RightParen
+                    | TokenKind::RightBrace
+                    | TokenKind::RightBracket
+                    | TokenKind::Semicolon
+            ) {
                 return Some(RecoveryAction::Insert(expected_token.clone()));
             }
         }
@@ -2574,20 +2618,47 @@ impl Parser {
     /// Suggest corrections for mistyped keywords
     fn suggest_keyword_corrections(&self, identifier: &str) -> Vec<String> {
         let keywords = vec![
-            "func", "let", "if", "else", "while", "for", "return", "struct", "enum",
-            "match", "true", "false", "vectorize", "unroll", "align", "reduce",
-            "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64",
-            "bool", "string", "f32x4", "i32x4", "f64x2"
+            "func",
+            "let",
+            "if",
+            "else",
+            "while",
+            "for",
+            "return",
+            "struct",
+            "enum",
+            "match",
+            "true",
+            "false",
+            "vectorize",
+            "unroll",
+            "align",
+            "reduce",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+            "u8",
+            "u16",
+            "u32",
+            "u64",
+            "f32",
+            "f64",
+            "bool",
+            "string",
+            "f32x4",
+            "i32x4",
+            "f64x2",
         ];
-        
+
         let mut suggestions = Vec::new();
-        
+
         for keyword in keywords {
             if Self::levenshtein_distance(identifier, keyword) <= 2 {
                 suggestions.push(keyword.to_string());
             }
         }
-        
+
         suggestions
     }
 
@@ -2609,10 +2680,10 @@ impl Parser {
                 let cost = if c1 == c2 { 0 } else { 1 };
                 matrix[i + 1][j + 1] = std::cmp::min(
                     std::cmp::min(
-                        matrix[i][j + 1] + 1,     // deletion
-                        matrix[i + 1][j] + 1,     // insertion
+                        matrix[i][j + 1] + 1, // deletion
+                        matrix[i + 1][j] + 1, // insertion
                     ),
-                    matrix[i][j] + cost,          // substitution
+                    matrix[i][j] + cost, // substitution
                 );
             }
         }
@@ -2621,7 +2692,12 @@ impl Parser {
     }
 
     /// Enhanced consume method with better error reporting
-    fn consume_with_recovery(&mut self, expected: TokenKind, message: String, context: &str) -> Result<&Token> {
+    fn consume_with_recovery(
+        &mut self,
+        expected: TokenKind,
+        message: String,
+        context: &str,
+    ) -> Result<&Token> {
         if self.check(&expected) {
             return Ok(self.advance());
         }
@@ -2657,7 +2733,10 @@ impl Parser {
             }
         }
 
-        Err(CompileError::parse_error(message, self.peek().position.clone()))
+        Err(CompileError::parse_error(
+            message,
+            self.peek().position.clone(),
+        ))
     }
 }
 

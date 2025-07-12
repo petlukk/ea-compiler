@@ -1,6 +1,0 @@
-fn main() {
-    let mut vec = Vec::new();
-    vec.push(42);
-    let len = vec.len();
-    let val = vec.get(0);
-}

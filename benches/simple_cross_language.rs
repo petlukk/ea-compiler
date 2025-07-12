@@ -1,5 +1,5 @@
 //! Eä Advanced Features Cross-Language Comparison
-//! 
+//!
 //! This benchmark compares Eä's advanced features against full compilation pipelines:
 //! - Eä's SIMD operations vs scalar equivalents in other languages
 //! - Eä's JIT compilation and caching vs traditional compilation
@@ -11,7 +11,7 @@ use std::fs;
 use std::process::Command;
 use std::time::Duration;
 
-use ea_compiler::{compile_to_ast};
+use ea_compiler::compile_to_ast;
 
 /// SIMD Vector Operations - Eä's Core Advantage
 const SIMD_VECTOR_EA: &str = r#"
@@ -124,7 +124,7 @@ fn is_compiler_available(compiler: &str) -> bool {
         "go" => "version",
         _ => "--version",
     };
-    
+
     Command::new(compiler)
         .arg(version_arg)
         .output()
@@ -136,7 +136,7 @@ fn is_compiler_available(compiler: &str) -> bool {
 fn bench_advanced_features_vs_traditional(c: &mut Criterion) {
     let mut group = c.benchmark_group("advanced_features_vs_traditional");
     group.measurement_time(Duration::from_secs(15));
-    
+
     // Eä SIMD operations - Native vectorization
     group.bench_function("ea_simd_operations", |b| {
         b.iter(|| {
@@ -144,7 +144,7 @@ fn bench_advanced_features_vs_traditional(c: &mut Criterion) {
             black_box(ast.len())
         })
     });
-    
+
     // Eä recursive optimization
     group.bench_function("ea_recursive_optimization", |b| {
         b.iter(|| {
@@ -152,90 +152,90 @@ fn bench_advanced_features_vs_traditional(c: &mut Criterion) {
             black_box(ast.len())
         })
     });
-    
+
     // Rust scalar operations (no native SIMD)
     if is_compiler_available("rustc") {
         group.bench_function("rust_scalar_equivalent", |b| {
             b.iter(|| {
                 let filename = "temp_simd_rust.rs";
                 fs::write(filename, SIMD_VECTOR_RUST).unwrap();
-                
+
                 let result = Command::new("rustc")
                     .arg("--emit=metadata")
                     .arg("--crate-type=lib")
                     .arg(filename)
                     .output();
-                
+
                 // Clean up
                 let _ = fs::remove_file(filename);
                 let _ = fs::remove_file("libtemp_simd_rust.rmeta");
-                
+
                 black_box(result.map(|o| o.status.success()).unwrap_or(false))
             })
         });
-        
+
         group.bench_function("rust_recursive_traditional", |b| {
             b.iter(|| {
                 let filename = "temp_fibonacci.rs";
                 fs::write(filename, FIBONACCI_RUST).unwrap();
-                
+
                 let result = Command::new("rustc")
                     .arg("--emit=metadata")
                     .arg("--crate-type=lib")
                     .arg(filename)
                     .output();
-                
+
                 // Clean up
                 let _ = fs::remove_file(filename);
                 let _ = fs::remove_file("libtemp_fibonacci.rmeta");
-                
+
                 black_box(result.map(|o| o.status.success()).unwrap_or(false))
             })
         });
     }
-    
+
     // C++ parsing
     if is_compiler_available("clang++") {
         group.bench_function("cpp_syntax_check", |b| {
             b.iter(|| {
                 let filename = "temp_fibonacci.cpp";
                 fs::write(filename, FIBONACCI_CPP).unwrap();
-                
+
                 let result = Command::new("clang++")
                     .arg("-fsyntax-only")
                     .arg(filename)
                     .output();
-                
+
                 // Clean up
                 let _ = fs::remove_file(filename);
-                
+
                 black_box(result.map(|o| o.status.success()).unwrap_or(false))
             })
         });
     }
-    
+
     // Go parsing
     if is_compiler_available("go") {
         group.bench_function("go_syntax_check", |b| {
             b.iter(|| {
                 let filename = "temp_fibonacci.go";
                 fs::write(filename, FIBONACCI_GO).unwrap();
-                
+
                 let result = Command::new("go")
                     .arg("run")
                     .arg("-o")
                     .arg("/dev/null")
                     .arg(filename)
                     .output();
-                
+
                 // Clean up
                 let _ = fs::remove_file(filename);
-                
+
                 black_box(result.map(|o| o.status.success()).unwrap_or(false))
             })
         });
     }
-    
+
     group.finish();
 }
 
@@ -244,70 +244,70 @@ fn bench_basic_compilation(c: &mut Criterion) {
     let mut group = c.benchmark_group("basic_compilation_speed");
     group.measurement_time(Duration::from_secs(20));
     group.sample_size(10);
-    
+
     // Eä compilation (just AST + type checking, no LLVM)
     group.bench_function("ea_frontend_compile", |b| {
-        b.iter(|| {
-            match compile_to_ast(black_box(FIBONACCI_EA)) {
-                Ok((ast, _)) => black_box(ast.len()),
-                Err(_) => black_box(0),
-            }
+        b.iter(|| match compile_to_ast(black_box(FIBONACCI_EA)) {
+            Ok((ast, _)) => black_box(ast.len()),
+            Err(_) => black_box(0),
         })
     });
-    
+
     // Rust compilation to bytecode
     if is_compiler_available("rustc") {
         group.bench_function("rust_bytecode_compile", |b| {
             b.iter(|| {
                 let filename = "compile_fibonacci.rs";
                 fs::write(filename, FIBONACCI_RUST).unwrap();
-                
+
                 let result = Command::new("rustc")
                     .arg("--emit=metadata")
                     .arg("--crate-type=lib")
-                    .arg("-C").arg("opt-level=0")
+                    .arg("-C")
+                    .arg("opt-level=0")
                     .arg(filename)
                     .output();
-                
+
                 // Clean up
                 let _ = fs::remove_file(filename);
                 let _ = fs::remove_file("libcompile_fibonacci.rmeta");
-                
+
                 black_box(result.map(|o| o.status.success()).unwrap_or(false))
             })
         });
     }
-    
+
     // C++ compilation to object file
     if is_compiler_available("clang++") {
         group.bench_function("cpp_object_compile", |b| {
             b.iter(|| {
                 let filename = "compile_fibonacci.cpp";
                 fs::write(filename, FIBONACCI_CPP).unwrap();
-                
+
                 let result = Command::new("clang++")
                     .arg("-c")
                     .arg("-O0")
                     .arg(filename)
-                    .arg("-o").arg("compile_fibonacci.o")
+                    .arg("-o")
+                    .arg("compile_fibonacci.o")
                     .output();
-                
+
                 // Clean up
                 let _ = fs::remove_file(filename);
                 let _ = fs::remove_file("compile_fibonacci.o");
-                
+
                 black_box(result.map(|o| o.status.success()).unwrap_or(false))
             })
         });
     }
-    
+
     // Go compilation to object file
     if is_compiler_available("go") {
         group.bench_function("go_object_compile", |b| {
             b.iter(|| {
                 let filename = "compile_fibonacci.go";
                 fs::write(filename, FIBONACCI_GO).unwrap();
-                
+
                 let result = Command::new("go")
                     .arg("tool")
                     .arg("compile")
@@ -315,16 +315,16 @@ fn bench_basic_compilation(c: &mut Criterion) {
                     .arg("-l")
                     .arg(filename)
                     .output();
-                
+
                 // Clean up
                 let _ = fs::remove_file(filename);
                 let _ = fs::remove_file("compile_fibonacci.o");
-                
+
                 black_box(result.map(|o| o.status.success()).unwrap_or(false))
             })
         });
     }
-    
+
     group.finish();
 }
 
@@ -333,73 +333,77 @@ fn bench_executable_compilation(c: &mut Criterion) {
     let mut group = c.benchmark_group("executable_compilation_speed");
     group.measurement_time(Duration::from_secs(30));
     group.sample_size(5);
-    
+
     // Rust full compilation
     if is_compiler_available("rustc") {
         group.bench_function("rust_executable", |b| {
             b.iter(|| {
                 let filename = "exec_fibonacci.rs";
                 fs::write(filename, FIBONACCI_RUST).unwrap();
-                
+
                 let result = Command::new("rustc")
                     .arg(filename)
-                    .arg("-C").arg("opt-level=1")
-                    .arg("-o").arg("exec_fibonacci_rust")
+                    .arg("-C")
+                    .arg("opt-level=1")
+                    .arg("-o")
+                    .arg("exec_fibonacci_rust")
                     .output();
-                
+
                 // Clean up
                 let _ = fs::remove_file(filename);
                 let _ = fs::remove_file("exec_fibonacci_rust");
-                
+
                 black_box(result.map(|o| o.status.success()).unwrap_or(false))
             })
         });
     }
-    
+
     // C++ full compilation
     if is_compiler_available("g++") {
         group.bench_function("cpp_executable", |b| {
             b.iter(|| {
                 let filename = "exec_fibonacci.cpp";
                 fs::write(filename, FIBONACCI_CPP).unwrap();
-                
+
                 let result = Command::new("g++")
                     .arg(filename)
                     .arg("-O1")
-                    .arg("-o").arg("exec_fibonacci_cpp")
+                    .arg("-o")
+                    .arg("exec_fibonacci_cpp")
                     .output();
-                
+
                 // Clean up
                 let _ = fs::remove_file(filename);
                 let _ = fs::remove_file("exec_fibonacci_cpp");
-                
+
                 black_box(result.map(|o| o.status.success()).unwrap_or(false))
             })
         });
     }
-    
+
     // Go full compilation
     if is_compiler_available("go") {
         group.bench_function("go_executable", |b| {
             b.iter(|| {
                 let filename = "exec_fibonacci.go";
                 fs::write(filename, FIBONACCI_GO).unwrap();
-                
+
                 let result = Command::new("go")
                     .arg("build")
-                    .arg("-o").arg("exec_fibonacci_go")
+                    .arg("-o")
+                    .arg("exec_fibonacci_go")
                     .arg(filename)
                     .output();
-                
+
                 // Clean up
                 let _ = fs::remove_file(filename);
                 let _ = fs::remove_file("exec_fibonacci_go");
-                
+
                 black_box(result.map(|o| o.status.success()).unwrap_or(false))
             })
         });
     }
-    
+
     group.finish();
 }
 
@@ -407,14 +411,14 @@ fn bench_executable_compilation(c: &mut Criterion) {
 fn bench_program_complexity(c: &mut Criterion) {
     let mut group = c.benchmark_group("program_complexity");
     group.measurement_time(Duration::from_secs(15));
-    
+
     // Test Eä with different complexity levels
     let simple_program = r#"
 func main() -> i32 {
     return 42;
 }
 "#;
-    
+
     let medium_program = r#"
 func helper(x: i32) -> i32 {
     return x * 2;
@@ -428,7 +432,7 @@ func main() -> i32 {
     return result;
 }
 "#;
-    
+
     let complex_program = r#"
 func fibonacci(n: i32) -> i32 {
     if (n <= 1) {
@@ -460,34 +464,28 @@ func main() -> i32 {
     return fib_result + fact_result + sum_result;
 }
 "#;
-    
+
     group.bench_function("ea_simple", |b| {
-        b.iter(|| {
-            match compile_to_ast(black_box(simple_program)) {
-                Ok((ast, _)) => black_box(ast.len()),
-                Err(_) => black_box(0),
-            }
+        b.iter(|| match compile_to_ast(black_box(simple_program)) {
+            Ok((ast, _)) => black_box(ast.len()),
+            Err(_) => black_box(0),
         })
     });
-    
+
     group.bench_function("ea_medium", |b| {
-        b.iter(|| {
-            match compile_to_ast(black_box(medium_program)) {
-                Ok((ast, _)) => black_box(ast.len()),
-                Err(_) => black_box(0),
-            }
+        b.iter(|| match compile_to_ast(black_box(medium_program)) {
+            Ok((ast, _)) => black_box(ast.len()),
+            Err(_) => black_box(0),
         })
     });
-    
+
     group.bench_function("ea_complex", |b| {
-        b.iter(|| {
-            match compile_to_ast(black_box(complex_program)) {
-                Ok((ast, _)) => black_box(ast.len()),
-                Err(_) => black_box(0),
-            }
+        b.iter(|| match compile_to_ast(black_box(complex_program)) {
+            Ok((ast, _)) => black_box(ast.len()),
+            Err(_) => black_box(0),
         })
     });
-    
+
     group.finish();
 }
 

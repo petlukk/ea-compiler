@@ -1,7 +1,0 @@
-func main() {
-    print("Testing HashSet basic functionality");
-    let set = HashSet::new();
-    set.insert(42);
-    let result = set.contains(42);
-    print("Test completed");
-}

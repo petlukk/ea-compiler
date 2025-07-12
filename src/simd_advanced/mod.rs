@@ -1,5 +1,5 @@
 //! Advanced SIMD intrinsics with hardware-specific optimization
-//! 
+//!
 //! This module provides next-generation SIMD capabilities that go beyond
 //! basic vector operations to include hardware-specific optimizations,
 //! adaptive vectorization, and compile-time SIMD code generation.
@@ -50,56 +50,115 @@ pub struct SIMDCapabilities {
 
 #[derive(Debug, Clone)]
 pub enum SpecializedUnit {
-    FMA,         // Fused multiply-add
-    Gather,      // Scatter/gather operations
-    Permute,     // Permutation operations
-    Compress,    // Compression/expansion
-    Bitmanip,    // Bit manipulation
-    Crypto,      // Cryptographic operations
-    BFloat16,    // Brain floating point
-    INT8,        // 8-bit integer operations
+    FMA,      // Fused multiply-add
+    Gather,   // Scatter/gather operations
+    Permute,  // Permutation operations
+    Compress, // Compression/expansion
+    Bitmanip, // Bit manipulation
+    Crypto,   // Cryptographic operations
+    BFloat16, // Brain floating point
+    INT8,     // 8-bit integer operations
 }
 
 /// Advanced SIMD operation types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AdvancedSIMDOp {
     // Basic operations (enhanced)
-    Add { predicated: bool, saturating: bool },
-    Multiply { fused: bool, accumulate: bool },
-    Divide { precise: bool, approximate: bool },
-    
+    Add {
+        predicated: bool,
+        saturating: bool,
+    },
+    Multiply {
+        fused: bool,
+        accumulate: bool,
+    },
+    Divide {
+        precise: bool,
+        approximate: bool,
+    },
+
     // Memory operations
-    Gather { indices: Vec<usize>, mask: Option<String> },
-    Scatter { indices: Vec<usize>, mask: Option<String> },
-    Prefetch { distance: usize, locality: CacheOptimization },
-    
+    Gather {
+        indices: Vec<usize>,
+        mask: Option<String>,
+    },
+    Scatter {
+        indices: Vec<usize>,
+        mask: Option<String>,
+    },
+    Prefetch {
+        distance: usize,
+        locality: CacheOptimization,
+    },
+
     // Permutation operations
-    Shuffle { pattern: ShufflePattern },
-    Blend { mask: String, condition: BlendCondition },
-    Permute { control: PermuteControl },
-    
+    Shuffle {
+        pattern: ShufflePattern,
+    },
+    Blend {
+        mask: String,
+        condition: BlendCondition,
+    },
+    Permute {
+        control: PermuteControl,
+    },
+
     // Reduction operations
-    Reduce { operation: ReduceOp, tree: bool },
-    Scan { operation: ScanOp, inclusive: bool },
-    
+    Reduce {
+        operation: ReduceOp,
+        tree: bool,
+    },
+    Scan {
+        operation: ScanOp,
+        inclusive: bool,
+    },
+
     // Conversion operations
-    Convert { from_type: String, to_type: String, rounding: RoundingMode },
-    Pack { saturation: bool },
-    Unpack { high: bool },
-    
+    Convert {
+        from_type: String,
+        to_type: String,
+        rounding: RoundingMode,
+    },
+    Pack {
+        saturation: bool,
+    },
+    Unpack {
+        high: bool,
+    },
+
     // Specialized operations
-    MatrixMultiply { m: usize, n: usize, k: usize },
-    Convolution { kernel_size: usize, stride: usize },
-    FFT { size: usize, inverse: bool },
-    
+    MatrixMultiply {
+        m: usize,
+        n: usize,
+        k: usize,
+    },
+    Convolution {
+        kernel_size: usize,
+        stride: usize,
+    },
+    FFT {
+        size: usize,
+        inverse: bool,
+    },
+
     // Cryptographic operations
-    AES { operation: AESOperation },
-    SHA { variant: SHAVariant },
-    
+    AES {
+        operation: AESOperation,
+    },
+    SHA {
+        variant: SHAVariant,
+    },
+
     // Machine learning operations
-    QuantizedMultiply { bits: u8 },
-    BatchNorm { epsilon: f32 },
-    Activation { function: ActivationFunction },
+    QuantizedMultiply {
+        bits: u8,
+    },
+    BatchNorm {
+        epsilon: f32,
+    },
+    Activation {
+        function: ActivationFunction,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -326,21 +385,26 @@ impl AdvancedSIMDCodegen {
     ) -> Result<GeneratedSIMDCode, SIMDError> {
         // Parse the code to identify vectorizable patterns
         let vectorizable_ops = self.identify_vectorizable_operations(code_block)?;
-        
+
         if vectorizable_ops.is_empty() {
-            return Err(SIMDError::OptimizationFailed("No vectorizable operations found".to_string()));
+            return Err(SIMDError::OptimizationFailed(
+                "No vectorizable operations found".to_string(),
+            ));
         }
 
         // Select best vectorization strategy
         let strategy = self.select_vectorization_strategy(&vectorizable_ops, optimization_hints)?;
-        
+
         // Generate vectorized code
         self.apply_vectorization_strategy(&vectorizable_ops, &strategy)
     }
 
-    fn identify_vectorizable_operations(&self, code: &str) -> Result<Vec<VectorizableOperation>, SIMDError> {
+    fn identify_vectorizable_operations(
+        &self,
+        code: &str,
+    ) -> Result<Vec<VectorizableOperation>, SIMDError> {
         let mut operations = Vec::new();
-        
+
         // Simple pattern matching for common vectorizable patterns
         if code.contains("for") && code.contains("+=") {
             operations.push(VectorizableOperation {
@@ -351,7 +415,7 @@ impl AdvancedSIMDCodegen {
                 dependencies: Vec::new(),
             });
         }
-        
+
         if code.contains("*") && code.contains("+") {
             operations.push(VectorizableOperation {
                 operation_type: VectorizableOpType::FusedMultiplyAdd,
@@ -361,7 +425,7 @@ impl AdvancedSIMDCodegen {
                 dependencies: Vec::new(),
             });
         }
-        
+
         if code.contains("sqrt") || code.contains("sin") || code.contains("cos") {
             operations.push(VectorizableOperation {
                 operation_type: VectorizableOpType::MathFunction,
@@ -402,14 +466,14 @@ impl AdvancedSIMDCodegen {
                             cache_levels: 2,
                         };
                     }
-                },
+                }
                 VectorizableOpType::Reduction => {
                     best_strategy.implementation = StrategyImplementation::TreeReduction {
                         levels: 4,
                         parallel_factor: 8,
                     };
                     best_strategy.expected_speedup = 16.0;
-                },
+                }
                 VectorizableOpType::Gather => {
                     if self.supports_instruction_set(&SIMDInstructionSet::AVX512F) {
                         best_strategy.implementation = StrategyImplementation::ScatterGather {
@@ -418,7 +482,7 @@ impl AdvancedSIMDCodegen {
                         };
                         best_strategy.expected_speedup = 4.0; // Gather is expensive
                     }
-                },
+                }
                 _ => {}
             }
         }
@@ -432,9 +496,12 @@ impl AdvancedSIMDCodegen {
         strategy: &VectorizationStrategy,
     ) -> Result<GeneratedSIMDCode, SIMDError> {
         let mut instructions = Vec::new();
-        
+
         match &strategy.implementation {
-            StrategyImplementation::SimpleLoop { vector_width, unroll_factor } => {
+            StrategyImplementation::SimpleLoop {
+                vector_width,
+                unroll_factor,
+            } => {
                 // Generate simple vectorized loop
                 for _ in 0..*unroll_factor {
                     instructions.push(GeneratedInstruction {
@@ -449,8 +516,11 @@ impl AdvancedSIMDCodegen {
                         },
                     });
                 }
-            },
-            StrategyImplementation::TreeReduction { levels, parallel_factor } => {
+            }
+            StrategyImplementation::TreeReduction {
+                levels,
+                parallel_factor,
+            } => {
                 // Generate tree reduction
                 for level in 0..*levels {
                     let width = parallel_factor >> level;
@@ -459,7 +529,7 @@ impl AdvancedSIMDCodegen {
                         operands: vec![
                             format!("ymm{}", level),
                             format!("ymm{}", level),
-                            format!("ymm{}", level + 1)
+                            format!("ymm{}", level + 1),
                         ],
                         latency: 4,
                         throughput: 0.5,
@@ -470,8 +540,11 @@ impl AdvancedSIMDCodegen {
                         },
                     });
                 }
-            },
-            StrategyImplementation::BlockedAlgorithm { block_sizes, cache_levels } => {
+            }
+            StrategyImplementation::BlockedAlgorithm {
+                block_sizes,
+                cache_levels,
+            } => {
                 // Generate cache-blocked algorithm
                 for &block_size in block_sizes {
                     instructions.push(GeneratedInstruction {
@@ -486,12 +559,19 @@ impl AdvancedSIMDCodegen {
                         },
                     });
                 }
-            },
-            StrategyImplementation::ScatterGather { gather_width, prefetch_distance } => {
+            }
+            StrategyImplementation::ScatterGather {
+                gather_width,
+                prefetch_distance,
+            } => {
                 // Generate scatter/gather operations
                 instructions.push(GeneratedInstruction {
                     mnemonic: "vgatherdps".to_string(),
-                    operands: vec!["ymm0".to_string(), "ymm1".to_string(), "[base + ymm2*4]".to_string()],
+                    operands: vec![
+                        "ymm0".to_string(),
+                        "ymm1".to_string(),
+                        "[base + ymm2*4]".to_string(),
+                    ],
                     latency: 12,
                     throughput: 2.0,
                     resource_usage: ResourceUsage {
@@ -500,8 +580,11 @@ impl AdvancedSIMDCodegen {
                         memory_bandwidth: *gather_width as f32 * 4.0,
                     },
                 });
-            },
-            StrategyImplementation::MemoryStreaming { streaming_stores, prefetch_pattern } => {
+            }
+            StrategyImplementation::MemoryStreaming {
+                streaming_stores,
+                prefetch_pattern,
+            } => {
                 // Generate memory streaming operations
                 if *streaming_stores {
                     instructions.push(GeneratedInstruction {
@@ -516,13 +599,13 @@ impl AdvancedSIMDCodegen {
                         },
                     });
                 }
-            },
+            }
         }
 
         let instruction_count = instructions.len() as u32;
         let cycle_count = instructions.iter().map(|i| i.latency).sum();
         let energy_consumption = instructions.len() as f32 * 0.1;
-        
+
         Ok(GeneratedSIMDCode {
             instructions,
             instruction_set: self.get_best_available_instruction_set(),
@@ -560,7 +643,7 @@ impl AdvancedSIMDCodegen {
 
         // Select best instruction set for this operation
         let instruction_set = self.select_optimal_instruction_set(operation, vector_type)?;
-        
+
         // Generate instruction sequence
         let instructions = self.generate_instruction_sequence(
             operation,
@@ -577,7 +660,7 @@ impl AdvancedSIMDCodegen {
 
         let register_allocation = self.allocate_registers(&optimized_instructions)?;
         let scheduling = self.schedule_instructions(&optimized_instructions)?;
-        
+
         let generated = GeneratedSIMDCode {
             instructions: optimized_instructions,
             instruction_set,
@@ -588,7 +671,8 @@ impl AdvancedSIMDCodegen {
 
         // Cache the result
         if let Some(first_instruction) = generated.instructions.first() {
-            self.instruction_cache.insert(cache_key, first_instruction.clone());
+            self.instruction_cache
+                .insert(cache_key, first_instruction.clone());
         }
 
         Ok(generated)
@@ -604,7 +688,7 @@ impl AdvancedSIMDCodegen {
     ) -> Result<GeneratedSIMDCode, SIMDError> {
         // Determine optimal blocking strategy
         let (block_m, block_n, block_k) = self.compute_optimal_blocking(m, n, k)?;
-        
+
         // Select specialized instruction sequence
         let instructions = if self.supports_instruction_set(&SIMDInstructionSet::AVX512VNNI) {
             self.generate_vnni_matmul(m, n, k, block_m, block_n, block_k)?
@@ -633,11 +717,17 @@ impl AdvancedSIMDCodegen {
     ) -> Result<GeneratedSIMDCode, SIMDError> {
         // Analyze convolution characteristics
         let conv_type = self.classify_convolution(input_shape, kernel_shape, stride)?;
-        
+
         let instructions = match conv_type {
-            ConvolutionType::Pointwise => self.generate_pointwise_conv(input_shape, kernel_shape)?,
-            ConvolutionType::Depthwise => self.generate_depthwise_conv(input_shape, kernel_shape, stride)?,
-            ConvolutionType::Regular => self.generate_im2col_conv(input_shape, kernel_shape, stride, padding)?,
+            ConvolutionType::Pointwise => {
+                self.generate_pointwise_conv(input_shape, kernel_shape)?
+            }
+            ConvolutionType::Depthwise => {
+                self.generate_depthwise_conv(input_shape, kernel_shape, stride)?
+            }
+            ConvolutionType::Regular => {
+                self.generate_im2col_conv(input_shape, kernel_shape, stride, padding)?
+            }
             ConvolutionType::Winograd => self.generate_winograd_conv(input_shape, kernel_shape)?,
         };
 
@@ -664,12 +754,13 @@ impl AdvancedSIMDCodegen {
             SIMDInstructionSet::SSE42,
             SIMDInstructionSet::SSE2,
         ] {
-            if self.supports_instruction_set(instruction_set) && 
-               self.instruction_set_supports_operation(instruction_set, operation) {
+            if self.supports_instruction_set(instruction_set)
+                && self.instruction_set_supports_operation(instruction_set, operation)
+            {
                 return Ok(instruction_set.clone());
             }
         }
-        
+
         Err(SIMDError::UnsupportedOperation(format!("{:?}", operation)))
     }
 
@@ -705,7 +796,11 @@ impl AdvancedSIMDCodegen {
         SIMDInstructionSet::SSE2 // Fallback
     }
 
-    fn operation_cache_key(&self, operation: &AdvancedSIMDOp, vector_type: &SIMDVectorType) -> String {
+    fn operation_cache_key(
+        &self,
+        operation: &AdvancedSIMDOp,
+        vector_type: &SIMDVectorType,
+    ) -> String {
         format!("{:?}_{:?}", operation, vector_type)
     }
 
@@ -717,42 +812,55 @@ impl AdvancedSIMDCodegen {
         hints: &OptimizationHints,
     ) -> Result<Vec<GeneratedInstruction>, SIMDError> {
         match operation {
-            AdvancedSIMDOp::Add { predicated, saturating } => {
-                self.generate_add_instruction(vector_type, instruction_set, *predicated, *saturating)
-            },
-            AdvancedSIMDOp::Multiply { fused, accumulate } => {
-                self.generate_multiply_instruction(vector_type, instruction_set, *fused, *accumulate)
-            },
+            AdvancedSIMDOp::Add {
+                predicated,
+                saturating,
+            } => self.generate_add_instruction(
+                vector_type,
+                instruction_set,
+                *predicated,
+                *saturating,
+            ),
+            AdvancedSIMDOp::Multiply { fused, accumulate } => self.generate_multiply_instruction(
+                vector_type,
+                instruction_set,
+                *fused,
+                *accumulate,
+            ),
             AdvancedSIMDOp::Gather { indices, mask } => {
                 self.generate_gather_instruction(vector_type, instruction_set, indices, mask)
-            },
+            }
             AdvancedSIMDOp::Scatter { indices, mask } => {
                 self.generate_scatter_instruction(vector_type, instruction_set, indices, mask)
-            },
+            }
             AdvancedSIMDOp::Shuffle { pattern } => {
                 self.generate_shuffle_instruction(vector_type, instruction_set, pattern)
-            },
-            AdvancedSIMDOp::Reduce { operation: reduce_op, tree } => {
-                self.generate_reduce_instruction(vector_type, instruction_set, reduce_op, *tree)
-            },
-            AdvancedSIMDOp::Convert { from_type, to_type, rounding } => {
-                self.generate_convert_instruction(from_type, to_type, instruction_set, rounding)
-            },
+            }
+            AdvancedSIMDOp::Reduce {
+                operation: reduce_op,
+                tree,
+            } => self.generate_reduce_instruction(vector_type, instruction_set, reduce_op, *tree),
+            AdvancedSIMDOp::Convert {
+                from_type,
+                to_type,
+                rounding,
+            } => self.generate_convert_instruction(from_type, to_type, instruction_set, rounding),
             AdvancedSIMDOp::MatrixMultiply { m, n, k } => {
                 self.generate_matrix_multiply_instruction(*m, *n, *k, instruction_set)
-            },
-            AdvancedSIMDOp::Convolution { kernel_size, stride } => {
-                self.generate_convolution_instruction(*kernel_size, *stride, instruction_set)
-            },
+            }
+            AdvancedSIMDOp::Convolution {
+                kernel_size,
+                stride,
+            } => self.generate_convolution_instruction(*kernel_size, *stride, instruction_set),
             AdvancedSIMDOp::FFT { size, inverse } => {
                 self.generate_fft_instruction(*size, *inverse, instruction_set)
-            },
+            }
             AdvancedSIMDOp::AES { operation: aes_op } => {
                 self.generate_aes_instruction(aes_op, instruction_set)
-            },
+            }
             AdvancedSIMDOp::QuantizedMultiply { bits } => {
                 self.generate_quantized_multiply_instruction(*bits, instruction_set)
-            },
+            }
             _ => {
                 // Fallback for other operations
                 Ok(vec![GeneratedInstruction {
@@ -784,7 +892,7 @@ impl AdvancedSIMDCodegen {
     ) -> Result<PerformanceModel, SIMDError> {
         let instruction_count = instructions.len() as u32;
         let cycle_count = instructions.iter().map(|i| i.latency).sum();
-        
+
         Ok(PerformanceModel {
             instruction_count,
             cycle_count,
@@ -818,29 +926,38 @@ impl AdvancedSIMDCodegen {
     }
 
     // Matrix multiplication implementations
-    fn compute_optimal_blocking(&self, m: usize, n: usize, k: usize) -> Result<(usize, usize, usize), SIMDError> {
+    fn compute_optimal_blocking(
+        &self,
+        m: usize,
+        n: usize,
+        k: usize,
+    ) -> Result<(usize, usize, usize), SIMDError> {
         // Compute cache-optimal blocking factors
         let l1_cache_size = 32 * 1024; // 32KB typical L1 cache
         let element_size = 4; // 32-bit float
-        
+
         let block_size = ((l1_cache_size / 3) as f64).sqrt() as usize / element_size;
         let block_m = block_size.min(m);
         let block_n = block_size.min(n);
         let block_k = block_size.min(k);
-        
+
         Ok((block_m, block_n, block_k))
     }
 
     fn generate_vnni_matmul(
         &self,
-        m: usize, n: usize, k: usize,
-        block_m: usize, block_n: usize, block_k: usize,
+        m: usize,
+        n: usize,
+        k: usize,
+        block_m: usize,
+        block_n: usize,
+        block_k: usize,
     ) -> Result<Vec<GeneratedInstruction>, SIMDError> {
         let mut instructions = Vec::new();
-        
+
         // AVX512-VNNI optimized matrix multiplication using vpdpbusd
         // This uses 4-bit quantized weights with 8-bit activations
-        
+
         // Setup: Load and broadcast weights
         instructions.push(GeneratedInstruction {
             mnemonic: "vbroadcasti64x4".to_string(),
@@ -853,14 +970,18 @@ impl AdvancedSIMDCodegen {
                 memory_bandwidth: 64.0,
             },
         });
-        
+
         // Main computation loop using VNNI instructions
-        for i in 0..(block_m/16) {
-            for j in 0..(block_n/16) {
+        for i in 0..(block_m / 16) {
+            for j in 0..(block_n / 16) {
                 // Zero accumulator
                 instructions.push(GeneratedInstruction {
                     mnemonic: "vpxorq".to_string(),
-                    operands: vec![format!("zmm{}", i*4 + j), format!("zmm{}", i*4 + j), format!("zmm{}", i*4 + j)],
+                    operands: vec![
+                        format!("zmm{}", i * 4 + j),
+                        format!("zmm{}", i * 4 + j),
+                        format!("zmm{}", i * 4 + j),
+                    ],
                     latency: 1,
                     throughput: 0.33,
                     resource_usage: ResourceUsage {
@@ -869,15 +990,15 @@ impl AdvancedSIMDCodegen {
                         memory_bandwidth: 0.0,
                     },
                 });
-                
+
                 // VNNI dot product accumulate
-                for ki in 0..(block_k/4) {
+                for ki in 0..(block_k / 4) {
                     instructions.push(GeneratedInstruction {
                         mnemonic: "vpdpbusd".to_string(), // 4x INT8 dot products
                         operands: vec![
-                            format!("zmm{}", i*4 + j),
+                            format!("zmm{}", i * 4 + j),
                             format!("zmm{}", 16 + ki),
-                            format!("zmm{}", 20 + ki)
+                            format!("zmm{}", 20 + ki),
                         ],
                         latency: 4,
                         throughput: 0.5,
@@ -890,27 +1011,35 @@ impl AdvancedSIMDCodegen {
                 }
             }
         }
-        
+
         Ok(instructions)
     }
 
     fn generate_avx2_matmul(
         &self,
-        _m: usize, _n: usize, _k: usize,
-        block_m: usize, block_n: usize, block_k: usize,
+        _m: usize,
+        _n: usize,
+        _k: usize,
+        block_m: usize,
+        block_n: usize,
+        block_k: usize,
     ) -> Result<Vec<GeneratedInstruction>, SIMDError> {
         let mut instructions = Vec::new();
-        
+
         // AVX2 optimized matrix multiplication using FMA
         // 8x8 blocking for optimal register usage
-        
-        for i in 0..(block_m/8) {
-            for _j in 0..(block_n/8) {
+
+        for i in 0..(block_m / 8) {
+            for _j in 0..(block_n / 8) {
                 // Initialize accumulators to zero
                 for acc in 0..8 {
                     instructions.push(GeneratedInstruction {
                         mnemonic: "vxorps".to_string(),
-                        operands: vec![format!("ymm{}", acc), format!("ymm{}", acc), format!("ymm{}", acc)],
+                        operands: vec![
+                            format!("ymm{}", acc),
+                            format!("ymm{}", acc),
+                            format!("ymm{}", acc),
+                        ],
                         latency: 1,
                         throughput: 0.33,
                         resource_usage: ResourceUsage {
@@ -920,13 +1049,13 @@ impl AdvancedSIMDCodegen {
                         },
                     });
                 }
-                
+
                 // Inner loop over K dimension
-                for ki in 0..(block_k/8) {
+                for ki in 0..(block_k / 8) {
                     // Load A matrix row
                     instructions.push(GeneratedInstruction {
                         mnemonic: "vbroadcastss".to_string(),
-                        operands: vec!["ymm8".to_string(), format!("[a_ptr + {}]", ki*4)],
+                        operands: vec!["ymm8".to_string(), format!("[a_ptr + {}]", ki * 4)],
                         latency: 5,
                         throughput: 0.5,
                         resource_usage: ResourceUsage {
@@ -935,7 +1064,7 @@ impl AdvancedSIMDCodegen {
                             memory_bandwidth: 32.0,
                         },
                     });
-                    
+
                     // Load B matrix column and FMA
                     for col in 0..8 {
                         instructions.push(GeneratedInstruction {
@@ -943,7 +1072,7 @@ impl AdvancedSIMDCodegen {
                             operands: vec![
                                 format!("ymm{}", col),
                                 "ymm8".to_string(),
-                                format!("[b_ptr + {}]", (ki*8 + col)*32)
+                                format!("[b_ptr + {}]", (ki * 8 + col) * 32),
                             ],
                             latency: 4,
                             throughput: 0.5,
@@ -955,12 +1084,12 @@ impl AdvancedSIMDCodegen {
                         });
                     }
                 }
-                
+
                 // Store results
                 for acc in 0..8 {
                     instructions.push(GeneratedInstruction {
                         mnemonic: "vmovups".to_string(),
-                        operands: vec![format!("[c_ptr + {}]", acc*32), format!("ymm{}", acc)],
+                        operands: vec![format!("[c_ptr + {}]", acc * 32), format!("ymm{}", acc)],
                         latency: 3,
                         throughput: 1.0,
                         resource_usage: ResourceUsage {
@@ -972,23 +1101,32 @@ impl AdvancedSIMDCodegen {
                 }
             }
         }
-        
+
         Ok(instructions)
     }
 
     fn generate_generic_matmul(
         &self,
-        _m: usize, _n: usize, _k: usize,
-        _block_m: usize, _block_n: usize, _block_k: usize,
+        _m: usize,
+        _n: usize,
+        _k: usize,
+        _block_m: usize,
+        _block_n: usize,
+        _block_k: usize,
     ) -> Result<Vec<GeneratedInstruction>, SIMDError> {
         // Generate generic SIMD matrix multiplication
         Ok(vec![])
     }
 
-    fn model_matmul_performance(&self, m: usize, n: usize, k: usize) -> Result<PerformanceModel, SIMDError> {
+    fn model_matmul_performance(
+        &self,
+        m: usize,
+        n: usize,
+        k: usize,
+    ) -> Result<PerformanceModel, SIMDError> {
         let flops = 2 * m * n * k;
         let instruction_count = (flops / 8) as u32; // Assume 8-wide SIMD
-        
+
         Ok(PerformanceModel {
             instruction_count,
             cycle_count: instruction_count / 2, // Assume 2 instructions per cycle
@@ -1013,7 +1151,7 @@ impl AdvancedSIMDCodegen {
         stride: (usize, usize),
     ) -> Result<ConvolutionType, SIMDError> {
         let (kh, kw, _) = kernel_shape;
-        
+
         if kh == 1 && kw == 1 {
             Ok(ConvolutionType::Pointwise)
         } else if kh == 3 && kw == 3 && stride == (1, 1) {
@@ -1072,7 +1210,7 @@ impl AdvancedSIMDCodegen {
         let (h, w, c) = input_shape;
         let (kh, kw, _) = kernel_shape;
         let flops = h * w * c * kh * kw * 2;
-        
+
         Ok(PerformanceModel {
             instruction_count: (flops / 8) as u32,
             cycle_count: (flops / 16) as u32,
@@ -1114,7 +1252,7 @@ impl AdvancedSIMDCodegen {
         };
 
         let mut instructions = vec![];
-        
+
         if predicated && instruction_set == &SIMDInstructionSet::AVX512F {
             // Add predicated version
             instructions.push(GeneratedInstruction {
@@ -1122,7 +1260,7 @@ impl AdvancedSIMDCodegen {
                 operands: vec![
                     format!("{}0", register_prefix),
                     format!("{}1", register_prefix),
-                    format!("{}2", register_prefix)
+                    format!("{}2", register_prefix),
                 ],
                 latency: 4,
                 throughput: 0.5,
@@ -1138,12 +1276,16 @@ impl AdvancedSIMDCodegen {
                 operands: vec![
                     format!("{}0", register_prefix),
                     format!("{}1", register_prefix),
-                    format!("{}2", register_prefix)
+                    format!("{}2", register_prefix),
                 ],
                 latency: if saturating { 5 } else { 4 },
                 throughput: 0.5,
                 resource_usage: ResourceUsage {
-                    execution_units: vec![if vector_type.to_string().contains("f32") { "FP_ADD".to_string() } else { "INT_ADD".to_string() }],
+                    execution_units: vec![if vector_type.to_string().contains("f32") {
+                        "FP_ADD".to_string()
+                    } else {
+                        "INT_ADD".to_string()
+                    }],
                     register_pressure: 3,
                     memory_bandwidth: 0.0,
                 },
@@ -1162,8 +1304,12 @@ impl AdvancedSIMDCodegen {
     ) -> Result<Vec<GeneratedInstruction>, SIMDError> {
         let base_mnemonic = if fused && accumulate {
             match vector_type {
-                SIMDVectorType::F32x4 | SIMDVectorType::F32x8 | SIMDVectorType::F32x16 => "vfmadd231ps",
-                SIMDVectorType::F64x2 | SIMDVectorType::F64x4 | SIMDVectorType::F64x8 => "vfmadd231pd",
+                SIMDVectorType::F32x4 | SIMDVectorType::F32x8 | SIMDVectorType::F32x16 => {
+                    "vfmadd231ps"
+                }
+                SIMDVectorType::F64x2 | SIMDVectorType::F64x4 | SIMDVectorType::F64x8 => {
+                    "vfmadd231pd"
+                }
                 _ => "vmulps", // Fallback for integer types
             }
         } else if fused {
@@ -1190,7 +1336,7 @@ impl AdvancedSIMDCodegen {
             operands: vec![
                 format!("{}0", register_prefix),
                 format!("{}1", register_prefix),
-                format!("{}2", register_prefix)
+                format!("{}2", register_prefix),
             ],
             latency: if fused { 4 } else { 5 },
             throughput: 0.5,
@@ -1209,15 +1355,24 @@ impl AdvancedSIMDCodegen {
         _indices: &[usize],
         mask: &Option<String>,
     ) -> Result<Vec<GeneratedInstruction>, SIMDError> {
-        if !matches!(instruction_set, SIMDInstructionSet::AVX2 | SIMDInstructionSet::AVX512F) {
-            return Err(SIMDError::UnsupportedOperation("Gather requires AVX2 or AVX512".to_string()));
+        if !matches!(
+            instruction_set,
+            SIMDInstructionSet::AVX2 | SIMDInstructionSet::AVX512F
+        ) {
+            return Err(SIMDError::UnsupportedOperation(
+                "Gather requires AVX2 or AVX512".to_string(),
+            ));
         }
 
         let mnemonic = match vector_type {
             SIMDVectorType::F32x8 | SIMDVectorType::F32x16 => "vgatherdps",
             SIMDVectorType::F64x4 | SIMDVectorType::F64x8 => "vgatherdpd",
             SIMDVectorType::I32x8 | SIMDVectorType::I32x16 => "vpgatherdd",
-            _ => return Err(SIMDError::UnsupportedOperation("Gather not supported for this vector type".to_string())),
+            _ => {
+                return Err(SIMDError::UnsupportedOperation(
+                    "Gather not supported for this vector type".to_string(),
+                ))
+            }
         };
 
         let register_prefix = match instruction_set {
@@ -1232,7 +1387,7 @@ impl AdvancedSIMDCodegen {
             operands: vec![
                 format!("{}0", register_prefix),
                 format!("{}1", register_prefix),
-                format!("[base + {}2*4]", register_prefix)
+                format!("[base + {}2*4]", register_prefix),
             ],
             latency: 12, // Gather is expensive
             throughput: 2.0,
@@ -1252,14 +1407,20 @@ impl AdvancedSIMDCodegen {
         _mask: &Option<String>,
     ) -> Result<Vec<GeneratedInstruction>, SIMDError> {
         if !matches!(instruction_set, SIMDInstructionSet::AVX512F) {
-            return Err(SIMDError::UnsupportedOperation("Scatter requires AVX512".to_string()));
+            return Err(SIMDError::UnsupportedOperation(
+                "Scatter requires AVX512".to_string(),
+            ));
         }
 
         let mnemonic = match vector_type {
             SIMDVectorType::F32x16 => "vscatterdps",
             SIMDVectorType::F64x8 => "vscatterdpd",
             SIMDVectorType::I32x16 => "vpscatterdd",
-            _ => return Err(SIMDError::UnsupportedOperation("Scatter not supported for this vector type".to_string())),
+            _ => {
+                return Err(SIMDError::UnsupportedOperation(
+                    "Scatter not supported for this vector type".to_string(),
+                ))
+            }
         };
 
         Ok(vec![GeneratedInstruction {
@@ -1267,7 +1428,7 @@ impl AdvancedSIMDCodegen {
             operands: vec![
                 "[base + zmm1*4]".to_string(),
                 "k1".to_string(),
-                "zmm0".to_string()
+                "zmm0".to_string(),
             ],
             latency: 15, // Scatter is very expensive
             throughput: 4.0,
@@ -1286,25 +1447,24 @@ impl AdvancedSIMDCodegen {
         pattern: &ShufflePattern,
     ) -> Result<Vec<GeneratedInstruction>, SIMDError> {
         let (mnemonic, immediate) = match pattern {
-            ShufflePattern::Broadcast(lane) => {
-                match vector_type {
-                    SIMDVectorType::F32x4 | SIMDVectorType::F32x8 | SIMDVectorType::F32x16 => 
-                        ("vbroadcastss", format!("{}", lane)),
-                    _ => ("vpbroadcastd", format!("{}", lane)),
+            ShufflePattern::Broadcast(lane) => match vector_type {
+                SIMDVectorType::F32x4 | SIMDVectorType::F32x8 | SIMDVectorType::F32x16 => {
+                    ("vbroadcastss", format!("{}", lane))
                 }
+                _ => ("vpbroadcastd", format!("{}", lane)),
             },
-            ShufflePattern::Reverse => {
-                match instruction_set {
-                    SIMDInstructionSet::AVX512F => ("vpermps", "0x1b".to_string()),
-                    _ => ("vpermilps", "0x1b".to_string()),
-                }
+            ShufflePattern::Reverse => match instruction_set {
+                SIMDInstructionSet::AVX512F => ("vpermps", "0x1b".to_string()),
+                _ => ("vpermilps", "0x1b".to_string()),
             },
             ShufflePattern::Interleave => ("vunpcklps", "".to_string()),
             ShufflePattern::Custom(indices) => {
-                let imm = indices.iter().enumerate()
+                let imm = indices
+                    .iter()
+                    .enumerate()
                     .fold(0u8, |acc, (i, &idx)| acc | ((idx as u8) << (i * 2)));
                 ("vshufps", format!("0x{:02x}", imm))
-            },
+            }
             _ => ("vshufps", "0x00".to_string()),
         };
 
@@ -1318,7 +1478,7 @@ impl AdvancedSIMDCodegen {
             format!("{}0", register_prefix),
             format!("{}1", register_prefix),
         ];
-        
+
         if !immediate.is_empty() {
             operands.push(immediate);
         }
@@ -1344,7 +1504,7 @@ impl AdvancedSIMDCodegen {
         tree: bool,
     ) -> Result<Vec<GeneratedInstruction>, SIMDError> {
         let mut instructions = Vec::new();
-        
+
         if tree && matches!(instruction_set, SIMDInstructionSet::AVX512F) {
             // Use tree reduction with AVX512
             let base_mnemonic = match reduce_op {
@@ -1363,7 +1523,7 @@ impl AdvancedSIMDCodegen {
                     operands: vec![
                         format!("zmm{}", i),
                         format!("zmm{}", i),
-                        format!("zmm{}", i + 1)
+                        format!("zmm{}", i + 1),
                     ],
                     latency: 4,
                     throughput: 0.5,
@@ -1414,7 +1574,12 @@ impl AdvancedSIMDCodegen {
             ("f32", "f64") => "vcvtps2pd",
             ("f32", "i16") => "vcvtps2ph", // Half precision
             ("i16", "f32") => "vcvtph2ps",
-            _ => return Err(SIMDError::UnsupportedOperation(format!("Conversion from {} to {} not supported", from_type, to_type))),
+            _ => {
+                return Err(SIMDError::UnsupportedOperation(format!(
+                    "Conversion from {} to {} not supported",
+                    from_type, to_type
+                )))
+            }
         };
 
         let register_prefix = match instruction_set {
@@ -1612,7 +1777,7 @@ impl AdaptiveVectorizer {
     pub fn new() -> Self {
         let capabilities = AdvancedSIMDCodegen::detect_hardware_capabilities();
         let simd_codegen = AdvancedSIMDCodegen::new(capabilities);
-        
+
         Self {
             comptime_engine: ComptimeEngine::new(),
             simd_codegen,
@@ -1673,21 +1838,23 @@ impl AdaptiveVectorizer {
     ) -> Result<VectorizationResult, SIMDError> {
         // Parse and analyze the source code
         let analysis = self.analyze_code_patterns(source_code)?;
-        
+
         // Select optimal strategy based on analysis
         let selected_strategy = self.select_optimal_strategy(&analysis, &performance_target)?;
-        
+
         // Generate vectorized code
         let vectorized_code = self.simd_codegen.auto_vectorize(
             source_code,
-            &self.create_optimization_hints(&selected_strategy, &performance_target)?
+            &self.create_optimization_hints(&selected_strategy, &performance_target)?,
         )?;
-        
+
         // Estimate performance improvement
-        let performance_estimate = self.estimate_performance_improvement(&analysis, &selected_strategy)?;
-        
-        let recommended_optimizations = self.generate_optimization_recommendations(&performance_estimate)?;
-        
+        let performance_estimate =
+            self.estimate_performance_improvement(&analysis, &selected_strategy)?;
+
+        let recommended_optimizations =
+            self.generate_optimization_recommendations(&performance_estimate)?;
+
         Ok(VectorizationResult {
             original_analysis: analysis,
             selected_strategy,
@@ -1773,21 +1940,25 @@ impl AdaptiveVectorizer {
         match target {
             PerformanceTarget::Throughput => {
                 score *= strategy.expected_speedup / 8.0; // Normalize to max speedup
-            },
+            }
             PerformanceTarget::Latency => {
                 score *= 1.0 / (strategy.memory_requirements as f64 / 1024.0);
-            },
+            }
             PerformanceTarget::Energy => {
                 score *= analysis.arithmetic_intensity as f64;
-            },
+            }
             PerformanceTarget::Balanced => {
-                score *= (strategy.expected_speedup / 8.0) * 0.7 + 
-                        (1.0 / (strategy.memory_requirements as f64 / 1024.0)) * 0.3;
-            },
+                score *= (strategy.expected_speedup / 8.0) * 0.7
+                    + (1.0 / (strategy.memory_requirements as f64 / 1024.0)) * 0.3;
+            }
         }
 
         // Bonus for cache-friendly patterns
-        if analysis.memory_access_patterns.iter().any(|p| p.cache_friendly) {
+        if analysis
+            .memory_access_patterns
+            .iter()
+            .any(|p| p.cache_friendly)
+        {
             score *= 1.2;
         }
 
@@ -1800,10 +1971,16 @@ impl AdaptiveVectorizer {
         target: &PerformanceTarget,
     ) -> Result<OptimizationHints, SIMDError> {
         Ok(OptimizationHints {
-            prefer_throughput: matches!(target, PerformanceTarget::Throughput | PerformanceTarget::Balanced),
+            prefer_throughput: matches!(
+                target,
+                PerformanceTarget::Throughput | PerformanceTarget::Balanced
+            ),
             minimize_latency: matches!(target, PerformanceTarget::Latency),
             optimize_for_size: false,
-            cache_blocking: matches!(strategy.implementation, StrategyImplementation::BlockedAlgorithm { .. }),
+            cache_blocking: matches!(
+                strategy.implementation,
+                StrategyImplementation::BlockedAlgorithm { .. }
+            ),
             loop_unrolling: match &strategy.implementation {
                 StrategyImplementation::SimpleLoop { unroll_factor, .. } => *unroll_factor,
                 _ => 4,
@@ -1822,15 +1999,17 @@ impl AdaptiveVectorizer {
     ) -> Result<PerformanceEstimate, SIMDError> {
         let base_cycles = 1000; // Estimated baseline
         let vectorized_cycles = (base_cycles as f64 / strategy.expected_speedup) as u32;
-        
+
         Ok(PerformanceEstimate {
             baseline_cycles: base_cycles,
             optimized_cycles: vectorized_cycles,
             speedup_factor: strategy.expected_speedup,
-            memory_efficiency: analysis.memory_access_patterns
+            memory_efficiency: analysis
+                .memory_access_patterns
                 .iter()
                 .map(|p| p.bandwidth_utilization)
-                .fold(0.0, |acc, x| acc + x) / analysis.memory_access_patterns.len() as f32,
+                .fold(0.0, |acc, x| acc + x)
+                / analysis.memory_access_patterns.len() as f32,
             energy_reduction: 0.3, // Estimated 30% energy reduction
             confidence_level: 0.85,
         })
@@ -2067,7 +2246,7 @@ mod tests {
             peak_throughput: 500.0,
             specialized_units: vec![SpecializedUnit::FMA],
         };
-        
+
         let codegen = AdvancedSIMDCodegen::new(capabilities);
         assert!(codegen.supports_instruction_set(&SIMDInstructionSet::AVX2));
         assert!(!codegen.supports_instruction_set(&SIMDInstructionSet::AVX512F));
@@ -2084,10 +2263,11 @@ mod tests {
             peak_throughput: 500.0,
             specialized_units: vec![],
         };
-        
+
         let codegen = AdvancedSIMDCodegen::new(capabilities);
-        let (block_m, block_n, block_k) = codegen.compute_optimal_blocking(1024, 1024, 1024).unwrap();
-        
+        let (block_m, block_n, block_k) =
+            codegen.compute_optimal_blocking(1024, 1024, 1024).unwrap();
+
         // Should compute reasonable blocking factors
         assert!(block_m > 0 && block_m <= 1024);
         assert!(block_n > 0 && block_n <= 1024);

@@ -7,7 +7,7 @@
 use crate::ast::{BinaryOp, Expr, Literal, Stmt, TypeAnnotation, UnaryOp};
 use crate::error::{CompileError, Result};
 use crate::lexer::Position;
-use crate::memory_profiler::{record_memory_usage, CompilationPhase, check_memory_limit};
+use crate::memory_profiler::{check_memory_limit, record_memory_usage, CompilationPhase};
 pub mod types;
 use std::collections::HashMap;
 use std::fmt;
@@ -68,11 +68,11 @@ pub enum EaType {
     },
 
     // Standard Library Collection Types
-    StdVec(Box<EaType>),                        // Vec<T>
-    StdHashMap(Box<EaType>, Box<EaType>),       // HashMap<K, V>
-    StdHashSet(Box<EaType>),                    // HashSet<T>
-    StdString,                                  // String (Eä string type)
-    StdFile,                                    // File handle type
+    StdVec(Box<EaType>),                  // Vec<T>
+    StdHashMap(Box<EaType>, Box<EaType>), // HashMap<K, V>
+    StdHashSet(Box<EaType>),              // HashSet<T>
+    StdString,                            // String (Eä string type)
+    StdFile,                              // File handle type
 }
 
 /// Represents a function type with parameters and return type.
@@ -125,7 +125,9 @@ impl fmt::Display for EaType {
             EaType::Error => write!(f, "<e>"),
             EaType::SIMDVector { vector_type, .. } => write!(f, "{}", vector_type),
             EaType::StdVec(elem_type) => write!(f, "Vec<{}>", elem_type),
-            EaType::StdHashMap(key_type, value_type) => write!(f, "HashMap<{}, {}>", key_type, value_type),
+            EaType::StdHashMap(key_type, value_type) => {
+                write!(f, "HashMap<{}, {}>", key_type, value_type)
+            }
             EaType::StdHashSet(elem_type) => write!(f, "HashSet<{}>", elem_type),
             EaType::StdString => write!(f, "String"),
             EaType::StdFile => write!(f, "File"),
@@ -615,7 +617,9 @@ impl TypeChecker {
 
         // HashMap<K, V> collection type (for now we'll use i32 for both key and value)
         let hashmap_type = EaType::StdHashMap(Box::new(EaType::I32), Box::new(EaType::I32));
-        self.context.types.insert("HashMap".to_string(), hashmap_type);
+        self.context
+            .types
+            .insert("HashMap".to_string(), hashmap_type);
     }
 
     /// Gets a reference to the hardware detector.
@@ -635,30 +639,42 @@ impl TypeChecker {
     /// Type checks a complete program.
     pub fn check_program(&mut self, program: &[Stmt]) -> Result<TypeContext> {
         // Record initial memory usage for type checking
-        let initial_memory = std::mem::size_of::<TypeContext>() + program.len() * std::mem::size_of::<Stmt>();
-        record_memory_usage(CompilationPhase::TypeChecking, initial_memory, "Started type checking");
-        
+        let initial_memory =
+            std::mem::size_of::<TypeContext>() + program.len() * std::mem::size_of::<Stmt>();
+        record_memory_usage(
+            CompilationPhase::TypeChecking,
+            initial_memory,
+            "Started type checking",
+        );
+
         for (i, stmt) in program.iter().enumerate() {
             self.check_statement(stmt)?;
-            
+
             // Check memory usage periodically
             if i % 50 == 0 {
-                let current_memory = std::mem::size_of::<TypeContext>() + 
-                    self.context.functions.len() * std::mem::size_of::<EaType>() +
-                    self.context.variables.len() * std::mem::size_of::<EaType>();
-                record_memory_usage(CompilationPhase::TypeChecking, current_memory, 
-                    &format!("Type checking progress: {}/{} statements", i + 1, program.len()));
-                
+                let current_memory = std::mem::size_of::<TypeContext>()
+                    + self.context.functions.len() * std::mem::size_of::<EaType>()
+                    + self.context.variables.len() * std::mem::size_of::<EaType>();
+                record_memory_usage(
+                    CompilationPhase::TypeChecking,
+                    current_memory,
+                    &format!(
+                        "Type checking progress: {}/{} statements",
+                        i + 1,
+                        program.len()
+                    ),
+                );
+
                 // Check memory limits
                 if let Err(e) = check_memory_limit() {
-                    return Err(CompileError::MemoryExhausted { 
-                        phase: "type checking".to_string(), 
-                        details: e.to_string() 
+                    return Err(CompileError::MemoryExhausted {
+                        phase: "type checking".to_string(),
+                        details: e.to_string(),
                     });
                 }
             }
         }
-        
+
         Ok(self.context.clone())
     }
 
@@ -745,18 +761,21 @@ impl TypeChecker {
 
         let old_context = std::mem::replace(&mut self.context, function_context);
         let result = self.check_statement(body);
-        
+
         // Check if function with non-unit return type actually returns a value
         if result.is_ok() && !matches!(return_ea_type, EaType::Unit) {
             if !self.statement_returns(body) {
                 self.context = old_context;
                 return Err(CompileError::type_error(
-                    format!("Function '{}' with return type {:?} is missing a return statement", name, return_ea_type),
+                    format!(
+                        "Function '{}' with return type {:?} is missing a return statement",
+                        name, return_ea_type
+                    ),
                     Position::new(0, 0, 0),
                 ));
             }
         }
-        
+
         self.context = old_context;
         result
     }
@@ -830,7 +849,11 @@ impl TypeChecker {
                 // A block returns if any statement in it returns
                 stmts.iter().any(|s| self.statement_returns(s))
             }
-            Stmt::If { condition: _, then_branch, else_branch } => {
+            Stmt::If {
+                condition: _,
+                then_branch,
+                else_branch,
+            } => {
                 // If statement returns if both branches return
                 if let Some(else_stmt) = else_branch {
                     self.statement_returns(then_branch) && self.statement_returns(else_stmt)
@@ -838,15 +861,27 @@ impl TypeChecker {
                     false // If without else cannot guarantee return
                 }
             }
-            Stmt::While { condition: _, body: _ } => {
+            Stmt::While {
+                condition: _,
+                body: _,
+            } => {
                 // While loop cannot guarantee return (might not execute)
                 false
             }
-            Stmt::For { initializer: _, condition: _, increment: _, body: _ } => {
+            Stmt::For {
+                initializer: _,
+                condition: _,
+                increment: _,
+                body: _,
+            } => {
                 // For loop cannot guarantee return (might not execute)
                 false
             }
-            Stmt::ForIn { variable: _, iterable: _, body: _ } => {
+            Stmt::ForIn {
+                variable: _,
+                iterable: _,
+                body: _,
+            } => {
                 // For-in loop cannot guarantee return (might not execute)
                 false
             }
@@ -1070,13 +1105,20 @@ impl TypeChecker {
         match op {
             BinaryOp::Add => {
                 // Handle String concatenation
-                if matches!(left_type, EaType::StdString) && matches!(right_type, EaType::StdString) {
+                if matches!(left_type, EaType::StdString) && matches!(right_type, EaType::StdString)
+                {
                     Ok(EaType::StdString)
-                } else if matches!(left_type, EaType::String) && matches!(right_type, EaType::String) {
+                } else if matches!(left_type, EaType::String)
+                    && matches!(right_type, EaType::String)
+                {
                     Ok(EaType::String)
-                } else if matches!(left_type, EaType::StdString) && matches!(right_type, EaType::String) {
+                } else if matches!(left_type, EaType::StdString)
+                    && matches!(right_type, EaType::String)
+                {
                     Ok(EaType::StdString)
-                } else if matches!(left_type, EaType::String) && matches!(right_type, EaType::StdString) {
+                } else if matches!(left_type, EaType::String)
+                    && matches!(right_type, EaType::StdString)
+                {
                     Ok(EaType::StdString)
                 } else if self.is_numeric_type(&left_type)
                     && self.types_compatible(&left_type, &right_type)
@@ -1090,10 +1132,7 @@ impl TypeChecker {
                     ))
                 }
             }
-            BinaryOp::Subtract
-            | BinaryOp::Multiply
-            | BinaryOp::Divide
-            | BinaryOp::Modulo => {
+            BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => {
                 if self.is_numeric_type(&left_type)
                     && self.types_compatible(&left_type, &right_type)
                 {
@@ -1213,19 +1252,13 @@ impl TypeChecker {
     fn check_function_call(&mut self, callee: &Box<Expr>, args: &[Expr]) -> Result<EaType> {
         match &**callee {
             // Direct function call: func_name(args)
-            Expr::Variable(func_name) => {
-                self.check_direct_function_call(func_name, args)
-            }
+            Expr::Variable(func_name) => self.check_direct_function_call(func_name, args),
             // Method call: object.method(args) or Type::method(args)
-            Expr::FieldAccess(base, method_name) => {
-                self.check_method_call(base, method_name, args)
-            }
-            _ => {
-                Err(CompileError::type_error(
-                    "Only direct function calls and method calls are supported".to_string(),
-                    Position::new(0, 0, 0),
-                ))
-            }
+            Expr::FieldAccess(base, method_name) => self.check_method_call(base, method_name, args),
+            _ => Err(CompileError::type_error(
+                "Only direct function calls and method calls are supported".to_string(),
+                Position::new(0, 0, 0),
+            )),
         }
     }
 
@@ -1244,9 +1277,7 @@ impl TypeChecker {
                 ));
             }
 
-            for (i, (arg, expected_type)) in
-                args.iter().zip(func_type.params.iter()).enumerate()
-            {
+            for (i, (arg, expected_type)) in args.iter().zip(func_type.params.iter()).enumerate() {
                 let arg_type = self.check_expression(arg)?;
                 if !self.types_compatible(expected_type, &arg_type) {
                     return Err(CompileError::type_error(
@@ -1271,7 +1302,12 @@ impl TypeChecker {
         }
     }
 
-    fn check_method_call(&mut self, base: &Box<Expr>, method_name: &str, args: &[Expr]) -> Result<EaType> {
+    fn check_method_call(
+        &mut self,
+        base: &Box<Expr>,
+        method_name: &str,
+        args: &[Expr],
+    ) -> Result<EaType> {
         match &**base {
             // Static method call: Vec::new(), HashMap::new(), etc.
             Expr::Variable(type_name) if type_name == "Vec" => {
@@ -1285,6 +1321,9 @@ impl TypeChecker {
             }
             Expr::Variable(type_name) if type_name == "String" => {
                 self.check_string_static_method(method_name, args)
+            }
+            Expr::Variable(type_name) if type_name == "File" => {
+                self.check_file_static_method(method_name, args)
             }
             // Instance method call: vec.push(), vec.len(), etc.
             _ => {
@@ -1306,12 +1345,10 @@ impl TypeChecker {
                 // Return Vec<i32> type for now (we can extend this for generics later)
                 Ok(EaType::StdVec(Box::new(EaType::I32)))
             }
-            _ => {
-                Err(CompileError::type_error(
-                    format!("Unknown static method 'Vec::{}'", method_name),
-                    Position::new(0, 0, 0),
-                ))
-            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown static method 'Vec::{}'", method_name),
+                Position::new(0, 0, 0),
+            )),
         }
     }
 
@@ -1325,14 +1362,15 @@ impl TypeChecker {
                     ));
                 }
                 // Return HashMap<i32, i32> type for now (we can extend this for generics later)
-                Ok(EaType::StdHashMap(Box::new(EaType::I32), Box::new(EaType::I32)))
-            }
-            _ => {
-                Err(CompileError::type_error(
-                    format!("Unknown static method 'HashMap::{}'", method_name),
-                    Position::new(0, 0, 0),
+                Ok(EaType::StdHashMap(
+                    Box::new(EaType::I32),
+                    Box::new(EaType::I32),
                 ))
             }
+            _ => Err(CompileError::type_error(
+                format!("Unknown static method 'HashMap::{}'", method_name),
+                Position::new(0, 0, 0),
+            )),
         }
     }
 
@@ -1348,12 +1386,10 @@ impl TypeChecker {
                 // Return HashSet<i32> type for now (we can extend this for generics later)
                 Ok(EaType::StdHashSet(Box::new(EaType::I32)))
             }
-            _ => {
-                Err(CompileError::type_error(
-                    format!("Unknown static method 'HashSet::{}'", method_name),
-                    Position::new(0, 0, 0),
-                ))
-            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown static method 'HashSet::{}'", method_name),
+                Position::new(0, 0, 0),
+            )),
         }
     }
 
@@ -1385,41 +1421,181 @@ impl TypeChecker {
                 }
                 Ok(EaType::StdString)
             }
-            _ => {
-                Err(CompileError::type_error(
-                    format!("Unknown static method 'String::{}'", method_name),
-                    Position::new(0, 0, 0),
-                ))
-            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown static method 'String::{}'", method_name),
+                Position::new(0, 0, 0),
+            )),
         }
     }
 
-    fn check_instance_method(&mut self, base_type: &EaType, method_name: &str, args: &[Expr]) -> Result<EaType> {
+    fn check_file_static_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "open" => {
+                if args.len() != 2 {
+                    return Err(CompileError::type_error(
+                        "File::open() takes exactly two arguments (filename, mode)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                // Check that both arguments are strings
+                let filename_type = self.check_expression(&args[0])?;
+                let mode_type = self.check_expression(&args[1])?;
+                if !matches!(filename_type, EaType::String) || !matches!(mode_type, EaType::String)
+                {
+                    return Err(CompileError::type_error(
+                        "File::open() arguments must be strings (filename, mode)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::StdFile)
+            }
+            "exists" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "File::exists() takes exactly one argument (filename)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let filename_type = self.check_expression(&args[0])?;
+                if !matches!(filename_type, EaType::String) {
+                    return Err(CompileError::type_error(
+                        "File::exists() argument must be a string".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Bool)
+            }
+            "size" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "File::size() takes exactly one argument (filename)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let filename_type = self.check_expression(&args[0])?;
+                if !matches!(filename_type, EaType::String) {
+                    return Err(CompileError::type_error(
+                        "File::size() argument must be a string".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I64)
+            }
+            "delete" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "File::delete() takes exactly one argument (filename)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let filename_type = self.check_expression(&args[0])?;
+                if !matches!(filename_type, EaType::String) {
+                    return Err(CompileError::type_error(
+                        "File::delete() argument must be a string".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit)
+            }
+            "write" => {
+                if args.len() != 2 {
+                    return Err(CompileError::type_error(
+                        "File::write() takes exactly two arguments (file, data)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let file_type = self.check_expression(&args[0])?;
+                let data_type = self.check_expression(&args[1])?;
+                if !matches!(file_type, EaType::StdFile) {
+                    return Err(CompileError::type_error(
+                        "File::write() first argument must be a File".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                if !matches!(data_type, EaType::String) {
+                    return Err(CompileError::type_error(
+                        "File::write() second argument must be a string".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit)
+            }
+            "readline" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "File::readline() takes exactly one argument (file)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let file_type = self.check_expression(&args[0])?;
+                if !matches!(file_type, EaType::StdFile) {
+                    return Err(CompileError::type_error(
+                        "File::readline() argument must be a File".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::String)
+            }
+            "read_all" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "File::read_all() takes exactly one argument (file)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let file_type = self.check_expression(&args[0])?;
+                if !matches!(file_type, EaType::StdFile) {
+                    return Err(CompileError::type_error(
+                        "File::read_all() argument must be a File".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::String)
+            }
+            "close" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "File::close() takes exactly one argument (file)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let file_type = self.check_expression(&args[0])?;
+                if !matches!(file_type, EaType::StdFile) {
+                    return Err(CompileError::type_error(
+                        "File::close() argument must be a File".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit)
+            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown static method 'File::{}'", method_name),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+
+    fn check_instance_method(
+        &mut self,
+        base_type: &EaType,
+        method_name: &str,
+        args: &[Expr],
+    ) -> Result<EaType> {
         match base_type {
             EaType::Custom(type_name) if type_name == "Vec" => {
                 self.check_vec_instance_method(method_name, args)
             }
-            EaType::StdVec(_) => {
-                self.check_vec_instance_method(method_name, args)
-            }
-            EaType::StdHashMap(_, _) => {
-                self.check_hashmap_instance_method(method_name, args)
-            }
+            EaType::StdVec(_) => self.check_vec_instance_method(method_name, args),
+            EaType::StdHashMap(_, _) => self.check_hashmap_instance_method(method_name, args),
             EaType::Custom(type_name) if type_name == "HashSet" => {
                 self.check_hashset_instance_method(method_name, args)
             }
-            EaType::StdHashSet(_) => {
-                self.check_hashset_instance_method(method_name, args)
-            }
-            EaType::StdString => {
-                self.check_string_instance_method(method_name, args)
-            }
-            _ => {
-                Err(CompileError::type_error(
-                    format!("Type {:?} has no method '{}'", base_type, method_name),
-                    Position::new(0, 0, 0),
-                ))
-            }
+            EaType::StdHashSet(_) => self.check_hashset_instance_method(method_name, args),
+            EaType::StdString => self.check_string_instance_method(method_name, args),
+            _ => Err(CompileError::type_error(
+                format!("Type {:?} has no method '{}'", base_type, method_name),
+                Position::new(0, 0, 0),
+            )),
         }
     }
 
@@ -1504,16 +1680,18 @@ impl TypeChecker {
                 }
                 Ok(EaType::Unit) // clear returns void
             }
-            _ => {
-                Err(CompileError::type_error(
-                    format!("Unknown Vec method '{}'", method_name),
-                    Position::new(0, 0, 0),
-                ))
-            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown Vec method '{}'", method_name),
+                Position::new(0, 0, 0),
+            )),
         }
     }
 
-    fn check_hashmap_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+    fn check_hashmap_instance_method(
+        &mut self,
+        method_name: &str,
+        args: &[Expr],
+    ) -> Result<EaType> {
         match method_name {
             "insert" => {
                 if args.len() != 2 {
@@ -1577,7 +1755,10 @@ impl TypeChecker {
                 let key_type = self.check_expression(&args[0])?;
                 if !self.types_compatible(&EaType::I32, &key_type) {
                     return Err(CompileError::type_error(
-                        format!("HashMap::contains_key() expects i32 key, got {:?}", key_type),
+                        format!(
+                            "HashMap::contains_key() expects i32 key, got {:?}",
+                            key_type
+                        ),
                         Position::new(0, 0, 0),
                     ));
                 }
@@ -1618,16 +1799,18 @@ impl TypeChecker {
                 }
                 Ok(EaType::Unit) // clear returns void
             }
-            _ => {
-                Err(CompileError::type_error(
-                    format!("Unknown HashMap method '{}'", method_name),
-                    Position::new(0, 0, 0),
-                ))
-            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown HashMap method '{}'", method_name),
+                Position::new(0, 0, 0),
+            )),
         }
     }
 
-    fn check_hashset_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+    fn check_hashset_instance_method(
+        &mut self,
+        method_name: &str,
+        args: &[Expr],
+    ) -> Result<EaType> {
         match method_name {
             "insert" => {
                 if args.len() != 1 {
@@ -1708,12 +1891,10 @@ impl TypeChecker {
                 }
                 Ok(EaType::Unit) // clear returns void
             }
-            _ => {
-                Err(CompileError::type_error(
-                    format!("Unknown HashSet method '{}'", method_name),
-                    Position::new(0, 0, 0),
-                ))
-            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown HashSet method '{}'", method_name),
+                Position::new(0, 0, 0),
+            )),
         }
     }
 
@@ -1839,12 +2020,10 @@ impl TypeChecker {
                 }
                 Ok(EaType::StdString)
             }
-            _ => {
-                Err(CompileError::type_error(
-                    format!("Unknown String method '{}'", method_name),
-                    Position::new(0, 0, 0),
-                ))
-            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown String method '{}'", method_name),
+                Position::new(0, 0, 0),
+            )),
         }
     }
 
@@ -1917,7 +2096,10 @@ impl TypeChecker {
                     }
                     ("HashMap", "new") => {
                         // HashMap::new() returns a HashMap<i32, i32> for now
-                        return Ok(EaType::StdHashMap(Box::new(EaType::I32), Box::new(EaType::I32)));
+                        return Ok(EaType::StdHashMap(
+                            Box::new(EaType::I32),
+                            Box::new(EaType::I32),
+                        ));
                     }
                     _ => {
                         // Unknown static method
@@ -2244,44 +2426,172 @@ impl TypeChecker {
             "string" => Ok(EaType::String),
             "()" => Ok(EaType::Unit),
             // SIMD vector types
-            "f32x2" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F32, width: 2, vector_type: crate::ast::SIMDVectorType::F32x2 }),
-            "f32x4" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F32, width: 4, vector_type: crate::ast::SIMDVectorType::F32x4 }),
-            "f32x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F32, width: 8, vector_type: crate::ast::SIMDVectorType::F32x8 }),
-            "f32x16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F32, width: 16, vector_type: crate::ast::SIMDVectorType::F32x16 }),
-            "f64x2" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F64, width: 2, vector_type: crate::ast::SIMDVectorType::F64x2 }),
-            "f64x4" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F64, width: 4, vector_type: crate::ast::SIMDVectorType::F64x4 }),
-            "f64x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::F64, width: 8, vector_type: crate::ast::SIMDVectorType::F64x8 }),
-            "i32x2" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I32, width: 2, vector_type: crate::ast::SIMDVectorType::I32x2 }),
-            "i32x4" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I32, width: 4, vector_type: crate::ast::SIMDVectorType::I32x4 }),
-            "i32x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I32, width: 8, vector_type: crate::ast::SIMDVectorType::I32x8 }),
-            "i32x16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I32, width: 16, vector_type: crate::ast::SIMDVectorType::I32x16 }),
-            "i64x2" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I64, width: 2, vector_type: crate::ast::SIMDVectorType::I64x2 }),
-            "i64x4" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I64, width: 4, vector_type: crate::ast::SIMDVectorType::I64x4 }),
-            "i64x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I64, width: 8, vector_type: crate::ast::SIMDVectorType::I64x8 }),
-            "i16x4" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I16, width: 4, vector_type: crate::ast::SIMDVectorType::I16x4 }),
-            "i16x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I16, width: 8, vector_type: crate::ast::SIMDVectorType::I16x8 }),
-            "i16x16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I16, width: 16, vector_type: crate::ast::SIMDVectorType::I16x16 }),
-            "i16x32" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I16, width: 32, vector_type: crate::ast::SIMDVectorType::I16x32 }),
-            "i8x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I8, width: 8, vector_type: crate::ast::SIMDVectorType::I8x8 }),
-            "i8x16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I8, width: 16, vector_type: crate::ast::SIMDVectorType::I8x16 }),
-            "i8x32" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I8, width: 32, vector_type: crate::ast::SIMDVectorType::I8x32 }),
-            "i8x64" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I8, width: 64, vector_type: crate::ast::SIMDVectorType::I8x64 }),
-            "u32x4" => Ok(EaType::SIMDVector { element_type: SIMDElementType::U32, width: 4, vector_type: crate::ast::SIMDVectorType::U32x4 }),
-            "u32x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::U32, width: 8, vector_type: crate::ast::SIMDVectorType::U32x8 }),
-            "u16x8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::U16, width: 8, vector_type: crate::ast::SIMDVectorType::U16x8 }),
-            "u16x16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::U16, width: 16, vector_type: crate::ast::SIMDVectorType::U16x16 }),
-            "u8x16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::U8, width: 16, vector_type: crate::ast::SIMDVectorType::U8x16 }),
-            "u8x32" => Ok(EaType::SIMDVector { element_type: SIMDElementType::U8, width: 32, vector_type: crate::ast::SIMDVectorType::U8x32 }),
-            "mask8" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I8, width: 8, vector_type: crate::ast::SIMDVectorType::Mask8 }),
-            "mask16" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I16, width: 16, vector_type: crate::ast::SIMDVectorType::Mask16 }),
-            "mask32" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I32, width: 32, vector_type: crate::ast::SIMDVectorType::Mask32 }),
-            "mask64" => Ok(EaType::SIMDVector { element_type: SIMDElementType::I64, width: 64, vector_type: crate::ast::SIMDVectorType::Mask64 }),
+            "f32x2" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::F32,
+                width: 2,
+                vector_type: crate::ast::SIMDVectorType::F32x2,
+            }),
+            "f32x4" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::F32,
+                width: 4,
+                vector_type: crate::ast::SIMDVectorType::F32x4,
+            }),
+            "f32x8" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::F32,
+                width: 8,
+                vector_type: crate::ast::SIMDVectorType::F32x8,
+            }),
+            "f32x16" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::F32,
+                width: 16,
+                vector_type: crate::ast::SIMDVectorType::F32x16,
+            }),
+            "f64x2" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::F64,
+                width: 2,
+                vector_type: crate::ast::SIMDVectorType::F64x2,
+            }),
+            "f64x4" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::F64,
+                width: 4,
+                vector_type: crate::ast::SIMDVectorType::F64x4,
+            }),
+            "f64x8" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::F64,
+                width: 8,
+                vector_type: crate::ast::SIMDVectorType::F64x8,
+            }),
+            "i32x2" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I32,
+                width: 2,
+                vector_type: crate::ast::SIMDVectorType::I32x2,
+            }),
+            "i32x4" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I32,
+                width: 4,
+                vector_type: crate::ast::SIMDVectorType::I32x4,
+            }),
+            "i32x8" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I32,
+                width: 8,
+                vector_type: crate::ast::SIMDVectorType::I32x8,
+            }),
+            "i32x16" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I32,
+                width: 16,
+                vector_type: crate::ast::SIMDVectorType::I32x16,
+            }),
+            "i64x2" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I64,
+                width: 2,
+                vector_type: crate::ast::SIMDVectorType::I64x2,
+            }),
+            "i64x4" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I64,
+                width: 4,
+                vector_type: crate::ast::SIMDVectorType::I64x4,
+            }),
+            "i64x8" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I64,
+                width: 8,
+                vector_type: crate::ast::SIMDVectorType::I64x8,
+            }),
+            "i16x4" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I16,
+                width: 4,
+                vector_type: crate::ast::SIMDVectorType::I16x4,
+            }),
+            "i16x8" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I16,
+                width: 8,
+                vector_type: crate::ast::SIMDVectorType::I16x8,
+            }),
+            "i16x16" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I16,
+                width: 16,
+                vector_type: crate::ast::SIMDVectorType::I16x16,
+            }),
+            "i16x32" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I16,
+                width: 32,
+                vector_type: crate::ast::SIMDVectorType::I16x32,
+            }),
+            "i8x8" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I8,
+                width: 8,
+                vector_type: crate::ast::SIMDVectorType::I8x8,
+            }),
+            "i8x16" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I8,
+                width: 16,
+                vector_type: crate::ast::SIMDVectorType::I8x16,
+            }),
+            "i8x32" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I8,
+                width: 32,
+                vector_type: crate::ast::SIMDVectorType::I8x32,
+            }),
+            "i8x64" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I8,
+                width: 64,
+                vector_type: crate::ast::SIMDVectorType::I8x64,
+            }),
+            "u32x4" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::U32,
+                width: 4,
+                vector_type: crate::ast::SIMDVectorType::U32x4,
+            }),
+            "u32x8" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::U32,
+                width: 8,
+                vector_type: crate::ast::SIMDVectorType::U32x8,
+            }),
+            "u16x8" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::U16,
+                width: 8,
+                vector_type: crate::ast::SIMDVectorType::U16x8,
+            }),
+            "u16x16" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::U16,
+                width: 16,
+                vector_type: crate::ast::SIMDVectorType::U16x16,
+            }),
+            "u8x16" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::U8,
+                width: 16,
+                vector_type: crate::ast::SIMDVectorType::U8x16,
+            }),
+            "u8x32" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::U8,
+                width: 32,
+                vector_type: crate::ast::SIMDVectorType::U8x32,
+            }),
+            "mask8" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I8,
+                width: 8,
+                vector_type: crate::ast::SIMDVectorType::Mask8,
+            }),
+            "mask16" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I16,
+                width: 16,
+                vector_type: crate::ast::SIMDVectorType::Mask16,
+            }),
+            "mask32" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I32,
+                width: 32,
+                vector_type: crate::ast::SIMDVectorType::Mask32,
+            }),
+            "mask64" => Ok(EaType::SIMDVector {
+                element_type: SIMDElementType::I64,
+                width: 64,
+                vector_type: crate::ast::SIMDVectorType::Mask64,
+            }),
             // Standard library collection types
             "Vec" => {
                 // For now, treat Vec as a generic type - proper generics will be implemented later
                 // This is a placeholder until we have full generic type support
                 Ok(EaType::Custom("Vec".to_string()))
-            },
+            }
             "HashMap" => Ok(EaType::Custom("HashMap".to_string())),
             "HashSet" => Ok(EaType::Custom("HashSet".to_string())),
             "String" => Ok(EaType::Custom("String".to_string())), // Eä String type (different from primitive string)
@@ -2318,10 +2628,20 @@ impl TypeChecker {
             (EaType::Custom(name), EaType::F32) if name == "f32" => true,
             (EaType::F64, EaType::Custom(name)) if name == "f64" => true,
             (EaType::Custom(name), EaType::F64) if name == "f64" => true,
-            
+
             // Handle SIMD types that might be represented as Custom types
-            (EaType::SIMDVector { vector_type: vt1, .. }, EaType::Custom(name)) if name == &format!("{}", vt1) => true,
-            (EaType::Custom(name), EaType::SIMDVector { vector_type: vt1, .. }) if name == &format!("{}", vt1) => true,
+            (
+                EaType::SIMDVector {
+                    vector_type: vt1, ..
+                },
+                EaType::Custom(name),
+            ) if name == &format!("{}", vt1) => true,
+            (
+                EaType::Custom(name),
+                EaType::SIMDVector {
+                    vector_type: vt1, ..
+                },
+            ) if name == &format!("{}", vt1) => true,
 
             // Allow I64 literals to be used where smaller integer types are expected
             // This is common in programming languages - literal 5 can be used as i32
@@ -2334,7 +2654,7 @@ impl TypeChecker {
 
             // Allow F64 literals to be used where F32 is expected
             (EaType::F32, EaType::F64) => true,
-            
+
             // Allow String type compatibility
             (EaType::StdString, EaType::String) => true,
             (EaType::String, EaType::StdString) => true,
@@ -2372,15 +2692,15 @@ impl TypeChecker {
             // Allow Custom("Vec") to be compatible with StdVec
             (EaType::Custom(name), EaType::StdVec(_)) if name == "Vec" => true,
             (EaType::StdVec(_), EaType::Custom(name)) if name == "Vec" => true,
-            
+
             // Allow Custom("HashMap") to be compatible with StdHashMap
             (EaType::Custom(name), EaType::StdHashMap(_, _)) if name == "HashMap" => true,
             (EaType::StdHashMap(_, _), EaType::Custom(name)) if name == "HashMap" => true,
-            
+
             // Allow Custom("HashSet") to be compatible with StdHashSet
             (EaType::Custom(name), EaType::StdHashSet(_)) if name == "HashSet" => true,
             (EaType::StdHashSet(_), EaType::Custom(name)) if name == "HashSet" => true,
-            
+
             // Allow Custom("String") to be compatible with StdString
             (EaType::Custom(name), EaType::StdString) if name == "String" => true,
             (EaType::StdString, EaType::Custom(name)) if name == "String" => true,

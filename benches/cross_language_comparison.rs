@@ -1,5 +1,5 @@
 //! Cross-Language Performance Comparison
-//! 
+//!
 //! This benchmark provides FAIR comparisons between Eä and other languages:
 //! - Rust, C++, Go vs Eä
 //! - Equivalent algorithms and data structures
@@ -277,7 +277,7 @@ fn is_compiler_available(compiler: &str) -> bool {
         "go" => "version",
         _ => "--version",
     };
-    
+
     Command::new(compiler)
         .arg(version_arg)
         .output()
@@ -289,75 +289,84 @@ fn is_compiler_available(compiler: &str) -> bool {
 fn bench_compilation_speed(c: &mut Criterion) {
     let mut group = c.benchmark_group("compilation_speed");
     group.measurement_time(Duration::from_secs(20));
-    
-    let tests = [FIBONACCI_TEST, FACTORIAL_TEST, ARRAY_SUM_TEST, ITERATIVE_LOOP_TEST];
-    
+
+    let tests = [
+        FIBONACCI_TEST,
+        FACTORIAL_TEST,
+        ARRAY_SUM_TEST,
+        ITERATIVE_LOOP_TEST,
+    ];
+
     for test in tests {
         // Eä compilation
         #[cfg(feature = "llvm")]
         group.bench_function(&format!("ea_{}", test.name), |b| {
             b.iter(|| {
-                let result = compile_to_llvm(black_box(test.ea_code), &format!("bench_{}", test.name));
+                let result =
+                    compile_to_llvm(black_box(test.ea_code), &format!("bench_{}", test.name));
                 // Clean up immediately
                 let _ = fs::remove_file(&format!("bench_{}.ll", test.name));
                 black_box(result.is_ok())
             })
         });
-        
+
         // Rust compilation
         if is_compiler_available("rustc") {
             group.bench_function(&format!("rust_{}", test.name), |b| {
                 b.iter(|| {
                     let filename = format!("bench_{}.rs", test.name);
                     fs::write(&filename, test.rust_code).unwrap();
-                    
+
                     let result = Command::new("rustc")
                         .arg(&filename)
                         .arg("--emit=llvm-ir")
-                        .arg("-C").arg("opt-level=0") // Fair comparison - no optimization
-                        .arg("-o").arg(&format!("bench_{}.ll", test.name))
+                        .arg("-C")
+                        .arg("opt-level=0") // Fair comparison - no optimization
+                        .arg("-o")
+                        .arg(&format!("bench_{}.ll", test.name))
                         .output();
-                    
+
                     // Clean up
                     let _ = fs::remove_file(&filename);
                     let _ = fs::remove_file(&format!("bench_{}.ll", test.name));
-                    
+
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
-        
+
         // C++ compilation
         if is_compiler_available("clang++") {
             group.bench_function(&format!("cpp_{}", test.name), |b| {
                 b.iter(|| {
                     let filename = format!("bench_{}.cpp", test.name);
                     fs::write(&filename, test.cpp_code).unwrap();
-                    
+
                     let result = Command::new("clang++")
                         .arg(&filename)
                         .arg("-S")
                         .arg("-emit-llvm")
                         .arg("-O0") // Fair comparison - no optimization
-                        .arg("-o").arg(&format!("bench_{}.ll", test.name))
+                        .arg("-o")
+                        .arg(&format!("bench_{}.ll", test.name))
                         .output();
-                    
+
                     // Clean up
                     let _ = fs::remove_file(&filename);
                     let _ = fs::remove_file(&format!("bench_{}.ll", test.name));
-                    
+
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
-        
+
         // Go compilation
         if is_compiler_available("go") {
             group.bench_function(&format!("go_{}", test.name), |b| {
                 b.iter(|| {
                     let filename = format!("bench_{}.go", test.name);
                     fs::write(&filename, test.go_code).unwrap();
-                    
+
                     let result = Command::new("go")
                         .arg("tool")
                         .arg("compile")
@@ -365,17 +374,17 @@ fn bench_compilation_speed(c: &mut Criterion) {
                         .arg("-l") // No inlining
                         .arg(&filename)
                         .output();
-                    
+
                     // Clean up
                     let _ = fs::remove_file(&filename);
                     let _ = fs::remove_file(&format!("bench_{}.o", test.name));
-                    
+
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
     }
-    
+
     group.finish();
 }
 
@@ -384,31 +393,34 @@ fn bench_full_pipeline(c: &mut Criterion) {
     let mut group = c.benchmark_group("full_compilation_pipeline");
     group.measurement_time(Duration::from_secs(30));
     group.sample_size(10);
-    
+
     let tests = [FIBONACCI_TEST, FACTORIAL_TEST, ARRAY_SUM_TEST];
-    
+
     for test in tests {
         // Eä full pipeline
         #[cfg(feature = "llvm")]
         group.bench_function(&format!("ea_full_{}", test.name), |b| {
             b.iter(|| {
                 // Step 1: Eä compilation
-                let ir_result = compile_to_llvm(black_box(test.ea_code), &format!("full_{}", test.name));
-                
+                let ir_result =
+                    compile_to_llvm(black_box(test.ea_code), &format!("full_{}", test.name));
+
                 let success = if ir_result.is_ok() {
                     // Step 2: LLVM backend
                     let llc_result = Command::new("llc")
                         .arg(&format!("full_{}.ll", test.name))
-                        .arg("-o").arg(&format!("full_{}.s", test.name))
+                        .arg("-o")
+                        .arg(&format!("full_{}.s", test.name))
                         .output();
-                    
+
                     if llc_result.is_ok() {
                         // Step 3: Linking
                         let link_result = Command::new("gcc")
                             .arg(&format!("full_{}.s", test.name))
-                            .arg("-o").arg(&format!("full_{}_ea", test.name))
+                            .arg("-o")
+                            .arg(&format!("full_{}_ea", test.name))
                             .output();
-                        
+
                         link_result.is_ok()
                     } else {
                         false
@@ -416,83 +428,87 @@ fn bench_full_pipeline(c: &mut Criterion) {
                 } else {
                     false
                 };
-                
+
                 // Clean up
                 let _ = fs::remove_file(&format!("full_{}.ll", test.name));
                 let _ = fs::remove_file(&format!("full_{}.s", test.name));
                 let _ = fs::remove_file(&format!("full_{}_ea", test.name));
-                
+
                 black_box(success)
             })
         });
-        
+
         // Rust full pipeline
         if is_compiler_available("rustc") {
             group.bench_function(&format!("rust_full_{}", test.name), |b| {
                 b.iter(|| {
                     let filename = format!("full_{}.rs", test.name);
                     fs::write(&filename, test.rust_code).unwrap();
-                    
+
                     let result = Command::new("rustc")
                         .arg(&filename)
-                        .arg("-C").arg("opt-level=1") // Minimal optimization
-                        .arg("-o").arg(&format!("full_{}_rust", test.name))
+                        .arg("-C")
+                        .arg("opt-level=1") // Minimal optimization
+                        .arg("-o")
+                        .arg(&format!("full_{}_rust", test.name))
                         .output();
-                    
+
                     // Clean up
                     let _ = fs::remove_file(&filename);
                     let _ = fs::remove_file(&format!("full_{}_rust", test.name));
-                    
+
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
-        
+
         // C++ full pipeline
         if is_compiler_available("g++") {
             group.bench_function(&format!("cpp_full_{}", test.name), |b| {
                 b.iter(|| {
                     let filename = format!("full_{}.cpp", test.name);
                     fs::write(&filename, test.cpp_code).unwrap();
-                    
+
                     let result = Command::new("g++")
                         .arg(&filename)
                         .arg("-O1") // Minimal optimization
-                        .arg("-o").arg(&format!("full_{}_cpp", test.name))
+                        .arg("-o")
+                        .arg(&format!("full_{}_cpp", test.name))
                         .output();
-                    
+
                     // Clean up
                     let _ = fs::remove_file(&filename);
                     let _ = fs::remove_file(&format!("full_{}_cpp", test.name));
-                    
+
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
-        
+
         // Go full pipeline
         if is_compiler_available("go") {
             group.bench_function(&format!("go_full_{}", test.name), |b| {
                 b.iter(|| {
                     let filename = format!("full_{}.go", test.name);
                     fs::write(&filename, test.go_code).unwrap();
-                    
+
                     let result = Command::new("go")
                         .arg("build")
-                        .arg("-o").arg(&format!("full_{}_go", test.name))
+                        .arg("-o")
+                        .arg(&format!("full_{}_go", test.name))
                         .arg(&filename)
                         .output();
-                    
+
                     // Clean up
                     let _ = fs::remove_file(&filename);
                     let _ = fs::remove_file(&format!("full_{}_go", test.name));
-                    
+
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
     }
-    
+
     group.finish();
 }
 
@@ -501,65 +517,61 @@ fn bench_runtime_performance(c: &mut Criterion) {
     let mut group = c.benchmark_group("runtime_performance");
     group.measurement_time(Duration::from_secs(20));
     group.sample_size(10);
-    
+
     // Pre-compile all programs
     let tests = [FIBONACCI_TEST, FACTORIAL_TEST, ARRAY_SUM_TEST];
-    
+
     for test in tests {
         // Compile all versions first
         let ea_compiled = compile_ea_executable(&test);
         let rust_compiled = compile_rust_executable(&test);
         let cpp_compiled = compile_cpp_executable(&test);
         let go_compiled = compile_go_executable(&test);
-        
+
         // Benchmark execution times
         if ea_compiled {
             group.bench_function(&format!("ea_runtime_{}", test.name), |b| {
                 b.iter(|| {
-                    let result = Command::new(&format!("./runtime_{}_ea", test.name))
-                        .output();
+                    let result = Command::new(&format!("./runtime_{}_ea", test.name)).output();
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
-        
+
         if rust_compiled {
             group.bench_function(&format!("rust_runtime_{}", test.name), |b| {
                 b.iter(|| {
-                    let result = Command::new(&format!("./runtime_{}_rust", test.name))
-                        .output();
+                    let result = Command::new(&format!("./runtime_{}_rust", test.name)).output();
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
-        
+
         if cpp_compiled {
             group.bench_function(&format!("cpp_runtime_{}", test.name), |b| {
                 b.iter(|| {
-                    let result = Command::new(&format!("./runtime_{}_cpp", test.name))
-                        .output();
+                    let result = Command::new(&format!("./runtime_{}_cpp", test.name)).output();
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
-        
+
         if go_compiled {
             group.bench_function(&format!("go_runtime_{}", test.name), |b| {
                 b.iter(|| {
-                    let result = Command::new(&format!("./runtime_{}_go", test.name))
-                        .output();
+                    let result = Command::new(&format!("./runtime_{}_go", test.name)).output();
                     black_box(result.map(|o| o.status.success()).unwrap_or(false))
                 })
             });
         }
-        
+
         // Clean up executables
         let _ = fs::remove_file(&format!("runtime_{}_ea", test.name));
         let _ = fs::remove_file(&format!("runtime_{}_rust", test.name));
         let _ = fs::remove_file(&format!("runtime_{}_cpp", test.name));
         let _ = fs::remove_file(&format!("runtime_{}_go", test.name));
     }
-    
+
     group.finish();
 }
 
@@ -568,22 +580,24 @@ fn bench_runtime_performance(c: &mut Criterion) {
 #[cfg(feature = "llvm")]
 fn compile_ea_executable(test: &CrossLanguageTest) -> bool {
     let ir_result = compile_to_llvm(test.ea_code, &format!("runtime_{}", test.name));
-    
+
     if ir_result.is_ok() {
         let llc_result = Command::new("llc")
             .arg(&format!("runtime_{}.ll", test.name))
-            .arg("-o").arg(&format!("runtime_{}.s", test.name))
+            .arg("-o")
+            .arg(&format!("runtime_{}.s", test.name))
             .output();
-        
+
         if llc_result.is_ok() {
             let link_result = Command::new("gcc")
                 .arg(&format!("runtime_{}.s", test.name))
-                .arg("-o").arg(&format!("runtime_{}_ea", test.name))
+                .arg("-o")
+                .arg(&format!("runtime_{}_ea", test.name))
                 .output();
-            
+
             let _ = fs::remove_file(&format!("runtime_{}.ll", test.name));
             let _ = fs::remove_file(&format!("runtime_{}.s", test.name));
-            
+
             link_result.is_ok()
         } else {
             let _ = fs::remove_file(&format!("runtime_{}.ll", test.name));
@@ -603,16 +617,18 @@ fn compile_rust_executable(test: &CrossLanguageTest) -> bool {
     if !is_compiler_available("rustc") {
         return false;
     }
-    
+
     let filename = format!("runtime_{}.rs", test.name);
     fs::write(&filename, test.rust_code).unwrap();
-    
+
     let result = Command::new("rustc")
         .arg(&filename)
-        .arg("-C").arg("opt-level=2") // Standard optimization
-        .arg("-o").arg(&format!("runtime_{}_rust", test.name))
+        .arg("-C")
+        .arg("opt-level=2") // Standard optimization
+        .arg("-o")
+        .arg(&format!("runtime_{}_rust", test.name))
         .output();
-    
+
     let _ = fs::remove_file(&filename);
     result.map(|o| o.status.success()).unwrap_or(false)
 }
@@ -621,16 +637,17 @@ fn compile_cpp_executable(test: &CrossLanguageTest) -> bool {
     if !is_compiler_available("g++") {
         return false;
     }
-    
+
     let filename = format!("runtime_{}.cpp", test.name);
     fs::write(&filename, test.cpp_code).unwrap();
-    
+
     let result = Command::new("g++")
         .arg(&filename)
         .arg("-O2") // Standard optimization
-        .arg("-o").arg(&format!("runtime_{}_cpp", test.name))
+        .arg("-o")
+        .arg(&format!("runtime_{}_cpp", test.name))
         .output();
-    
+
     let _ = fs::remove_file(&filename);
     result.map(|o| o.status.success()).unwrap_or(false)
 }
@@ -639,16 +656,17 @@ fn compile_go_executable(test: &CrossLanguageTest) -> bool {
     if !is_compiler_available("go") {
         return false;
     }
-    
+
     let filename = format!("runtime_{}.go", test.name);
     fs::write(&filename, test.go_code).unwrap();
-    
+
     let result = Command::new("go")
         .arg("build")
-        .arg("-o").arg(&format!("runtime_{}_go", test.name))
+        .arg("-o")
+        .arg(&format!("runtime_{}_go", test.name))
         .arg(&filename)
         .output();
-    
+
     let _ = fs::remove_file(&filename);
     result.map(|o| o.status.success()).unwrap_or(false)
 }

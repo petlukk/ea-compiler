@@ -94,14 +94,14 @@ pub mod simd_math {
 
         let magnitude = magnitude_squared.sqrt();
         let inv_magnitude = 1.0 / magnitude;
-        
+
         Ok(input.simd_map(|x| x * inv_magnitude))
     }
 
     /// SIMD-accelerated matrix-vector multiplication (simplified)
     pub fn matrix_vector_multiply(
-        matrix: &[EaVec<f32>], 
-        vector: &EaVec<f32>
+        matrix: &[EaVec<f32>],
+        vector: &EaVec<f32>,
     ) -> Result<EaVec<f32>, MathError> {
         if matrix.is_empty() {
             return Err(MathError::EmptyMatrix);
@@ -115,12 +115,12 @@ pub mod simd_math {
         }
 
         let mut result = EaVec::with_capacity(rows);
-        
+
         for row in matrix {
             if row.len() != cols {
                 return Err(MathError::InconsistentMatrixDimensions);
             }
-            
+
             let dot_product = row.simd_dot(vector)?;
             result.push(dot_product);
         }
@@ -153,12 +153,12 @@ pub mod simd_math {
             if x > PI {
                 x -= 2.0 * PI;
             }
-            
+
             let x2 = x * x;
             let x3 = x2 * x;
             let x5 = x3 * x2;
             let x7 = x5 * x2;
-            
+
             x - x3 / 6.0 + x5 / 120.0 - x7 / 5040.0
         })
     }
@@ -198,15 +198,15 @@ pub mod scalar {
         if n == 0 {
             return 0;
         }
-        
+
         let mut x = n;
         let mut y = (x + 1) / 2;
-        
+
         while y < x {
             x = y;
             y = (x + n / x) / 2;
         }
-        
+
         x
     }
 
@@ -215,10 +215,10 @@ pub mod scalar {
         if modulus == 1 {
             return 0;
         }
-        
+
         let mut result = 1;
         base %= modulus;
-        
+
         while exp > 0 {
             if exp & 1 == 1 {
                 result = (result * base) % modulus;
@@ -226,7 +226,7 @@ pub mod scalar {
             exp >>= 1;
             base = (base * base) % modulus;
         }
-        
+
         result
     }
 
@@ -260,7 +260,7 @@ pub mod scalar {
         if n % 2 == 0 {
             return false;
         }
-        
+
         let limit = (n as f64).sqrt() as u64 + 1;
         for i in (3..=limit).step_by(2) {
             if n % i == 0 {
@@ -273,12 +273,15 @@ pub mod scalar {
     /// Factorial calculation with overflow protection
     pub fn factorial(n: u32) -> Result<u64, MathError> {
         if n > 20 {
-            return Err(MathError::Overflow("Factorial too large for u64".to_string()));
+            return Err(MathError::Overflow(
+                "Factorial too large for u64".to_string(),
+            ));
         }
-        
+
         let mut result = 1u64;
         for i in 2..=n {
-            result = result.checked_mul(i as u64)
+            result = result
+                .checked_mul(i as u64)
                 .ok_or_else(|| MathError::Overflow("Factorial overflow".to_string()))?;
         }
         Ok(result)
@@ -305,7 +308,9 @@ impl std::fmt::Display for MathError {
             MathError::EmptyVector => write!(f, "Empty vector provided"),
             MathError::EmptyMatrix => write!(f, "Empty matrix provided"),
             MathError::ZeroMagnitude => write!(f, "Vector has zero magnitude"),
-            MathError::InconsistentMatrixDimensions => write!(f, "Matrix has inconsistent dimensions"),
+            MathError::InconsistentMatrixDimensions => {
+                write!(f, "Matrix has inconsistent dimensions")
+            }
             MathError::Overflow(msg) => write!(f, "Mathematical overflow: {}", msg),
             MathError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
         }
@@ -338,15 +343,15 @@ mod tests {
 
     #[test]
     fn test_simd_trigonometric_functions() {
-        let angles: EaVec<f32> = vec![0.0, PI/6.0, PI/4.0, PI/3.0, PI/2.0].into();
-        
+        let angles: EaVec<f32> = vec![0.0, PI / 6.0, PI / 4.0, PI / 3.0, PI / 2.0].into();
+
         let sin_results = simd_math::vec_sin(&angles);
         assert_eq!(sin_results.len(), 5);
-        
+
         // Check some known values (with small tolerance for floating point)
         assert!((sin_results.get(0).unwrap() - 0.0).abs() < 1e-6);
         assert!((sin_results.get(4).unwrap() - 1.0).abs() < 1e-6);
-        
+
         let cos_results = simd_math::vec_cos(&angles);
         assert_eq!(cos_results.len(), 5);
         assert!((cos_results.get(0).unwrap() - 1.0).abs() < 1e-6);
@@ -355,17 +360,17 @@ mod tests {
     #[test]
     fn test_simd_mathematical_operations() {
         let vec1: EaVec<f32> = vec![1.0, 4.0, 9.0, 16.0].into();
-        
+
         let sqrt_results = simd_math::vec_sqrt(&vec1);
         assert_eq!(sqrt_results.len(), 4);
         assert_eq!(sqrt_results.get(0), Some(&1.0));
         assert_eq!(sqrt_results.get(1), Some(&2.0));
         assert_eq!(sqrt_results.get(2), Some(&3.0));
         assert_eq!(sqrt_results.get(3), Some(&4.0));
-        
+
         let exp_results = simd_math::vec_exp(&vec1);
         assert_eq!(exp_results.len(), 4);
-        
+
         let abs_results = simd_math::vec_abs(&vec![-1.0, 2.0, -3.0, 4.0].into());
         assert_eq!(abs_results.get(0), Some(&1.0));
         assert_eq!(abs_results.get(2), Some(&3.0));
@@ -375,11 +380,11 @@ mod tests {
     fn test_vector_normalization() {
         let vec: EaVec<f32> = vec![3.0, 4.0].into(); // 3-4-5 triangle
         let normalized = simd_math::vec_normalize(&vec).unwrap();
-        
+
         assert_eq!(normalized.len(), 2);
         assert!((normalized.get(0).unwrap() - 0.6).abs() < 1e-6);
         assert!((normalized.get(1).unwrap() - 0.8).abs() < 1e-6);
-        
+
         // Test magnitude is 1
         let magnitude_squared = normalized.simd_dot(&normalized).unwrap();
         assert!((magnitude_squared - 1.0).abs() < 1e-6);
@@ -387,12 +392,9 @@ mod tests {
 
     #[test]
     fn test_matrix_vector_multiplication() {
-        let matrix = vec![
-            vec![1.0, 2.0].into(),
-            vec![3.0, 4.0].into(),
-        ];
+        let matrix = vec![vec![1.0, 2.0].into(), vec![3.0, 4.0].into()];
         let vector: EaVec<f32> = vec![5.0, 6.0].into();
-        
+
         let result = simd_math::matrix_vector_multiply(&matrix, &vector).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result.get(0), Some(&17.0)); // 1*5 + 2*6
@@ -404,11 +406,11 @@ mod tests {
         // Test polynomial: 2x² + 3x + 1
         let coefficients: EaVec<f32> = vec![2.0, 3.0, 1.0].into();
         let x_values: EaVec<f32> = vec![0.0, 1.0, 2.0].into();
-        
+
         let results = simd_math::vec_poly_eval(&coefficients, &x_values);
         assert_eq!(results.len(), 3);
-        assert_eq!(results.get(0), Some(&1.0));  // 2*0² + 3*0 + 1 = 1
-        assert_eq!(results.get(1), Some(&6.0));  // 2*1² + 3*1 + 1 = 6
+        assert_eq!(results.get(0), Some(&1.0)); // 2*0² + 3*0 + 1 = 1
+        assert_eq!(results.get(1), Some(&6.0)); // 2*1² + 3*1 + 1 = 6
         assert_eq!(results.get(2), Some(&15.0)); // 2*2² + 3*2 + 1 = 15
     }
 
@@ -417,14 +419,14 @@ mod tests {
         assert_eq!(scalar::isqrt(16), 4);
         assert_eq!(scalar::isqrt(15), 3);
         assert_eq!(scalar::isqrt(0), 0);
-        
+
         assert_eq!(scalar::gcd(48, 18), 6);
         assert_eq!(scalar::lcm(12, 8), 24);
-        
+
         assert!(scalar::is_prime(17));
         assert!(!scalar::is_prime(16));
         assert!(scalar::is_prime(2));
-        
+
         assert_eq!(scalar::factorial(5).unwrap(), 120);
         assert_eq!(scalar::factorial(0).unwrap(), 1);
         assert!(scalar::factorial(25).is_err()); // Too large
@@ -432,16 +434,20 @@ mod tests {
 
     #[test]
     fn test_fast_sine_approximation() {
-        let angles: EaVec<f32> = vec![0.0, PI/6.0, PI/4.0, PI/2.0].into();
+        let angles: EaVec<f32> = vec![0.0, PI / 6.0, PI / 4.0, PI / 2.0].into();
         let fast_sin = simd_math::vec_sin_fast(&angles);
         let exact_sin = simd_math::vec_sin(&angles);
-        
+
         // Fast approximation should be reasonably close to exact values
         for i in 0..angles.len() {
             let fast = fast_sin.get(i).unwrap();
             let exact = exact_sin.get(i).unwrap();
             let error = (fast - exact).abs();
-            assert!(error < 0.01, "Fast sin approximation error too large: {}", error);
+            assert!(
+                error < 0.01,
+                "Fast sin approximation error too large: {}",
+                error
+            );
         }
     }
 
@@ -449,11 +455,11 @@ mod tests {
     fn test_linear_interpolation() {
         let a: EaVec<f32> = vec![0.0, 10.0, 20.0].into();
         let b: EaVec<f32> = vec![100.0, 200.0, 300.0].into();
-        
+
         let result = simd_math::vec_lerp(&a, &b, 0.5).unwrap();
-        assert_eq!(result.get(0), Some(&50.0));   // (0 + 100) / 2
-        assert_eq!(result.get(1), Some(&105.0));  // (10 + 200) / 2
-        assert_eq!(result.get(2), Some(&160.0));  // (20 + 300) / 2
+        assert_eq!(result.get(0), Some(&50.0)); // (0 + 100) / 2
+        assert_eq!(result.get(1), Some(&105.0)); // (10 + 200) / 2
+        assert_eq!(result.get(2), Some(&160.0)); // (20 + 300) / 2
     }
 
     #[test]
@@ -461,11 +467,11 @@ mod tests {
         let empty_vec = EaVec::new();
         let result = simd_math::vec_normalize(&empty_vec);
         assert_eq!(result, Err(MathError::EmptyVector));
-        
+
         let zero_vec: EaVec<f32> = vec![0.0, 0.0].into();
         let result = simd_math::vec_normalize(&zero_vec);
         assert_eq!(result, Err(MathError::ZeroMagnitude));
-        
+
         let vec1: EaVec<f32> = vec![1.0, 2.0].into();
         let vec2: EaVec<f32> = vec![1.0, 2.0, 3.0].into();
         let result = simd_math::vec_min(&vec1, &vec2);

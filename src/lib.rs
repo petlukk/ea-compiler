@@ -73,7 +73,7 @@ pub use lexer::{Lexer, Position, Token, TokenKind};
 pub use type_system::{EaType, FunctionType, TypeChecker, TypeContext};
 
 // Re-export JIT cache functionality
-pub use jit_cache::{initialize_default_jit_cache, get_jit_cache, JITCacheConfig, JITCacheStats};
+pub use jit_cache::{get_jit_cache, initialize_default_jit_cache, JITCacheConfig, JITCacheStats};
 pub use jit_cached::jit_execute_cached;
 
 /// Compiler version information
@@ -83,70 +83,72 @@ pub const NAME: &str = "Eä Compiler";
 /// Tokenize a source string into a vector of tokens
 pub fn tokenize(source: &str) -> Result<Vec<Token>> {
     eprintln!("🔍 Starting tokenize...");
-    
+
     eprintln!("🏗️ Creating lexer...");
     let mut lexer = Lexer::new(source);
     eprintln!("✅ Lexer created");
-    
+
     eprintln!("🏗️ Calling tokenize_all...");
     let result = lexer.tokenize_all();
     eprintln!("✅ tokenize_all completed");
-    
+
     result
 }
 
 /// Parse a source string into an AST
 pub fn parse(source: &str) -> Result<Vec<ast::Stmt>> {
     eprintln!("🌳 Starting parse...");
-    
+
     eprintln!("🔍 Calling tokenize...");
     let tokens = tokenize(source)?;
     eprintln!("✅ Tokenize completed, got {} tokens", tokens.len());
-    
+
     eprintln!("🏗️ Creating parser...");
     let mut parser = parser::Parser::new(tokens);
     eprintln!("✅ Parser created");
-    
+
     eprintln!("🏗️ Calling parse_program...");
     let result = parser.parse_program();
     eprintln!("✅ parse_program completed");
-    
+
     result
 }
 
 /// Type check a parsed AST
 pub fn type_check(program: &[ast::Stmt]) -> Result<TypeContext> {
     eprintln!("🎯 Starting type_check...");
-    
+
     eprintln!("🏗️ Creating type checker...");
     let mut type_checker = TypeChecker::new();
     eprintln!("✅ Type checker created");
-    
+
     eprintln!("🏗️ Calling check_program...");
     let result = type_checker.check_program(program);
     eprintln!("✅ check_program completed");
-    
+
     result
 }
 
 /// Complete compilation pipeline: source -> tokens -> AST -> type checking
 pub fn compile_to_ast(source: &str) -> Result<(Vec<ast::Stmt>, TypeContext)> {
     eprintln!("🎯 Starting compile_to_ast...");
-    
+
     eprintln!("🌳 Calling parse...");
     let program = parse(source)?;
     eprintln!("✅ Parse completed, got {} statements", program.len());
-    
+
     eprintln!("🎯 Calling type_check...");
     let type_context = type_check(&program)?;
     eprintln!("✅ Type check completed");
-    
+
     eprintln!("✅ compile_to_ast completed successfully");
     Ok((program, type_context))
 }
 
 /// Streaming compilation pipeline for large programs
-pub fn compile_to_ast_streaming(source: &str) -> Result<(TypeContext, streaming_compiler::StreamingStats)> {
+pub fn compile_to_ast_streaming(
+    source: &str,
+) -> Result<(TypeContext, streaming_compiler::StreamingStats)> {
     streaming_compiler::stream_compile_source(source)
 }
 
@@ -166,7 +168,7 @@ pub fn compile_to_llvm(source: &str, module_name: &str) -> Result<()> {
     eprintln!("✅ LLVM context created");
 
     eprintln!("🏗️ Creating CodeGenerator...");
-    let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
+    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
     eprintln!("✅ CodeGenerator created");
 
     eprintln!("🏗️ Compiling program to LLVM IR...");
@@ -187,6 +189,31 @@ pub fn compile_to_llvm(source: &str, module_name: &str) -> Result<()> {
     let ir_filename = format!("{}.ll", module_name);
     codegen.write_ir_to_file(&ir_filename)?;
     eprintln!("✅ LLVM IR written to {}", ir_filename);
+
+    // DEVELOPMENT_PROCESS.md: Mandatory external validation
+    eprintln!("🔍 Validating LLVM IR with llvm-as...");
+    match std::process::Command::new("llvm-as")
+        .arg(&ir_filename)
+        .arg("-o")
+        .arg("/dev/null") // Don't write output, just validate
+        .output()
+    {
+        Ok(output) => {
+            if output.status.success() {
+                eprintln!("✅ LLVM IR validation passed");
+            } else {
+                eprintln!("❌ LLVM IR validation failed:");
+                eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+                return Err(crate::error::CompileError::codegen_error(
+                    "LLVM IR validation failed with llvm-as".to_string(),
+                    None,
+                ));
+            }
+        }
+        Err(e) => {
+            eprintln!("⚠️  llvm-as not found, skipping validation: {}", e);
+        }
+    }
 
     eprintln!("🎉 LLVM compilation completed successfully");
     Ok(())
@@ -313,10 +340,16 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
     // Check JIT cache first
     let cache = jit_cache::get_jit_cache();
     if let Some(cached_jit) = cache.get(source) {
-        eprintln!("🚀 Cache hit! Using cached JIT compilation (hit count: {})", cached_jit.hit_count);
-        eprintln!("   Saved compilation time: {:?}", cached_jit.compilation_time);
+        eprintln!(
+            "🚀 Cache hit! Using cached JIT compilation (hit count: {})",
+            cached_jit.hit_count
+        );
+        eprintln!(
+            "   Saved compilation time: {:?}",
+            cached_jit.compilation_time
+        );
         eprintln!("   Saved memory usage: {} bytes", cached_jit.memory_usage);
-        
+
         // Execute cached machine code directly
         return jit_execution::execute_cached_jit(cached_jit);
     }
@@ -348,11 +381,11 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
     // Minimal symbol mapping for JIT execution
     unsafe {
         eprintln!("🔍 Starting minimal symbol resolution...");
-        
+
         // Map only the essential symbols for I/O
         let puts_addr = libc::puts as *const () as usize;
         let printf_addr = libc::printf as *const () as usize;
-        
+
         eprintln!("📍 Symbol addresses:");
         eprintln!("   puts: 0x{:x}", puts_addr);
         eprintln!("   printf: 0x{:x}", printf_addr);
@@ -362,50 +395,50 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
             execution_engine.add_global_mapping(&puts_fn, puts_addr);
             eprintln!("✅ Mapped puts symbol successfully");
         }
-        
+
         // Map printf symbol
         if let Some(printf_fn) = codegen.get_module().get_function("printf") {
             execution_engine.add_global_mapping(&printf_fn, printf_addr);
             eprintln!("✅ Mapped printf symbol successfully");
         }
-        
+
         // Map essential file I/O functions
         if let Some(fopen_fn) = codegen.get_module().get_function("fopen") {
             let fopen_addr = libc::fopen as *const () as usize;
             execution_engine.add_global_mapping(&fopen_fn, fopen_addr);
             eprintln!("✅ Mapped fopen symbol successfully");
         }
-        
+
         if let Some(fclose_fn) = codegen.get_module().get_function("fclose") {
             let fclose_addr = libc::fclose as *const () as usize;
             execution_engine.add_global_mapping(&fclose_fn, fclose_addr);
             eprintln!("✅ Mapped fclose symbol successfully");
         }
-        
+
         if let Some(fread_fn) = codegen.get_module().get_function("fread") {
             let fread_addr = libc::fread as *const () as usize;
             execution_engine.add_global_mapping(&fread_fn, fread_addr);
             eprintln!("✅ Mapped fread symbol successfully");
         }
-        
+
         if let Some(fwrite_fn) = codegen.get_module().get_function("fwrite") {
             let fwrite_addr = libc::fwrite as *const () as usize;
             execution_engine.add_global_mapping(&fwrite_fn, fwrite_addr);
             eprintln!("✅ Mapped fwrite symbol successfully");
         }
-        
+
         if let Some(malloc_fn) = codegen.get_module().get_function("malloc") {
             let malloc_addr = libc::malloc as *const () as usize;
             execution_engine.add_global_mapping(&malloc_fn, malloc_addr);
             eprintln!("✅ Mapped malloc symbol successfully");
         }
-        
+
         if let Some(free_fn) = codegen.get_module().get_function("free") {
             let free_addr = libc::free as *const () as usize;
             execution_engine.add_global_mapping(&free_fn, free_addr);
             eprintln!("✅ Mapped free symbol successfully");
         }
-        
+
         if let Some(strlen_fn) = codegen.get_module().get_function("strlen") {
             let strlen_addr = libc::strlen as *const () as usize;
             execution_engine.add_global_mapping(&strlen_fn, strlen_addr);
@@ -436,16 +469,16 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
                     Ok(main_fn) => {
                         eprintln!("✅ Successfully got main function from JIT");
                         let main_fn: JitFunction<unsafe extern "C" fn()> = main_fn;
-                        
+
                         eprintln!("🚀 About to execute main function...");
-                        
+
                         // Comprehensive JIT execution with fallback
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             eprintln!("🔄 Calling main function now...");
                             main_fn.call();
                             eprintln!("✅ Main function completed successfully");
                         }));
-                        
+
                         match result {
                             Ok(_) => {
                                 eprintln!("🎉 JIT execution completed successfully");
@@ -453,7 +486,9 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
                             }
                             Err(panic_info) => {
                                 eprintln!("💥 JIT execution failed!");
-                                eprintln!("   This is likely due to system call integration issues.");
+                                eprintln!(
+                                    "   This is likely due to system call integration issues."
+                                );
                                 eprintln!("   Your Eä compiler is working correctly for:");
                                 eprintln!("   ✅ Arithmetic and logic operations");
                                 eprintln!("   ✅ Variable declarations and assignments");
@@ -467,14 +502,16 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
                                 eprintln!("   2. For production use, the generated LLVM IR is high-quality");
                                 eprintln!("   3. JIT works perfectly for compute-heavy workloads without I/O");
                                 eprintln!("");
-                                eprintln!("🎯 This represents ~90% of a production-ready compiler!");
-                                
+                                eprintln!(
+                                    "🎯 This represents ~90% of a production-ready compiler!"
+                                );
+
                                 if let Some(s) = panic_info.downcast_ref::<String>() {
                                     eprintln!("   Technical details: {}", s);
                                 } else if let Some(s) = panic_info.downcast_ref::<&str>() {
                                     eprintln!("   Technical details: {}", s);
                                 }
-                                
+
                                 Ok(0) // Return success because the compiler itself worked
                             }
                         }

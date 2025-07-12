@@ -3,11 +3,11 @@
 //! This module provides comprehensive resource management including memory limits,
 //! compilation timeouts, and graceful degradation strategies for large programs.
 
-use std::time::{Duration, Instant};
 use crate::{
     error::{CompileError, Result},
     memory_profiler::get_current_memory_usage,
 };
+use std::time::{Duration, Instant};
 
 /// Resource limits configuration
 #[derive(Debug, Clone)]
@@ -29,11 +29,11 @@ pub struct ResourceLimits {
 impl Default for ResourceLimits {
     fn default() -> Self {
         Self {
-            max_memory: 1024 * 1024 * 1024, // 1GB
+            max_memory: 1024 * 1024 * 1024,                 // 1GB
             max_compilation_time: Duration::from_secs(300), // 5 minutes
-            max_tokens: 1_000_000, // 1M tokens
-            max_statements: 100_000, // 100K statements
-            max_nesting_depth: 100, // 100 levels
+            max_tokens: 1_000_000,                          // 1M tokens
+            max_statements: 100_000,                        // 100K statements
+            max_nesting_depth: 100,                         // 100 levels
             enable_graceful_degradation: true,
         }
     }
@@ -235,16 +235,15 @@ impl ResourceManager {
                 eprintln!("⚠️  Warning: Limiting AST depth due to nesting complexity");
                 Ok(())
             }
-            DegradationStrategy::AbortWithSuggestions => {
-                Err(CompileError::CodeGenError {
-                    message: "Compilation aborted due to resource limits. Consider:\n\
+            DegradationStrategy::AbortWithSuggestions => Err(CompileError::CodeGenError {
+                message: "Compilation aborted due to resource limits. Consider:\n\
                              - Breaking code into smaller modules\n\
                              - Reducing nesting depth\n\
                              - Using streaming compilation (--streaming)\n\
-                             - Increasing memory limits".to_string(),
-                    position: None,
-                })
-            }
+                             - Increasing memory limits"
+                    .to_string(),
+                position: None,
+            }),
         }
     }
 
@@ -266,28 +265,38 @@ impl ResourceManager {
     /// Generate a resource usage report
     pub fn generate_report(&self) -> String {
         let mut report = String::new();
-        
+
         report.push_str("=== Resource Usage Report ===\n");
-        report.push_str(&format!("Memory: {:.2} MB / {:.2} MB\n", 
+        report.push_str(&format!(
+            "Memory: {:.2} MB / {:.2} MB\n",
             self.usage.memory_used as f64 / (1024.0 * 1024.0),
-            self.limits.max_memory as f64 / (1024.0 * 1024.0)));
-        report.push_str(&format!("Time: {:.2}s / {:.2}s\n",
+            self.limits.max_memory as f64 / (1024.0 * 1024.0)
+        ));
+        report.push_str(&format!(
+            "Time: {:.2}s / {:.2}s\n",
             self.usage.compilation_time_elapsed.as_secs_f64(),
-            self.limits.max_compilation_time.as_secs_f64()));
-        report.push_str(&format!("Tokens: {} / {}\n",
-            self.usage.tokens_processed, self.limits.max_tokens));
-        report.push_str(&format!("Statements: {} / {}\n",
-            self.usage.statements_processed, self.limits.max_statements));
-        report.push_str(&format!("Max Nesting: {} / {}\n",
-            self.usage.max_nesting_depth_reached, self.limits.max_nesting_depth));
-        
+            self.limits.max_compilation_time.as_secs_f64()
+        ));
+        report.push_str(&format!(
+            "Tokens: {} / {}\n",
+            self.usage.tokens_processed, self.limits.max_tokens
+        ));
+        report.push_str(&format!(
+            "Statements: {} / {}\n",
+            self.usage.statements_processed, self.limits.max_statements
+        ));
+        report.push_str(&format!(
+            "Max Nesting: {} / {}\n",
+            self.usage.max_nesting_depth_reached, self.limits.max_nesting_depth
+        ));
+
         if !self.degradation_strategies.is_empty() {
             report.push_str("\nDegradation Strategies Applied:\n");
             for strategy in &self.degradation_strategies {
                 report.push_str(&format!("  - {:?}\n", strategy));
             }
         }
-        
+
         report
     }
 
@@ -311,9 +320,7 @@ pub fn initialize_resource_manager(limits: ResourceLimits) {
 
 /// Get the global resource manager
 pub fn get_resource_manager() -> Option<&'static mut ResourceManager> {
-    unsafe {
-        GLOBAL_RESOURCE_MANAGER.as_mut()
-    }
+    unsafe { GLOBAL_RESOURCE_MANAGER.as_mut() }
 }
 
 /// Check resource limits using the global manager

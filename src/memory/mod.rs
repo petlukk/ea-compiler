@@ -1,5 +1,5 @@
 //! Zero-cost memory management system for Eä
-//! 
+//!
 //! This module provides revolutionary memory management that is:
 //! - Safer than Rust (compile-time region analysis)
 //! - Faster than C++ (zero-overhead abstractions)
@@ -49,20 +49,20 @@ pub enum MemoryRegion {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CacheOptimization {
     None,
-    L1Friendly,     // 32KB typical
-    L2Friendly,     // 256KB typical
-    L3Friendly,     // 8MB typical
-    Prefetch,       // Hardware prefetch hints
-    NonTemporal,    // Bypass cache for streaming data
+    L1Friendly,  // 32KB typical
+    L2Friendly,  // 256KB typical
+    L3Friendly,  // 8MB typical
+    Prefetch,    // Hardware prefetch hints
+    NonTemporal, // Bypass cache for streaming data
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AllocationStrategy {
-    Linear,         // Simple bump allocator
-    StackBased,     // LIFO allocation/deallocation
-    Pooled,         // Fixed-size block pools
-    Arena,          // Large contiguous allocation
-    SIMD,          // SIMD-aligned allocations
+    Linear,     // Simple bump allocator
+    StackBased, // LIFO allocation/deallocation
+    Pooled,     // Fixed-size block pools
+    Arena,      // Large contiguous allocation
+    SIMD,       // SIMD-aligned allocations
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -87,10 +87,10 @@ pub struct MemoryPool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PoolGrowthStrategy {
-    Fixed,              // No growth
-    Exponential(f64),   // Multiply by factor
-    Linear(usize),      // Add fixed amount
-    Adaptive,           // Based on allocation patterns
+    Fixed,            // No growth
+    Exponential(f64), // Multiply by factor
+    Linear(usize),    // Add fixed amount
+    Adaptive,         // Based on allocation patterns
 }
 
 /// Memory allocation attributes for functions
@@ -113,11 +113,11 @@ pub struct LifetimeConstraint {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LifetimeConstraintType {
-    Outlives(String),       // 'a: 'b (a outlives b)
-    Same(String),           // 'a = 'b (same lifetime)
-    Contained(String),      // 'a ⊆ 'b (a contained in b)
-    Static,                 // 'static lifetime
-    FunctionLocal,          // Lives within function scope
+    Outlives(String),  // 'a: 'b (a outlives b)
+    Same(String),      // 'a = 'b (same lifetime)
+    Contained(String), // 'a ⊆ 'b (a contained in b)
+    Static,            // 'static lifetime
+    FunctionLocal,     // Lives within function scope
 }
 
 /// Compile-time memory analysis results
@@ -144,12 +144,12 @@ pub struct RegionAnalysis {
 
 #[derive(Debug, Clone)]
 pub enum AccessPattern {
-    Sequential,         // Linear access pattern
-    Random,            // Random access pattern
-    Strided(usize),    // Strided access with known stride
-    Sparse,            // Sparse, unpredictable access
-    WriteOnce,         // Write once, read many
-    ReadOnly,          // Only read access
+    Sequential,     // Linear access pattern
+    Random,         // Random access pattern
+    Strided(usize), // Strided access with known stride
+    Sparse,         // Sparse, unpredictable access
+    WriteOnce,      // Write once, read many
+    ReadOnly,       // Only read access
 }
 
 #[derive(Debug, Clone)]
@@ -163,18 +163,18 @@ pub struct CacheBehavior {
 
 #[derive(Debug, Clone)]
 pub enum TemporalLocality {
-    High,      // Frequently reused
-    Medium,    // Occasionally reused
-    Low,       // Rarely reused
-    None,      // Never reused
+    High,   // Frequently reused
+    Medium, // Occasionally reused
+    Low,    // Rarely reused
+    None,   // Never reused
 }
 
 #[derive(Debug, Clone)]
 pub enum SpatialLocality {
-    High,      // Adjacent memory access
-    Medium,    // Nearby memory access
-    Low,       // Scattered memory access
-    None,      // Random memory access
+    High,   // Adjacent memory access
+    Medium, // Nearby memory access
+    Low,    // Scattered memory access
+    None,   // Random memory access
 }
 
 #[derive(Debug, Clone)]
@@ -291,7 +291,9 @@ impl MemoryManager {
         size: usize,
         alignment: usize,
     ) -> Result<*mut u8, MemoryError> {
-        let region = self.regions.get(region_name)
+        let region = self
+            .regions
+            .get(region_name)
             .ok_or_else(|| MemoryError::InvalidRegion(region_name.to_string()))?
             .clone();
 
@@ -299,15 +301,16 @@ impl MemoryManager {
             MemoryRegion::Pool { pool_name, .. } => {
                 self.allocate_from_pool(&pool_name, size, alignment)
             }
-            MemoryRegion::WorkingSet { allocation_strategy, .. } => {
-                self.allocate_working_set(&allocation_strategy, size, alignment)
-            }
+            MemoryRegion::WorkingSet {
+                allocation_strategy,
+                ..
+            } => self.allocate_working_set(&allocation_strategy, size, alignment),
             MemoryRegion::Stack { .. } => {
                 // Stack allocation - use alloca-style allocation
                 self.allocate_stack(size, alignment)
             }
             _ => Err(MemoryError::InvalidRegion(
-                "Cannot allocate in this region type".to_string()
+                "Cannot allocate in this region type".to_string(),
             )),
         }
     }
@@ -320,33 +323,42 @@ impl MemoryManager {
         alignment: usize,
     ) -> Result<*mut u8, MemoryError> {
         let size_class = {
-            let pool = self.pools.get(pool_name)
+            let pool = self
+                .pools
+                .get(pool_name)
                 .ok_or_else(|| MemoryError::PoolError(format!("Pool '{}' not found", pool_name)))?;
 
             // Find appropriate size class
-            *pool.size_classes.iter()
+            *pool
+                .size_classes
+                .iter()
                 .find(|&&class_size| class_size >= size)
-                .ok_or_else(|| MemoryError::PoolError(
-                    format!("No size class available for size {}", size)
-                ))?
+                .ok_or_else(|| {
+                    MemoryError::PoolError(format!("No size class available for size {}", size))
+                })?
         };
 
         // Allocate aligned memory
         let ptr = self.allocate_aligned(size_class, alignment)?;
-        
+
         // Update statistics
         self.runtime_stats.total_allocated += size_class;
         self.runtime_stats.current_usage += size_class;
-        self.runtime_stats.peak_usage = self.runtime_stats.peak_usage.max(self.runtime_stats.current_usage);
+        self.runtime_stats.peak_usage = self
+            .runtime_stats
+            .peak_usage
+            .max(self.runtime_stats.current_usage);
         self.runtime_stats.allocation_count += 1;
 
         // Update pool statistics
-        let pool_stats = self.runtime_stats.pool_statistics
+        let pool_stats = self
+            .runtime_stats
+            .pool_statistics
             .entry(pool_name.to_string())
             .or_insert_with(PoolStatistics::default);
         pool_stats.total_allocated += size_class;
         pool_stats.blocks_allocated += 1;
-        pool_stats.average_allocation_size = 
+        pool_stats.average_allocation_size =
             pool_stats.total_allocated as f64 / pool_stats.blocks_allocated as f64;
 
         Ok(ptr)
@@ -386,7 +398,10 @@ impl MemoryManager {
         // Update statistics
         self.runtime_stats.total_allocated += size;
         self.runtime_stats.current_usage += size;
-        self.runtime_stats.peak_usage = self.runtime_stats.peak_usage.max(self.runtime_stats.current_usage);
+        self.runtime_stats.peak_usage = self
+            .runtime_stats
+            .peak_usage
+            .max(self.runtime_stats.current_usage);
         self.runtime_stats.allocation_count += 1;
 
         Ok(ptr)
@@ -422,7 +437,12 @@ impl MemoryManager {
     }
 
     /// Deallocate memory
-    pub fn deallocate(&mut self, ptr: *mut u8, size: usize, alignment: usize) -> Result<(), MemoryError> {
+    pub fn deallocate(
+        &mut self,
+        ptr: *mut u8,
+        size: usize,
+        alignment: usize,
+    ) -> Result<(), MemoryError> {
         use std::alloc::{dealloc, Layout};
 
         let layout = Layout::from_size_align(size, alignment)
@@ -447,8 +467,7 @@ impl MemoryManager {
         if self.runtime_stats.allocation_count != self.runtime_stats.deallocation_count {
             leaks.push(format!(
                 "Memory leak detected: {} allocations, {} deallocations",
-                self.runtime_stats.allocation_count,
-                self.runtime_stats.deallocation_count
+                self.runtime_stats.allocation_count, self.runtime_stats.deallocation_count
             ));
         }
 
@@ -475,9 +494,10 @@ impl MemoryManager {
     /// Create custom memory pool
     pub fn create_pool(&mut self, pool: MemoryPool) -> Result<(), MemoryError> {
         if self.pools.contains_key(&pool.name) {
-            return Err(MemoryError::PoolError(
-                format!("Pool '{}' already exists", pool.name)
-            ));
+            return Err(MemoryError::PoolError(format!(
+                "Pool '{}' already exists",
+                pool.name
+            )));
         }
 
         self.pools.insert(pool.name.clone(), pool);
@@ -508,7 +528,8 @@ impl MemoryManager {
             growth_strategy: PoolGrowthStrategy::Linear(4096),
             allocation_tracking: false, // Lower overhead
         };
-        self.pools.insert("ThreadLocal".to_string(), thread_local_pool);
+        self.pools
+            .insert("ThreadLocal".to_string(), thread_local_pool);
 
         // SIMD-optimized pool for vector operations
         let simd_pool = MemoryPool {
@@ -549,8 +570,10 @@ impl MemoryManager {
         for region in &attributes.regions {
             let region_analysis = self.analyze_region(region, body_analysis)?;
             analysis.total_memory_usage += region_analysis.size_estimate;
-            analysis.peak_memory_usage = analysis.peak_memory_usage.max(region_analysis.size_estimate);
-            
+            analysis.peak_memory_usage = analysis
+                .peak_memory_usage
+                .max(region_analysis.size_estimate);
+
             let region_key = self.region_key(region);
             analysis.region_analysis.insert(region_key, region_analysis);
         }
@@ -562,7 +585,8 @@ impl MemoryManager {
         analysis.optimization_opportunities = self.find_optimizations(attributes, body_analysis)?;
 
         // Cache the result
-        self.analysis_cache.insert(function_name.to_string(), analysis.clone());
+        self.analysis_cache
+            .insert(function_name.to_string(), analysis.clone());
 
         Ok(analysis)
     }
@@ -647,7 +671,7 @@ impl MemoryManager {
         body_analysis: &FunctionBodyAnalysis,
     ) -> Result<AccessPattern, MemoryError> {
         let region_key = self.region_key(region);
-        
+
         if let Some(pattern) = body_analysis.access_patterns.get(&region_key) {
             Ok(pattern.clone())
         } else {
@@ -678,14 +702,19 @@ impl MemoryManager {
         };
 
         let cache_optimization = match region {
-            MemoryRegion::ReadOnly { cache_optimization, .. } => cache_optimization.clone(),
+            MemoryRegion::ReadOnly {
+                cache_optimization, ..
+            } => cache_optimization.clone(),
             _ => CacheOptimization::None,
         };
 
         let prefetch_beneficial = matches!(
             access_pattern,
             AccessPattern::Sequential | AccessPattern::Strided(_)
-        ) && matches!(cache_optimization, CacheOptimization::Prefetch | CacheOptimization::None);
+        ) && matches!(
+            cache_optimization,
+            CacheOptimization::Prefetch | CacheOptimization::None
+        );
 
         Ok(CacheBehavior {
             cache_lines_used: self.estimate_cache_lines(region),
@@ -728,15 +757,14 @@ impl MemoryManager {
     /// Check if region is SIMD-friendly
     fn is_simd_friendly(&self, region: &MemoryRegion, access_pattern: &AccessPattern) -> bool {
         let has_good_alignment = match region {
-            MemoryRegion::ReadOnly { alignment, .. } => {
-                alignment.map_or(false, |a| a >= 16)
-            }
-            MemoryRegion::WorkingSet { allocation_strategy, .. } => {
+            MemoryRegion::ReadOnly { alignment, .. } => alignment.map_or(false, |a| a >= 16),
+            MemoryRegion::WorkingSet {
+                allocation_strategy,
+                ..
+            } => {
                 matches!(allocation_strategy, AllocationStrategy::SIMD)
             }
-            MemoryRegion::Pool { pool_name, .. } => {
-                pool_name == "SIMDAlloc"
-            }
+            MemoryRegion::Pool { pool_name, .. } => pool_name == "SIMDAlloc",
             _ => false,
         };
 
@@ -809,7 +837,7 @@ impl MemoryManager {
     ) -> Result<Vec<MemorySafetyViolation>, MemoryError> {
         // Simplified use-after-free detection
         let mut violations = Vec::new();
-        
+
         for (var, &free_location) in &body_analysis.free_locations {
             if let Some(use_locations) = body_analysis.use_locations.get(var) {
                 for &use_location in use_locations {
@@ -823,7 +851,7 @@ impl MemoryManager {
                 }
             }
         }
-        
+
         Ok(violations)
     }
 
@@ -832,7 +860,7 @@ impl MemoryManager {
         body_analysis: &FunctionBodyAnalysis,
     ) -> Result<Vec<MemorySafetyViolation>, MemoryError> {
         let mut violations = Vec::new();
-        
+
         for (var, &buffer_size) in &body_analysis.buffer_sizes {
             if let Some(access_offsets) = body_analysis.buffer_accesses.get(var) {
                 for &offset in access_offsets {
@@ -846,7 +874,7 @@ impl MemoryManager {
                 }
             }
         }
-        
+
         Ok(violations)
     }
 
@@ -856,11 +884,12 @@ impl MemoryManager {
         body_analysis: &FunctionBodyAnalysis,
     ) -> Result<Vec<MemorySafetyViolation>, MemoryError> {
         let mut violations = Vec::new();
-        
+
         for region in &attributes.regions {
             if let Some(required_alignment) = self.get_required_alignment(region) {
                 let region_key = self.region_key(region);
-                if let Some(&actual_alignment) = body_analysis.variable_alignments.get(&region_key) {
+                if let Some(&actual_alignment) = body_analysis.variable_alignments.get(&region_key)
+                {
                     if actual_alignment < required_alignment {
                         violations.push(MemorySafetyViolation::UnalignedAccess {
                             variable: region_key,
@@ -871,14 +900,17 @@ impl MemoryManager {
                 }
             }
         }
-        
+
         Ok(violations)
     }
 
     fn get_required_alignment(&self, region: &MemoryRegion) -> Option<usize> {
         match region {
             MemoryRegion::ReadOnly { alignment, .. } => *alignment,
-            MemoryRegion::WorkingSet { allocation_strategy, .. } => {
+            MemoryRegion::WorkingSet {
+                allocation_strategy,
+                ..
+            } => {
                 match allocation_strategy {
                     AllocationStrategy::SIMD => Some(32), // AVX2 alignment
                     _ => None,
@@ -924,7 +956,7 @@ impl MemoryManager {
         body_analysis: &FunctionBodyAnalysis,
     ) -> Result<Vec<MemoryOptimization>, MemoryError> {
         let mut optimizations = Vec::new();
-        
+
         for (var, &size) in &body_analysis.allocation_sizes {
             // Check if this allocation would benefit from pooling
             if size <= 4096 && body_analysis.allocation_frequency.get(var).unwrap_or(&0) > &5 {
@@ -933,7 +965,7 @@ impl MemoryManager {
                 } else {
                     "GlobalAlloc"
                 };
-                
+
                 optimizations.push(MemoryOptimization::PoolAllocation {
                     variable: var.clone(),
                     recommended_pool: recommended_pool.to_string(),
@@ -941,7 +973,7 @@ impl MemoryManager {
                 });
             }
         }
-        
+
         Ok(optimizations)
     }
 
@@ -950,7 +982,7 @@ impl MemoryManager {
         body_analysis: &FunctionBodyAnalysis,
     ) -> Result<Vec<MemoryOptimization>, MemoryError> {
         let mut optimizations = Vec::new();
-        
+
         for (var, &size) in &body_analysis.allocation_sizes {
             // Small, short-lived allocations are good candidates for stack allocation
             if size <= 1024 {
@@ -966,7 +998,7 @@ impl MemoryManager {
                 }
             }
         }
-        
+
         Ok(optimizations)
     }
 
@@ -976,17 +1008,19 @@ impl MemoryManager {
         body_analysis: &FunctionBodyAnalysis,
     ) -> Result<Vec<MemoryOptimization>, MemoryError> {
         let mut optimizations = Vec::new();
-        
+
         for region in &attributes.regions {
             let region_key = self.region_key(region);
             if let Some(access_pattern) = body_analysis.access_patterns.get(&region_key) {
                 let optimization_type = match access_pattern {
                     AccessPattern::Sequential => Some(CacheOptimization::Prefetch),
                     AccessPattern::WriteOnce => Some(CacheOptimization::NonTemporal),
-                    AccessPattern::Strided(stride) if *stride <= 64 => Some(CacheOptimization::L1Friendly),
+                    AccessPattern::Strided(stride) if *stride <= 64 => {
+                        Some(CacheOptimization::L1Friendly)
+                    }
                     _ => None,
                 };
-                
+
                 if let Some(opt_type) = optimization_type {
                     optimizations.push(MemoryOptimization::CacheOptimization {
                         variable: region_key,
@@ -996,7 +1030,7 @@ impl MemoryManager {
                 }
             }
         }
-        
+
         Ok(optimizations)
     }
 
@@ -1006,14 +1040,17 @@ impl MemoryManager {
         body_analysis: &FunctionBodyAnalysis,
     ) -> Result<Vec<MemoryOptimization>, MemoryError> {
         let mut optimizations = Vec::new();
-        
+
         for region in &attributes.regions {
             let region_key = self.region_key(region);
             if let Some(&current_alignment) = body_analysis.variable_alignments.get(&region_key) {
                 if current_alignment < 32 {
                     // Could benefit from SIMD alignment
                     if let Some(access_pattern) = body_analysis.access_patterns.get(&region_key) {
-                        if matches!(access_pattern, AccessPattern::Sequential | AccessPattern::Strided(_)) {
+                        if matches!(
+                            access_pattern,
+                            AccessPattern::Sequential | AccessPattern::Strided(_)
+                        ) {
                             optimizations.push(MemoryOptimization::SIMDAlignment {
                                 variable: region_key,
                                 current_alignment,
@@ -1025,7 +1062,7 @@ impl MemoryManager {
                 }
             }
         }
-        
+
         Ok(optimizations)
     }
 
@@ -1113,18 +1150,19 @@ mod tests {
             alignment: Some(32),
             cache_optimization: CacheOptimization::L1Friendly,
         };
-        
+
         let mut body_analysis = FunctionBodyAnalysis::default();
         // Add the lifetime bound that the test expects
-        body_analysis.lifetime_bounds.insert("test".to_string(), (0, 100));
+        body_analysis
+            .lifetime_bounds
+            .insert("test".to_string(), (0, 100));
         // Add sequential access pattern to make it SIMD-friendly
-        body_analysis.access_patterns.insert(
-            "readonly_test".to_string(), 
-            AccessPattern::Sequential
-        );
-        
+        body_analysis
+            .access_patterns
+            .insert("readonly_test".to_string(), AccessPattern::Sequential);
+
         let analysis = manager.analyze_region(&region, &body_analysis).unwrap();
-        
+
         assert_eq!(analysis.size_estimate, 1024);
         assert!(analysis.simd_friendly);
     }
@@ -1140,17 +1178,19 @@ mod tests {
             regions: vec![],
             lifetime_constraints: vec![],
         };
-        
+
         let body_analysis = FunctionBodyAnalysis::default();
-        let violations = manager.check_memory_safety(&attributes, &body_analysis).unwrap();
-        
+        let violations = manager
+            .check_memory_safety(&attributes, &body_analysis)
+            .unwrap();
+
         assert!(violations.is_empty()); // No violations in default case
     }
 
     #[test]
     fn test_memory_allocation() {
         let mut manager = MemoryManager::new();
-        
+
         // Register a pool region
         let pool_region = MemoryRegion::Pool {
             pool_name: "GlobalAlloc".to_string(),
@@ -1159,19 +1199,19 @@ mod tests {
             lock_free: true,
         };
         manager.register_region("test_pool".to_string(), pool_region);
-        
+
         // Allocate memory
         let ptr = manager.allocate_in_region("test_pool", 64, 8).unwrap();
         assert!(!ptr.is_null());
-        
+
         // Check statistics
         let stats = manager.get_statistics();
         assert_eq!(stats.allocation_count, 1);
         assert!(stats.total_allocated > 0);
-        
+
         // Deallocate
         manager.deallocate(ptr, 64, 8).unwrap();
-        
+
         // Check final statistics
         let stats = manager.get_statistics();
         assert_eq!(stats.deallocation_count, 1);
@@ -1180,7 +1220,7 @@ mod tests {
     #[test]
     fn test_working_set_allocation() {
         let mut manager = MemoryManager::new();
-        
+
         // Register a working set region
         let working_region = MemoryRegion::WorkingSet {
             lifetime: "test".to_string(),
@@ -1189,15 +1229,15 @@ mod tests {
             auto_cleanup: true,
         };
         manager.register_region("test_working".to_string(), working_region);
-        
+
         // Allocate SIMD-aligned memory
         let ptr = manager.allocate_in_region("test_working", 256, 16).unwrap();
         assert!(!ptr.is_null());
-        
+
         // Check alignment (should be at least 32 bytes for SIMD)
         let addr = ptr as usize;
         assert_eq!(addr % 32, 0);
-        
+
         // Clean up
         manager.deallocate(ptr, 256, 32).unwrap();
     }
@@ -1205,7 +1245,7 @@ mod tests {
     #[test]
     fn test_memory_leak_detection() {
         let mut manager = MemoryManager::new();
-        
+
         // Register a pool region
         let pool_region = MemoryRegion::Pool {
             pool_name: "GlobalAlloc".to_string(),
@@ -1214,10 +1254,10 @@ mod tests {
             lock_free: true,
         };
         manager.register_region("test_pool".to_string(), pool_region);
-        
+
         // Allocate without deallocating
         let _ptr = manager.allocate_in_region("test_pool", 64, 8).unwrap();
-        
+
         // Check for leaks
         let leaks = manager.check_leaks();
         assert!(!leaks.is_empty());
@@ -1227,7 +1267,7 @@ mod tests {
     #[test]
     fn test_pool_creation() {
         let mut manager = MemoryManager::new();
-        
+
         let custom_pool = MemoryPool {
             name: "CustomPool".to_string(),
             size_classes: vec![16, 32, 64],
@@ -1237,13 +1277,13 @@ mod tests {
             growth_strategy: PoolGrowthStrategy::Exponential(1.5),
             allocation_tracking: true,
         };
-        
+
         // Create pool
         manager.create_pool(custom_pool).unwrap();
-        
+
         // Verify pool exists
         assert!(manager.pools.contains_key("CustomPool"));
-        
+
         // Try to create duplicate pool (should fail)
         let duplicate_pool = MemoryPool {
             name: "CustomPool".to_string(),
@@ -1254,7 +1294,7 @@ mod tests {
             growth_strategy: PoolGrowthStrategy::Fixed,
             allocation_tracking: false,
         };
-        
+
         let result = manager.create_pool(duplicate_pool);
         assert!(result.is_err());
     }
