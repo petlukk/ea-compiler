@@ -32,15 +32,24 @@ pub fn jit_execute_cached(source: &str, module_name: &str) -> Result<i32> {
         // Fast path: recompile and execute immediately since we have cached metadata
         let (program, _type_context) = compile_to_ast(source)?;
         let context = Context::create();
-        let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
+        let mut codegen = codegen::CodeGenerator::new(&context, module_name);
         codegen.compile_program(&program)?;
 
+        // Initialize LLVM targets for cached execution too
+        inkwell::targets::Target::initialize_native(&inkwell::targets::InitializationConfig::default())
+            .map_err(|e| {
+                CompileError::codegen_error(
+                    format!("Failed to initialize LLVM native target: {}", e),
+                    None,
+                )
+            })?;
+            
         let execution_engine = codegen
             .get_module()
             .create_jit_execution_engine(OptimizationLevel::None)
             .map_err(|e| {
                 CompileError::codegen_error(
-                    format!("Failed to create JIT execution engine: {}", e),
+                    format!("Failed to create JIT execution engine with target features: {}", e),
                     None,
                 )
             })?;
@@ -62,22 +71,35 @@ pub fn jit_execute_cached(source: &str, module_name: &str) -> Result<i32> {
     let (program, _type_context) = compile_to_ast(source)?;
 
     let context = Context::create();
-    let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
+    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
     codegen.compile_program(&program)?;
 
-    // Create execution engine for JIT compilation
-    eprintln!("🔧 Creating JIT execution engine...");
+    // Create execution engine for JIT compilation with proper target configuration
+    eprintln!("🔧 Creating JIT execution engine with target features...");
+    
+    // Initialize LLVM targets to ensure proper CPU feature support
+    inkwell::targets::Target::initialize_native(&inkwell::targets::InitializationConfig::default())
+        .map_err(|e| {
+            eprintln!("❌ Failed to initialize native target: {}", e);
+            CompileError::codegen_error(
+                format!("Failed to initialize LLVM native target: {}", e),
+                None,
+            )
+        })?;
+    
     let execution_engine = codegen
         .get_module()
         .create_jit_execution_engine(OptimizationLevel::None)
         .map_err(|e| {
             eprintln!("❌ JIT engine creation failed: {}", e);
+            eprintln!("   This might be due to CPU feature mismatch (AVX2/SSE4.2/FMA)");
+            eprintln!("   IR contains target-features: +avx2,+sse4.2,+fma");
             CompileError::codegen_error(
                 format!("Failed to create JIT execution engine: {}", e),
                 None,
             )
         })?;
-    eprintln!("✅ JIT execution engine created successfully");
+    eprintln!("✅ JIT execution engine created successfully with native target support");
 
     // Map essential symbols for JIT execution
     let symbol_table = map_essential_symbols(&execution_engine, &codegen)?;

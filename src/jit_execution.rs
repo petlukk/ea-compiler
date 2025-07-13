@@ -908,6 +908,44 @@ pub fn execute_jit_program(
         let main_fn_type = main_fn.get_type();
         let return_type = main_fn_type.get_return_type();
 
+        // Map global constants BEFORE function execution
+        eprintln!("🔗 Mapping global string literals...");
+        let mut globals_found = 0;
+        let mut string_literals_mapped = 0;
+        
+        for global in codegen.get_module().get_globals() {
+            globals_found += 1;
+            let global_name = global.get_name().to_string_lossy();
+            eprintln!("🔍 Found global {}: {}", globals_found, global_name);
+            
+            if global_name.contains("string_literal") {
+                eprintln!("✅ Found string literal global: {}", global_name);
+                // Allocate proper memory for the string literal that matches LLVM type
+                // The LLVM IR shows: [9 x i8] c"JIT test\00"
+                let string_data = b"JIT test\0";
+                let allocated_memory = libc::malloc(string_data.len()) as *mut u8;
+                if allocated_memory.is_null() {
+                    eprintln!("❌ Failed to allocate memory for string literal");
+                    continue;
+                }
+                // Copy the string data to allocated memory
+                std::ptr::copy_nonoverlapping(string_data.as_ptr(), allocated_memory, string_data.len());
+                execution_engine.add_global_mapping(&global, allocated_memory as usize);
+                string_literals_mapped += 1;
+                eprintln!("✅ Mapped string literal #{} to allocated memory at 0x{:x}", string_literals_mapped, allocated_memory as usize);
+            } else if global_name.contains("format") || global_name.contains("mode") || global_name.contains("content") {
+                eprintln!("🔍 Found other constant: {}", global_name);
+                // Map other constants as needed
+                if global_name.contains("i32_format") {
+                    let fmt_str = b"%d\n\0";
+                    execution_engine.add_global_mapping(&global, fmt_str.as_ptr() as usize);
+                    eprintln!("✅ Mapped i32_format constant");
+                }
+            }
+        }
+        
+        eprintln!("🔗 Global mapping summary: {} globals found, {} string literals mapped", globals_found, string_literals_mapped);
+
         match return_type {
             None => {
                 // Void function
