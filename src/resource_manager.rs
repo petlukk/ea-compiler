@@ -7,6 +7,7 @@ use crate::{
     error::{CompileError, Result},
     memory_profiler::get_current_memory_usage,
 };
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 /// Resource limits configuration
@@ -309,55 +310,53 @@ impl ResourceManager {
 }
 
 /// Global resource manager instance
-static mut GLOBAL_RESOURCE_MANAGER: Option<ResourceManager> = None;
+static GLOBAL_RESOURCE_MANAGER: LazyLock<Mutex<Option<ResourceManager>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Initialize the global resource manager
 pub fn initialize_resource_manager(limits: ResourceLimits) {
-    unsafe {
-        GLOBAL_RESOURCE_MANAGER = Some(ResourceManager::with_limits(limits));
+    if let Ok(mut manager) = GLOBAL_RESOURCE_MANAGER.lock() {
+        *manager = Some(ResourceManager::with_limits(limits));
     }
 }
 
-/// Get the global resource manager
-pub fn get_resource_manager() -> Option<&'static mut ResourceManager> {
-    unsafe { GLOBAL_RESOURCE_MANAGER.as_mut() }
+/// Execute a function with the global resource manager
+pub fn with_resource_manager<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&mut ResourceManager) -> R,
+{
+    if let Ok(mut guard) = GLOBAL_RESOURCE_MANAGER.lock() {
+        if let Some(ref mut manager) = *guard {
+            Some(f(manager))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
 }
 
 /// Check resource limits using the global manager
 pub fn check_resource_limits() -> Result<()> {
-    if let Some(manager) = get_resource_manager() {
-        manager.check_limits()
-    } else {
-        Ok(())
-    }
+    with_resource_manager(|manager| manager.check_limits()).unwrap_or(Ok(()))
 }
 
 /// Record token processing using the global manager
 pub fn record_token_processing(count: usize) {
-    if let Some(manager) = get_resource_manager() {
-        manager.record_tokens(count);
-    }
+    with_resource_manager(|manager| manager.record_tokens(count));
 }
 
 /// Record statement processing using the global manager
 pub fn record_statement_processing(count: usize) {
-    if let Some(manager) = get_resource_manager() {
-        manager.record_statements(count);
-    }
+    with_resource_manager(|manager| manager.record_statements(count));
 }
 
 /// Record nesting depth using the global manager
 pub fn record_nesting_depth(depth: usize) {
-    if let Some(manager) = get_resource_manager() {
-        manager.record_nesting_depth(depth);
-    }
+    with_resource_manager(|manager| manager.record_nesting_depth(depth));
 }
 
 /// Generate resource usage report using the global manager
 pub fn generate_resource_report() -> String {
-    if let Some(manager) = get_resource_manager() {
-        manager.generate_report()
-    } else {
-        "Resource manager not initialized".to_string()
-    }
+    with_resource_manager(|manager| manager.generate_report())
+        .unwrap_or_else(|| "Resource manager not initialized".to_string())
 }

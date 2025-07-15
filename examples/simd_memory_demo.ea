@@ -3,12 +3,12 @@
 
 func simd_array_processing() {
     // Create arrays for SIMD processing  
-    let mut input_data: [f32; 8] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
-    let mut output_data: [f32; 8] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    let input_data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+    let output_data = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
     
     // Get pointers to array data
     let input_ptr = &input_data[0];
-    let output_ptr = &mut output_data[0];
+    let output_ptr = &output_data[0];
     
     // Load first vector (elements 0-3)
     let vec1 = load_vector(input_ptr, f32x4);
@@ -32,28 +32,28 @@ func simd_array_processing() {
 
 func simd_matrix_multiplication() {
     // Demonstrate memory-intensive SIMD operations
-    let mut matrix_a: [f32; 16] = [
+    let matrix_a = [
         1.0, 2.0, 3.0, 4.0,
         5.0, 6.0, 7.0, 8.0, 
         9.0, 10.0, 11.0, 12.0,
         13.0, 14.0, 15.0, 16.0
     ];
     
-    let mut matrix_b: [f32; 16] = [
+    let matrix_b = [
         1.0, 0.0, 0.0, 0.0,
         0.0, 1.0, 0.0, 0.0,
         0.0, 0.0, 1.0, 0.0, 
         0.0, 0.0, 0.0, 1.0
     ];
     
-    let mut result: [f32; 16] = [0.0; 16];
+    let result = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
     
     let a_ptr = &matrix_a[0];
     let b_ptr = &matrix_b[0];
-    let result_ptr = &mut result[0];
+    let result_ptr = &result[0];
     
     // Process 4x4 matrix using SIMD vectors
-    let mut i = 0;
+    let i = 0;
     while i < 4 {
         // Load row from matrix A
         let row_a = load_vector(a_ptr + (i * 16), f32x4);
@@ -76,7 +76,7 @@ func simd_matrix_multiplication() {
 
 func simd_image_processing() {
     // Simulate image processing with SIMD load/store
-    let mut pixels: [u8; 32] = [
+    let pixels = [
         255, 128, 64, 255,  // RGBA pixel 1
         200, 100, 50, 255,  // RGBA pixel 2
         150, 75, 25, 255,   // RGBA pixel 3
@@ -87,17 +87,17 @@ func simd_image_processing() {
         20, 10, 2, 255      // RGBA pixel 8
     ];
     
-    let mut filtered: [u8; 32] = [0; 32];
+    let filtered = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     
     let input_ptr = &pixels[0];
-    let output_ptr = &mut filtered[0];
+    let output_ptr = &filtered[0];
     
     // Process 16 bytes (4 pixels) at a time
     let chunk1 = load_vector(input_ptr, u8x16);
     let chunk2 = load_vector(input_ptr + 16, u8x16);
     
     // Apply brightness filter (add 20 to each channel)
-    let brightness = [20; 16]u8x16;
+    let brightness = [20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20]u8x16;
     let bright1 = chunk1 .+ brightness;
     let bright2 = chunk2 .+ brightness;
     

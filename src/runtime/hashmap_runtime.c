@@ -69,7 +69,6 @@ static int hashmap_grow(HashMap* map) {
     
     map->buckets = new_buckets;
     map->capacity = new_capacity;
-    size_t old_size = map->size;
     map->size = 0;
     
     // Rehash all existing entries

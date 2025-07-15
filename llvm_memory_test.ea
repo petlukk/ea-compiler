@@ -1,0 +1,55 @@
+// LLVM memory test - stresses LLVM IR generation and compilation
+func llvm_memory_stress() -> i32 {
+    // Complex control flow to stress LLVM basic block allocation
+    let accumulator = 0;
+    
+    // Nested loops with complex branching
+    for (let outer = 0; outer < 4; outer += 1) {
+        for (let inner = 0; inner < 4; inner += 1) {
+            if (outer % 2 == 0) {
+                if (inner % 2 == 0) {
+                    accumulator += outer * inner;
+                } else {
+                    accumulator += outer + inner;
+                }
+            } else {
+                let temp = outer;
+                while (temp > 0) {
+                    accumulator += 1;
+                    temp -= 1;
+                }
+            }
+        }
+    }
+    
+    // Function calls to stress function generation
+    accumulator += complex_calculation(5);
+    accumulator += complex_calculation(10);
+    
+    return accumulator;
+}
+
+func complex_calculation(input: i32) -> i32 {
+    let result = 0;
+    
+    // Multiple return paths
+    if (input < 5) {
+        result = input * 2;
+    } else if (input < 10) {
+        result = input * 3;
+    } else {
+        result = input * 4;
+    }
+    
+    // Array operations
+    let array: [i32; 10] = [0; 10];
+    for (let i = 0; i < 10; i += 1) {
+        array[i] = result + i;
+    }
+    
+    return array[9];
+}
+
+func main() -> i32 {
+    return llvm_memory_stress();
+}

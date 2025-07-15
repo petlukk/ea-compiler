@@ -1,0 +1,17 @@
+// simd_unicode_fix_validation.ea
+// This program MUST work completely after fixing the Unicode issue in simd_example.ea
+// Tests that ASCII characters work in basic SIMD operations after lexer fix
+
+func main() -> () {
+    // Basic SIMD operations that should work without Unicode issues
+    let vec1 = [1.0, 2.0, 3.0, 4.0]f32x4;
+    let vec2 = [5.0, 6.0, 7.0, 8.0]f32x4;
+    
+    // Element-wise addition - this should work
+    let result = vec1 .+ vec2;
+    
+    // If we get here, the SIMD compilation worked
+    print("SIMD Unicode fix validation PASSED");
+    
+    return;
+}

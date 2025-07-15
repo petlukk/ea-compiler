@@ -1,0 +1,4 @@
+func main() {
+    let map = HashMap::new();
+    print("HashMap test");
+}

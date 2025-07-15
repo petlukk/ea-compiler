@@ -11,7 +11,7 @@ use crate::ast::{
 use crate::error::{CompileError, Result};
 use crate::memory_profiler::{check_memory_limit, record_memory_usage, CompilationPhase};
 use crate::simd_advanced::{
-    AdvancedSIMDCodegen, AdvancedSIMDOp, AdaptiveVectorizer, OptimizationHints
+    AdaptiveVectorizer, AdvancedSIMDCodegen, AdvancedSIMDOp, OptimizationHints,
 };
 // Removed unused import per DEVELOPMENT_PROCESS.md - no placeholder comments
 use inkwell::{
@@ -114,9 +114,9 @@ impl<'ctx> CodeGenerator<'ctx> {
             struct_fields: HashMap::new(),
             optimization_level: OptimizationLevel::Default,
             current_optimization_config: None,
-            jit_safe_mode: true, // Default for JIT compatibility
+            jit_safe_mode: true,         // Default for JIT compatibility
             advanced_simd_codegen: None, // Disabled for JIT safety
-            adaptive_vectorizer: None, // Disabled for JIT safety
+            adaptive_vectorizer: None,   // Disabled for JIT safety
         };
 
         // Add minimal builtin functions for JIT compatibility
@@ -139,9 +139,9 @@ impl<'ctx> CodeGenerator<'ctx> {
             struct_fields: HashMap::new(),
             optimization_level: OptimizationLevel::Default,
             current_optimization_config: None,
-            jit_safe_mode: false, // Full features for static compilation
+            jit_safe_mode: false,        // Full features for static compilation
             advanced_simd_codegen: None, // Will be initialized after hardware detection
-            adaptive_vectorizer: None, // Will be initialized after hardware detection
+            adaptive_vectorizer: None,   // Will be initialized after hardware detection
         };
 
         // Initialize advanced SIMD components for full compilation
@@ -1094,7 +1094,11 @@ impl<'ctx> CodeGenerator<'ctx> {
         // stdin_global should be passed directly as it's declared as FILE* (i8*)
         let _fgets_call = self.builder.build_call(
             fgets_function,
-            &[buffer.into(), buffer_size.into(), stdin_global.as_pointer_value().into()],
+            &[
+                buffer.into(),
+                buffer_size.into(),
+                stdin_global.as_pointer_value().into(),
+            ],
             "fgets_call",
         );
 
@@ -2657,7 +2661,6 @@ impl<'ctx> CodeGenerator<'ctx> {
         // ========================
 
         // Declare HashSet runtime functions
-        let bool_type = self.context.bool_type();
         let i32_type = self.context.i32_type();
         let void_type = self.context.void_type();
 
@@ -4589,8 +4592,36 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             Stmt::Return(expr) => self.generate_return(expr),
             Stmt::Block(stmts) => {
-                for stmt in stmts {
+                for (i, stmt) in stmts.iter().enumerate() {
                     self.generate_statement(stmt)?;
+
+                    // Check if we need to connect the current block to the next statement
+                    if i + 1 < stmts.len() {
+                        if let Some(current_block) = self.builder.get_insert_block() {
+                            if !self.block_has_terminator(current_block) {
+                                // Create a block for the next statement
+                                let function = current_block.get_parent().unwrap();
+                                let next_block =
+                                    self.context.append_basic_block(function, "next_stmt");
+
+                                // Branch from current block to next statement block
+                                self.builder
+                                    .build_unconditional_branch(next_block)
+                                    .map_err(|e| {
+                                        CompileError::codegen_error(
+                                            format!(
+                                                "Failed to build branch to next statement: {:?}",
+                                                e
+                                            ),
+                                            None,
+                                        )
+                                    })?;
+
+                                // Position at the next block for the next statement
+                                self.builder.position_at_end(next_block);
+                            }
+                        }
+                    }
                 }
                 Ok(())
             }
@@ -4720,9 +4751,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         if then_has_terminator && else_has_terminator {
             // DEVELOPMENT_PROCESS.md: Fix root cause - remove unreachable basic block
             // This prevents LLVM IR validation errors for empty blocks
-            unsafe {
-                let _ = merge_block.remove_from_function();
-            }
+            let _ = merge_block.remove_from_function();
         } else {
             self.builder.position_at_end(merge_block);
         }
@@ -4867,16 +4896,19 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.builder.position_at_end(loop_body_block);
         self.generate_statement(body)?;
 
-        // Branch to increment if body doesn't already terminate
-        if !self.block_has_terminator(loop_body_block) {
-            self.builder
-                .build_unconditional_branch(loop_inc_block)
-                .map_err(|e| {
-                    CompileError::codegen_error(
-                        format!("Failed to build branch to increment: {:?}", e),
-                        None,
-                    )
-                })?;
+        // After the body, check the current block and branch to increment
+        let current_block = self.builder.get_insert_block();
+        if let Some(current_block) = current_block {
+            if !self.block_has_terminator(current_block) {
+                self.builder
+                    .build_unconditional_branch(loop_inc_block)
+                    .map_err(|e| {
+                        CompileError::codegen_error(
+                            format!("Failed to build branch to increment: {:?}", e),
+                            None,
+                        )
+                    })?;
+            }
         }
 
         // Generate increment
@@ -4895,8 +4927,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                 )
             })?;
 
-        // Continue after the loop
+        // Continue after the loop - this is where the next statement will be generated
         self.builder.position_at_end(loop_end_block);
+
         Ok(())
     }
 
@@ -5088,6 +5121,29 @@ impl<'ctx> CodeGenerator<'ctx> {
         block.get_terminator().is_some()
     }
 
+    /// Checks if a basic block has no predecessor blocks (unreachable)
+    fn block_has_no_predecessors(&self, block: BasicBlock<'ctx>) -> bool {
+        // Check if any block in the function has a terminator that branches to this block
+        if let Some(parent_function) = block.get_parent() {
+            for predecessor_block in parent_function.get_basic_blocks() {
+                if let Some(terminator) = predecessor_block.get_terminator() {
+                    // Check if this terminator branches to our block
+                    let num_operands = terminator.get_num_operands();
+                    for i in 0..num_operands {
+                        if let Some(operand) = terminator.get_operand(i) {
+                            if let Some(operand_block) = operand.right() {
+                                if operand_block == block {
+                                    return false; // Found a predecessor
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        true // No predecessors found
+    }
+
     /// Generates code for a function declaration.
     fn generate_function_declaration(
         &mut self,
@@ -5153,7 +5209,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                 }
             }
-            None => None, // void type
+            None => {
+                // Special case: main function should return i32 by default
+                if name == "main" {
+                    Some(self.context.i32_type().into())
+                } else {
+                    None // void type for other functions
+                }
+            }
         };
 
         // Determine parameter types
@@ -5213,19 +5276,62 @@ impl<'ctx> CodeGenerator<'ctx> {
             ));
         }
 
-        // Add a return instruction if the function doesn't have one already
-        if !self.block_has_terminator(self.builder.get_insert_block().unwrap()) {
-            if return_llvm_type.is_none() {
-                // Add a void return
-                self.builder.build_return(None).map_err(|e| {
-                    CompileError::codegen_error(format!("Failed to build return: {:?}", e), None)
-                })?;
-            } else {
-                // This is an error - function should have a return value
-                return Err(CompileError::codegen_error(
-                    format!("Function '{}' must return a value", name),
-                    None,
-                ));
+        // Critical fix: Ensure all basic blocks have terminating instructions
+        // This is required for valid LLVM IR - every block must end with a terminator
+        let current_insert_block = self.builder.get_insert_block();
+        if let Some(function_val) = self.functions.get(name) {
+            let function_val = *function_val;
+
+            for basic_block in function_val.get_basic_blocks() {
+                if !self.block_has_terminator(basic_block)
+                    && Some(basic_block) != current_insert_block
+                {
+                    self.builder.position_at_end(basic_block);
+                    // Add unreachable instruction for blocks that don't have terminators
+                    // This satisfies LLVM IR requirements while allowing optimization passes
+                    // to remove unreachable code if needed
+                    self.builder.build_unreachable().map_err(|e| {
+                        CompileError::codegen_error(
+                            format!("Failed to build unreachable for block: {:?}", e),
+                            None,
+                        )
+                    })?;
+                }
+            }
+        }
+
+        // Restore position to the current block
+        if let Some(current_block) = current_insert_block {
+            self.builder.position_at_end(current_block);
+        }
+
+        // Add a return instruction if the current function block doesn't have one already
+        if let Some(current_block) = self.builder.get_insert_block() {
+            if !self.block_has_terminator(current_block) {
+                if return_llvm_type.is_none() {
+                    // Add a void return
+                    self.builder.build_return(None).map_err(|e| {
+                        CompileError::codegen_error(
+                            format!("Failed to build return: {:?}", e),
+                            None,
+                        )
+                    })?;
+                } else if name == "main" && return_llvm_type.is_some() {
+                    // Main function should return 0 by default
+                    let zero = self.context.i32_type().const_int(0, false);
+                    self.builder.build_return(Some(&zero)).map_err(|e| {
+                        CompileError::codegen_error(
+                            format!("Failed to build return: {:?}", e),
+                            None,
+                        )
+                    })?;
+                } else {
+                    // This is an error - function should have a return value
+                    return Err(CompileError::codegen_error(
+                        format!("Function '{}' must return a value", name),
+                        None,
+                    ));
+                }
             }
         }
 
@@ -6608,7 +6714,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         && right_type.get_bit_width() == 32
                                     {
                                         self.builder
-                                            .build_int_z_extend(right_int, left_type, "promote_right")
+                                            .build_int_z_extend(
+                                                right_int,
+                                                left_type,
+                                                "promote_right",
+                                            )
                                             .map_err(|e| {
                                                 CompileError::codegen_error(
                                                     format!("Failed to promote integer: {:?}", e),
@@ -6617,8 +6727,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                                             })?
                                     } else {
                                         return Err(CompileError::codegen_error(
-                                            format!("Unsupported integer type promotion: {} to {}", 
-                                                    right_type.get_bit_width(), left_type.get_bit_width()),
+                                            format!(
+                                                "Unsupported integer type promotion: {} to {}",
+                                                right_type.get_bit_width(),
+                                                left_type.get_bit_width()
+                                            ),
                                             None,
                                         ));
                                     };
@@ -6629,7 +6742,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         && left_type.get_bit_width() == 32
                                     {
                                         self.builder
-                                            .build_int_z_extend(left_int, right_type, "promote_left")
+                                            .build_int_z_extend(
+                                                left_int,
+                                                right_type,
+                                                "promote_left",
+                                            )
                                             .map_err(|e| {
                                                 CompileError::codegen_error(
                                                     format!("Failed to promote integer: {:?}", e),
@@ -6638,8 +6755,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                                             })?
                                     } else {
                                         return Err(CompileError::codegen_error(
-                                            format!("Unsupported integer type promotion: {} to {}", 
-                                                    left_type.get_bit_width(), right_type.get_bit_width()),
+                                            format!(
+                                                "Unsupported integer type promotion: {} to {}",
+                                                left_type.get_bit_width(),
+                                                right_type.get_bit_width()
+                                            ),
                                             None,
                                         ));
                                     };
@@ -6651,7 +6771,12 @@ impl<'ctx> CodeGenerator<'ctx> {
 
                             let result = self
                                 .builder
-                                .build_int_compare(IntPredicate::EQ, coerced_left, coerced_right, "cmp_eq")
+                                .build_int_compare(
+                                    IntPredicate::EQ,
+                                    coerced_left,
+                                    coerced_right,
+                                    "cmp_eq",
+                                )
                                 .map_err(|e| {
                                     CompileError::codegen_error(
                                         format!("Failed to build comparison: {:?}", e),
@@ -8317,17 +8442,36 @@ impl<'ctx> CodeGenerator<'ctx> {
         simd_expr: &SIMDExpr,
     ) -> Result<BasicValueEnum<'ctx>> {
         match simd_expr {
-            SIMDExpr::ElementWise { left, operator, right, .. } => {
+            SIMDExpr::ElementWise {
+                left,
+                operator,
+                right,
+                ..
+            } => {
                 // Convert to AdvancedSIMDOp and generate optimized code
                 let advanced_op = match operator {
-                    SIMDOperator::DotAdd => AdvancedSIMDOp::Add { predicated: false, saturating: false },
-                    SIMDOperator::DotMultiply => AdvancedSIMDOp::Multiply { fused: true, accumulate: false },
-                    SIMDOperator::DotSubtract => AdvancedSIMDOp::Add { predicated: false, saturating: false }, // Will negate second operand
-                    SIMDOperator::DotDivide => AdvancedSIMDOp::Divide { precise: true, approximate: false },
-                    _ => return Err(CompileError::codegen_error(
-                        "Advanced SIMD operation not supported for this operator".to_string(),
-                        None,
-                    )),
+                    SIMDOperator::DotAdd => AdvancedSIMDOp::Add {
+                        predicated: false,
+                        saturating: false,
+                    },
+                    SIMDOperator::DotMultiply => AdvancedSIMDOp::Multiply {
+                        fused: true,
+                        accumulate: false,
+                    },
+                    SIMDOperator::DotSubtract => AdvancedSIMDOp::Add {
+                        predicated: false,
+                        saturating: false,
+                    }, // Will negate second operand
+                    SIMDOperator::DotDivide => AdvancedSIMDOp::Divide {
+                        precise: true,
+                        approximate: false,
+                    },
+                    _ => {
+                        return Err(CompileError::codegen_error(
+                            "Advanced SIMD operation not supported for this operator".to_string(),
+                            None,
+                        ))
+                    }
                 };
 
                 // Get vector type from left operand
@@ -8345,12 +8489,20 @@ impl<'ctx> CodeGenerator<'ctx> {
                 };
 
                 // Generate advanced SIMD code
-                let generated_code = if let Some(ref mut advanced_simd) = self.advanced_simd_codegen {
-                    advanced_simd.generate_simd_code(&advanced_op, &vector_type, &optimization_hints)
+                let generated_code = if let Some(ref mut advanced_simd) = self.advanced_simd_codegen
+                {
+                    advanced_simd.generate_simd_code(
+                        &advanced_op,
+                        &vector_type,
+                        &optimization_hints,
+                    )
                 } else {
-                    return Err(CompileError::codegen_error("Advanced SIMD not available".to_string(), None));
+                    return Err(CompileError::codegen_error(
+                        "Advanced SIMD not available".to_string(),
+                        None,
+                    ));
                 };
-                
+
                 match generated_code {
                     Ok(generated_code) => {
                         // Convert generated instructions to LLVM IR
@@ -8362,7 +8514,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                     )),
                 }
             }
-            SIMDExpr::Reduction { vector, operation, .. } => {
+            SIMDExpr::Reduction {
+                vector, operation, ..
+            } => {
                 // Generate advanced reduction using tree reduction if beneficial
                 let vector_val = self.generate_expression(vector)?;
                 let vector_type = self.infer_simd_vector_type_from_value(&vector_val)?;
@@ -8379,7 +8533,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     crate::ast::ReductionOp::All => crate::simd_advanced::ReduceOp::And, // All is logical AND
                 };
 
-                let advanced_op = AdvancedSIMDOp::Reduce { operation: reduce_op, tree: true };
+                let advanced_op = AdvancedSIMDOp::Reduce {
+                    operation: reduce_op,
+                    tree: true,
+                };
                 let optimization_hints = OptimizationHints {
                     prefer_throughput: true,
                     minimize_latency: false,
@@ -8389,12 +8546,20 @@ impl<'ctx> CodeGenerator<'ctx> {
                     vectorization_factor: vector_type.width(),
                 };
 
-                let generated_code = if let Some(ref mut advanced_simd) = self.advanced_simd_codegen {
-                    advanced_simd.generate_simd_code(&advanced_op, &vector_type, &optimization_hints)
+                let generated_code = if let Some(ref mut advanced_simd) = self.advanced_simd_codegen
+                {
+                    advanced_simd.generate_simd_code(
+                        &advanced_op,
+                        &vector_type,
+                        &optimization_hints,
+                    )
                 } else {
-                    return Err(CompileError::codegen_error("Advanced SIMD not available".to_string(), None));
+                    return Err(CompileError::codegen_error(
+                        "Advanced SIMD not available".to_string(),
+                        None,
+                    ));
                 };
-                
+
                 match generated_code {
                     Ok(generated_code) => {
                         self.emit_advanced_reduction_instructions(&generated_code, &vector_val)
@@ -9829,7 +9994,10 @@ impl<'ctx> CodeGenerator<'ctx> {
     }
 
     /// Helper method to infer SIMD vector type from LLVM value
-    fn infer_simd_vector_type_from_value(&self, value: &BasicValueEnum<'ctx>) -> Result<SIMDVectorType> {
+    fn infer_simd_vector_type_from_value(
+        &self,
+        value: &BasicValueEnum<'ctx>,
+    ) -> Result<SIMDVectorType> {
         match value {
             BasicValueEnum::VectorValue(vec_val) => {
                 let vec_type = vec_val.get_type();
@@ -9886,64 +10054,103 @@ impl<'ctx> CodeGenerator<'ctx> {
             match first_instruction.mnemonic.as_str() {
                 "vfmadd231ps" => {
                     // Fused multiply-add: left * right + left
-                    if let (BasicValueEnum::VectorValue(l), BasicValueEnum::VectorValue(r)) = (left_val, right_val) {
+                    if let (BasicValueEnum::VectorValue(l), BasicValueEnum::VectorValue(r)) =
+                        (left_val, right_val)
+                    {
                         // Create FMA intrinsic call
                         let fma_intrinsic_name = match generated_code.instruction_set {
-                            crate::simd_advanced::SIMDInstructionSet::AVX512F => "llvm.x86.avx512.vfmadd.ps.512",
-                            crate::simd_advanced::SIMDInstructionSet::AVX2 => "llvm.x86.fma.vfmadd.ps.256",
+                            crate::simd_advanced::SIMDInstructionSet::AVX512F => {
+                                "llvm.x86.avx512.vfmadd.ps.512"
+                            }
+                            crate::simd_advanced::SIMDInstructionSet::AVX2 => {
+                                "llvm.x86.fma.vfmadd.ps.256"
+                            }
                             _ => "llvm.fma.v4f32",
                         };
-                        
-                        let fma_function = self.get_or_declare_intrinsic(fma_intrinsic_name, &[l.get_type().into(), r.get_type().into(), l.get_type().into()], l.get_type().into())?;
-                        
-                        let result = self.builder.build_call(
-                            fma_function,
-                            &[l.into(), r.into(), l.into()],
-                            "fma_result"
-                        ).unwrap().try_as_basic_value().unwrap_left();
-                        
+
+                        let fma_function = self.get_or_declare_intrinsic(
+                            fma_intrinsic_name,
+                            &[
+                                l.get_type().into(),
+                                r.get_type().into(),
+                                l.get_type().into(),
+                            ],
+                            l.get_type().into(),
+                        )?;
+
+                        let result = self
+                            .builder
+                            .build_call(fma_function, &[l.into(), r.into(), l.into()], "fma_result")
+                            .unwrap()
+                            .try_as_basic_value()
+                            .unwrap_left();
+
                         Ok(result)
                     } else {
-                        Err(CompileError::codegen_error("FMA requires vector operands".to_string(), None))
+                        Err(CompileError::codegen_error(
+                            "FMA requires vector operands".to_string(),
+                            None,
+                        ))
                     }
                 }
                 "vaddps" => {
                     // Vector addition with AVX instructions
-                    if let (BasicValueEnum::VectorValue(l), BasicValueEnum::VectorValue(r)) = (left_val, right_val) {
+                    if let (BasicValueEnum::VectorValue(l), BasicValueEnum::VectorValue(r)) =
+                        (left_val, right_val)
+                    {
                         let result = self.builder.build_float_add(l, r, "vector_add").unwrap();
                         Ok(result.into())
                     } else {
-                        Err(CompileError::codegen_error("Vector add requires vector operands".to_string(), None))
+                        Err(CompileError::codegen_error(
+                            "Vector add requires vector operands".to_string(),
+                            None,
+                        ))
                     }
                 }
                 "vmulps" => {
                     // Vector multiplication
-                    if let (BasicValueEnum::VectorValue(l), BasicValueEnum::VectorValue(r)) = (left_val, right_val) {
+                    if let (BasicValueEnum::VectorValue(l), BasicValueEnum::VectorValue(r)) =
+                        (left_val, right_val)
+                    {
                         let result = self.builder.build_float_mul(l, r, "vector_mul").unwrap();
                         Ok(result.into())
                     } else {
-                        Err(CompileError::codegen_error("Vector mul requires vector operands".to_string(), None))
+                        Err(CompileError::codegen_error(
+                            "Vector mul requires vector operands".to_string(),
+                            None,
+                        ))
                     }
                 }
                 _ => {
                     // Fallback to basic vector operations
-                    if let (BasicValueEnum::VectorValue(l), BasicValueEnum::VectorValue(r)) = (left_val, right_val) {
-                        let result = self.builder.build_float_add(l, r, "vector_fallback").unwrap();
+                    if let (BasicValueEnum::VectorValue(l), BasicValueEnum::VectorValue(r)) =
+                        (left_val, right_val)
+                    {
+                        let result = self
+                            .builder
+                            .build_float_add(l, r, "vector_fallback")
+                            .unwrap();
                         Ok(result.into())
                     } else {
-                        Err(CompileError::codegen_error("Advanced SIMD fallback failed".to_string(), None))
+                        Err(CompileError::codegen_error(
+                            "Advanced SIMD fallback failed".to_string(),
+                            None,
+                        ))
                     }
                 }
             }
         } else {
-            Err(CompileError::codegen_error("No instructions generated".to_string(), None))
+            Err(CompileError::codegen_error(
+                "No instructions generated".to_string(),
+                None,
+            ))
         }
     }
 
     /// Emit advanced reduction instructions
     fn emit_advanced_reduction_instructions(
         &mut self,
-        generated_code: &crate::simd_advanced::GeneratedSIMDCode,
+        _generated_code: &crate::simd_advanced::GeneratedSIMDCode,
         vector_val: &BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>> {
         if let BasicValueEnum::VectorValue(vec_val) = vector_val {
@@ -9952,7 +10159,10 @@ impl<'ctx> CodeGenerator<'ctx> {
             let element_count = vector_type.get_size();
 
             if element_count == 0 {
-                return Err(CompileError::codegen_error("Cannot reduce empty vector".to_string(), None));
+                return Err(CompileError::codegen_error(
+                    "Cannot reduce empty vector".to_string(),
+                    None,
+                ));
             }
 
             // Tree reduction: repeatedly halve the vector size
@@ -9961,42 +10171,61 @@ impl<'ctx> CodeGenerator<'ctx> {
 
             while current_size > 1 {
                 let half_size = current_size / 2;
-                
+
                 // Extract lower and upper halves
-                let lower_indices: Vec<_> = (0..half_size).map(|i| self.context.i32_type().const_int(i as u64, false)).collect();
-                let upper_indices: Vec<_> = (half_size..current_size).map(|i| self.context.i32_type().const_int(i as u64, false)).collect();
-                
+                let lower_indices: Vec<_> = (0..half_size)
+                    .map(|i| self.context.i32_type().const_int(i as u64, false))
+                    .collect();
+                let upper_indices: Vec<_> = (half_size..current_size)
+                    .map(|i| self.context.i32_type().const_int(i as u64, false))
+                    .collect();
+
                 // Create shuffle masks for extraction
                 let lower_mask = VectorType::const_vector(&lower_indices);
                 let upper_mask = VectorType::const_vector(&upper_indices);
-                
+
                 // Extract halves using shufflevector
-                let lower_half = self.builder.build_shuffle_vector(
-                    current_vec, 
-                    current_vec.get_type().get_undef(),
-                    lower_mask,
-                    "lower_half"
-                ).unwrap();
-                
-                let upper_half = self.builder.build_shuffle_vector(
-                    current_vec,
-                    current_vec.get_type().get_undef(), 
-                    upper_mask,
-                    "upper_half"
-                ).unwrap();
-                
+                let lower_half = self
+                    .builder
+                    .build_shuffle_vector(
+                        current_vec,
+                        current_vec.get_type().get_undef(),
+                        lower_mask,
+                        "lower_half",
+                    )
+                    .unwrap();
+
+                let upper_half = self
+                    .builder
+                    .build_shuffle_vector(
+                        current_vec,
+                        current_vec.get_type().get_undef(),
+                        upper_mask,
+                        "upper_half",
+                    )
+                    .unwrap();
+
                 // Add the halves
-                current_vec = self.builder.build_float_add(lower_half, upper_half, "tree_add").unwrap();
+                current_vec = self
+                    .builder
+                    .build_float_add(lower_half, upper_half, "tree_add")
+                    .unwrap();
                 current_size = half_size;
             }
 
             // Extract final scalar result
             let zero_index = self.context.i32_type().const_int(0, false);
-            let scalar_result = self.builder.build_extract_element(current_vec, zero_index, "final_result").unwrap();
-            
+            let scalar_result = self
+                .builder
+                .build_extract_element(current_vec, zero_index, "final_result")
+                .unwrap();
+
             Ok(scalar_result)
         } else {
-            Err(CompileError::codegen_error("Reduction requires vector input".to_string(), None))
+            Err(CompileError::codegen_error(
+                "Reduction requires vector input".to_string(),
+                None,
+            ))
         }
     }
 

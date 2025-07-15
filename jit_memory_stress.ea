@@ -1,0 +1,28 @@
+// JIT memory stress test - exercises JIT compilation caching and symbol resolution
+func jit_memory_test() -> i32 {
+    // Test JIT symbol resolution memory management
+    println("JIT Memory Test Start");
+    
+    // Test 1: Multiple Vec operations to stress stdlib memory
+    let data = Vec::new();
+    for (let i = 0; i < 50; i += 1) {
+        data.push(i * 2);
+    }
+    
+    // Test 2: HashMap memory stress
+    let lookup = HashMap::new();
+    for (let j = 0; j < 30; j += 1) {
+        lookup.insert(j, data.get(j % data.len()));
+    }
+    
+    // Test 3: String memory operations
+    let message = String::from("JIT memory validation");
+    let result = message.len() + data.len() + lookup.len();
+    
+    println("JIT Memory Test End");
+    return result;
+}
+
+func main() -> i32 {
+    return jit_memory_test();
+}

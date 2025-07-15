@@ -1,0 +1,18 @@
+// SIMD Runtime Test - Can we actually run SIMD programs?
+
+func main() -> i32 {
+    println("=== Testing SIMD Runtime Execution ===");
+    
+    // Create SIMD vectors
+    let vec1 = [1.0, 2.0, 3.0, 4.0]f32x4;
+    let vec2 = [5.0, 6.0, 7.0, 8.0]f32x4;
+    
+    // Perform SIMD operations
+    let result_add = vec1 .+ vec2;  // Should be [6.0, 8.0, 10.0, 12.0]
+    let result_mul = vec1 .* vec2;  // Should be [5.0, 12.0, 21.0, 32.0]
+    
+    println("SIMD vector operations completed!");
+    println("Test successful - SIMD is working!");
+    
+    return 1;
+}

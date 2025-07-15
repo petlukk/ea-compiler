@@ -534,7 +534,7 @@ mod tests {
                 Duration::from_millis(10),
             )
             .unwrap();
-        
+
         cache
             .put(
                 "code2",
@@ -545,7 +545,7 @@ mod tests {
                 Duration::from_millis(20),
             )
             .unwrap();
-        
+
         // Cache should be at capacity
         assert_eq!(cache.size(), 2);
 
@@ -561,13 +561,16 @@ mod tests {
                 Duration::from_millis(30),
             )
             .unwrap();
-        
+
         // Cache should still be at max capacity
         assert_eq!(cache.size(), 2);
 
         // DEVELOPMENT_PROCESS.md: Test actual eviction behavior
         // The LRU eviction should have removed the oldest entry (code1)
-        assert!(cache.get("code1").is_none(), "Oldest entry should be evicted");
+        assert!(
+            cache.get("code1").is_none(),
+            "Oldest entry should be evicted"
+        );
         assert!(cache.get("code2").is_some(), "Second entry should remain");
         assert!(cache.get("code3").is_some(), "Newest entry should exist");
     }

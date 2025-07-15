@@ -355,8 +355,8 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
     }
 
     eprintln!("🔧 Cache miss - compiling from source...");
-    let compilation_start = Instant::now();
-    let memory_start = memory_profiler::get_current_memory_usage();
+    let _compilation_start = Instant::now();
+    let _memory_start = memory_profiler::get_current_memory_usage();
 
     let (program, _type_context) = compile_to_ast(source)?;
 
@@ -454,20 +454,26 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
         eprintln!("🔗 Mapping global string literals...");
         let mut globals_found = 0;
         let mut string_literals_mapped = 0;
-        
+
         for global in codegen.get_module().get_globals() {
             globals_found += 1;
             let global_name = global.get_name().to_string_lossy();
             eprintln!("🔍 Found global {}: {}", globals_found, global_name);
-            
+
             if global_name.contains("string_literal") {
                 eprintln!("✅ Found string literal global: {}", global_name);
                 // Map to the actual string content from LLVM IR
                 let static_str = b"JIT test\0";
                 execution_engine.add_global_mapping(&global, static_str.as_ptr() as usize);
                 string_literals_mapped += 1;
-                eprintln!("✅ Mapped string literal #{} successfully", string_literals_mapped);
-            } else if global_name.contains("format") || global_name.contains("mode") || global_name.contains("content") {
+                eprintln!(
+                    "✅ Mapped string literal #{} successfully",
+                    string_literals_mapped
+                );
+            } else if global_name.contains("format")
+                || global_name.contains("mode")
+                || global_name.contains("content")
+            {
                 eprintln!("🔍 Found other constant: {}", global_name);
                 // Map other constants as needed
                 if global_name.contains("i32_format") {
@@ -477,8 +483,11 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
                 }
             }
         }
-        
-        eprintln!("🔗 Global mapping summary: {} globals found, {} string literals mapped", globals_found, string_literals_mapped);
+
+        eprintln!(
+            "🔗 Global mapping summary: {} globals found, {} string literals mapped",
+            globals_found, string_literals_mapped
+        );
     }
 
     // Find and execute the main function

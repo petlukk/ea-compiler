@@ -269,17 +269,17 @@ impl IncrementalCompiler {
         if units.is_empty() {
             return Ok(Vec::new());
         }
-        
+
         // Build in-degree map for Kahn's algorithm (iterative topological sort)
         let mut in_degree: HashMap<PathBuf, usize> = HashMap::new();
         let mut graph: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
-        
+
         // Initialize all units with 0 in-degree
         for unit in units {
             in_degree.insert(unit.clone(), 0);
             graph.insert(unit.clone(), Vec::new());
         }
-        
+
         // Build the graph and compute in-degrees
         for unit in units {
             if let Some(deps) = self.dependencies.get(unit) {
@@ -293,27 +293,27 @@ impl IncrementalCompiler {
                 }
             }
         }
-        
+
         // Find all nodes with no incoming edges
         let mut queue: std::collections::VecDeque<PathBuf> = in_degree
             .iter()
             .filter(|(_, &degree)| degree == 0)
             .map(|(unit, _)| unit.clone())
             .collect();
-        
+
         let mut result = Vec::new();
-        
+
         // Process nodes with no dependencies first
         while let Some(unit) = queue.pop_front() {
             result.push(unit.clone());
-            
+
             // Process all nodes that depend on this unit
             if let Some(dependents) = graph.get(&unit) {
                 for dependent in dependents {
                     // Decrease in-degree
                     let current_degree = in_degree.get_mut(dependent).unwrap();
                     *current_degree -= 1;
-                    
+
                     // If no more dependencies, add to queue
                     if *current_degree == 0 {
                         queue.push_back(dependent.clone());
@@ -321,7 +321,7 @@ impl IncrementalCompiler {
                 }
             }
         }
-        
+
         // Check for cycles - if we didn't process all units, there's a cycle
         if result.len() != units.len() {
             self.stats.dependency_cycles += 1;
@@ -330,7 +330,7 @@ impl IncrementalCompiler {
                 None,
             ));
         }
-        
+
         Ok(result)
     }
 

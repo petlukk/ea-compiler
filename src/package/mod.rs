@@ -957,7 +957,7 @@ impl PackageManager {
     fn execute_benchmark(
         &self,
         benchmark: &str,
-        config: &BenchmarkConfig,
+        _config: &BenchmarkConfig,
     ) -> Result<BenchmarkResult, PackageError> {
         // Execute benchmark with statistical analysis
         Ok(BenchmarkResult {
@@ -1132,7 +1132,7 @@ impl PackageManager {
     fn compile_source_file(
         &self,
         source_file: &str,
-        target: &BuildTarget,
+        _target: &BuildTarget,
     ) -> Result<PathBuf, PackageError> {
         // Simulate compilation process
         let object_file = source_file.replace(".ea", ".o");

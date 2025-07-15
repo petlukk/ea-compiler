@@ -236,7 +236,7 @@ impl<'a> StreamingCompiler<'a> {
         self.stats.statements_in_current_batch = 0;
 
         // Record memory usage after cleanup
-        let current_memory = std::mem::size_of::<TypeContext>() + 
+        let current_memory = std::mem::size_of::<TypeContext>() +
             self.type_checker.get_context().functions.len() * 64 + // Rough estimate
             self.type_checker.get_context().variables.len() * 64;
 

@@ -1,0 +1,50 @@
+// HashSet validation program for development process compliance
+// This program MUST work completely after implementation
+
+func main() {
+    print("Starting HashSet test");
+    
+    // Test 1: Create new HashSet
+    let set = HashSet::new();
+    print("HashSet created");
+    
+    // Test 2: Insert elements
+    set.insert(1);
+    set.insert(2);
+    set.insert(3);
+    print("Elements inserted");
+    
+    // Test 3: Check contains
+    let contains_result = set.contains(1);
+    if (contains_result == 1) {
+        print("Contains test passed");
+    }
+    
+    // Test 4: Check length
+    let size = set.len();
+    if (size == 3) {
+        print("Length test passed");
+    }
+    
+    // Test 5: Remove element
+    set.remove(2);
+    let new_size = set.len();
+    if (new_size == 2) {
+        print("Remove test passed");
+    }
+    
+    // Test 6: Check removed element
+    let not_contains = set.contains(2);
+    if (not_contains == 0) {
+        print("Remove verification passed");
+    }
+    
+    // Test 7: Clear set
+    set.clear();
+    let empty_check = set.is_empty();
+    if (empty_check == 1) {
+        print("Clear test passed");
+    }
+    
+    print("HashSet test completed");
+}

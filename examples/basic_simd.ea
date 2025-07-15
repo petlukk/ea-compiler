@@ -2,16 +2,18 @@ func simd_demo() -> i32 {
     // 32 SIMD vector types with hardware detection and optimization
     let vec1 = [1.0, 2.0, 3.0, 4.0]f32x4;
     let vec2 = [5.0, 6.0, 7.0, 8.0]f32x4;
-    let wide_vec = [1, 2, 3, 4, 5, 6, 7, 8]i32x8;
+    let wide_vec = [1, 2, 3, 4]i32x4;
     
     // Element-wise operations with adaptive hardware optimization
     let result = vec1 .+ vec2;  // Uses SSE/AVX/AVX2/AVX512 automatically
     let product = vec1 .* vec2; // Hardware-specific instruction selection
-    let mask = wide_vec .& [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]i32x8;
+    let mask = wide_vec .& [0xFF, 0xFF, 0xFF, 0xFF]i32x4;
     
     // Advanced SIMD: 37 instruction sets supported (2,277 lines implementation)
     // Matrix operations, convolution, FFT with hardware-specific optimization
     print("Advanced SIMD with hardware optimization");
+    
+    return 0;
 }
 
 func main() {

@@ -2,8 +2,8 @@
 // Example SIMD program demonstrating Eä's SIMD capabilities
 
 // Import SIMD types and functions
-use eä::simd::{f32x8, i32x16, u8x32, mask8};
-use eä::target::{avx2, sse4};
+use ea::simd::{f32x8, i32x16, u8x32, mask8};
+use ea::target::{avx2, sse4};
 
 // Hardware-adaptive SIMD function
 @target_feature(avx2)

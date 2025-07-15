@@ -187,12 +187,12 @@ impl LLVMOptimizer {
             "🔍 About to run passes on {} functions...",
             module.get_functions().count()
         );
-        
+
         // DEVELOPMENT_PROCESS.md: Implement REAL fix, not just error handling
         // Root cause: The function pass manager finalization is causing the SIGSEGV
         // Solution: Skip function passes entirely for functions with control flow
         // until we implement proper LLVM IR validation
-        
+
         for function in module.get_functions() {
             // Skip external functions (declarations only)
             if function.count_basic_blocks() == 0 {
@@ -203,7 +203,7 @@ impl LLVMOptimizer {
             eprintln!("🔍 Checking function: {}", function_name);
 
             let basic_block_count = function.count_basic_blocks();
-            
+
             // REAL FIX: Control flow functions have invalid IR that causes SIGSEGV
             // Skip optimization for functions with >1 basic block (control flow)
             // This is the actual root cause - not complexity, but control flow IR structure

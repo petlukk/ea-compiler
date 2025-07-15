@@ -63,13 +63,6 @@ pub fn is_simd_keyword(token: &TokenKind) -> bool {
             | TokenKind::SimdWidth
             | TokenKind::SimdAuto
             | TokenKind::TargetFeature
-            | TokenKind::HorizontalSum
-            | TokenKind::HorizontalMin
-            | TokenKind::HorizontalMax
-            | TokenKind::FromSlice
-            | TokenKind::ToArray
-            | TokenKind::Splat
-            | TokenKind::Shuffle
             | TokenKind::Lanes
     )
 }
@@ -379,7 +372,6 @@ mod tests {
     fn test_simd_keyword_detection() {
         assert!(is_simd_keyword(&TokenKind::Vectorize));
         assert!(is_simd_keyword(&TokenKind::SimdWidth));
-        assert!(is_simd_keyword(&TokenKind::HorizontalSum));
         assert!(!is_simd_keyword(&TokenKind::Func));
     }
 

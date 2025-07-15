@@ -36,20 +36,25 @@ pub fn jit_execute_cached(source: &str, module_name: &str) -> Result<i32> {
         codegen.compile_program(&program)?;
 
         // Initialize LLVM targets for cached execution too
-        inkwell::targets::Target::initialize_native(&inkwell::targets::InitializationConfig::default())
-            .map_err(|e| {
-                CompileError::codegen_error(
-                    format!("Failed to initialize LLVM native target: {}", e),
-                    None,
-                )
-            })?;
-            
+        inkwell::targets::Target::initialize_native(
+            &inkwell::targets::InitializationConfig::default(),
+        )
+        .map_err(|e| {
+            CompileError::codegen_error(
+                format!("Failed to initialize LLVM native target: {}", e),
+                None,
+            )
+        })?;
+
         let execution_engine = codegen
             .get_module()
             .create_jit_execution_engine(OptimizationLevel::None)
             .map_err(|e| {
                 CompileError::codegen_error(
-                    format!("Failed to create JIT execution engine with target features: {}", e),
+                    format!(
+                        "Failed to create JIT execution engine with target features: {}",
+                        e
+                    ),
                     None,
                 )
             })?;
@@ -76,7 +81,7 @@ pub fn jit_execute_cached(source: &str, module_name: &str) -> Result<i32> {
 
     // Create execution engine for JIT compilation with proper target configuration
     eprintln!("🔧 Creating JIT execution engine with target features...");
-    
+
     // Initialize LLVM targets to ensure proper CPU feature support
     inkwell::targets::Target::initialize_native(&inkwell::targets::InitializationConfig::default())
         .map_err(|e| {
@@ -86,7 +91,7 @@ pub fn jit_execute_cached(source: &str, module_name: &str) -> Result<i32> {
                 None,
             )
         })?;
-    
+
     let execution_engine = codegen
         .get_module()
         .create_jit_execution_engine(OptimizationLevel::None)

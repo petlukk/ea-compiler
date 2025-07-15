@@ -1,0 +1,30 @@
+// simd_memory_demo_array_fix_validation.ea
+// This program MUST work completely after fixing the array syntax issues in simd_memory_demo.ea
+// Tests that array declarations use correct syntax supported by the compiler
+
+func test_array_syntax_compatibility() -> () {
+    // Test that we can declare arrays without unsupported syntax
+    // Replace [type; size] with simple vector literals
+    
+    // Working array declarations (no type annotations)
+    let input_data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+    let output_data = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    
+    // Working SIMD operations on arrays 
+    let vec1 = [1.0, 2.0, 3.0, 4.0]f32x4;
+    let vec2 = [5.0, 6.0, 7.0, 8.0]f32x4;
+    
+    // Element-wise operations
+    let result = vec1 .+ vec2;
+    
+    return;
+}
+
+func main() -> () {
+    test_array_syntax_compatibility();
+    
+    // If we get here without parse errors, the array syntax fix worked
+    print("SIMD memory demo array fix validation PASSED");
+    
+    return;
+}

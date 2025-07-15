@@ -1,0 +1,53 @@
+// Minimal memory validation test program
+// Tests basic memory allocation patterns the compiler definitely supports
+func memory_test() -> i32 {
+    // Test basic variable allocations
+    let a = 10;
+    let b = 20;
+    let c = 30;
+    let d = 40;
+    let e = 50;
+    
+    // Test function call memory (stack allocation)
+    let result = helper_function(a, b);
+    result += helper_function(c, d);
+    result += e;
+    
+    return result;
+}
+
+func helper_function(x: i32, y: i32) -> i32 {
+    // Test local variable allocation
+    let temp1 = x * 2;
+    let temp2 = y * 3;
+    let temp3 = temp1 + temp2;
+    
+    // Test nested function calls
+    return nested_helper(temp3);
+}
+
+func nested_helper(value: i32) -> i32 {
+    // Test more local allocations
+    let local1 = value + 1;
+    let local2 = value + 2;
+    let local3 = value + 3;
+    
+    return local1 + local2 + local3;
+}
+
+func recursive_test(depth: i32) -> i32 {
+    if (depth <= 0) {
+        return 0;
+    }
+    
+    // Test recursive memory allocation
+    let local = depth * 2;
+    return local + recursive_test(depth - 1);
+}
+
+func main() -> i32 {
+    let result1 = memory_test();
+    let result2 = recursive_test(5);
+    
+    return result1 + result2;
+}

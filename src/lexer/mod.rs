@@ -101,26 +101,9 @@ pub enum TokenKind {
     SimdAuto,
     #[token("target_feature")]
     TargetFeature,
-    #[token("horizontal_sum")]
-    HorizontalSum,
-    #[token("horizontal_min")]
-    HorizontalMin,
-    #[token("horizontal_max")]
-    HorizontalMax,
-    #[token("dot_product")]
-    DotProduct,
-    #[token("load_vector")]
-    LoadVector,
-    #[token("store_vector")]
-    StoreVector,
-    #[token("from_slice")]
-    FromSlice,
-    #[token("to_array")]
-    ToArray,
-    #[token("splat")]
-    Splat,
-    #[token("shuffle")]
-    Shuffle,
+    // Removed reserved SIMD function names - these should be regular identifiers
+    // to allow variable names like "dot_product = vec1 .* vec2"
+    // SIMD function calls will be detected by name matching in the parser
     #[token("lanes")]
     Lanes,
 
@@ -503,16 +486,7 @@ impl fmt::Display for TokenKind {
             TokenKind::SimdWidth => "simd_width",
             TokenKind::SimdAuto => "simd_auto",
             TokenKind::TargetFeature => "target_feature",
-            TokenKind::HorizontalSum => "horizontal_sum",
-            TokenKind::HorizontalMin => "horizontal_min",
-            TokenKind::HorizontalMax => "horizontal_max",
-            TokenKind::DotProduct => "dot_product",
-            TokenKind::LoadVector => "load_vector",
-            TokenKind::StoreVector => "store_vector",
-            TokenKind::FromSlice => "from_slice",
-            TokenKind::ToArray => "to_array",
-            TokenKind::Splat => "splat",
-            TokenKind::Shuffle => "shuffle",
+            // Removed - these are now regular identifiers
             TokenKind::Lanes => "lanes",
 
             // Hardware features
@@ -717,16 +691,7 @@ impl<'source> Lexer<'source> {
             "simd_width" => Some(TokenKind::SimdWidth),
             "simd_auto" => Some(TokenKind::SimdAuto),
             "target_feature" => Some(TokenKind::TargetFeature),
-            "horizontal_sum" => Some(TokenKind::HorizontalSum),
-            "horizontal_min" => Some(TokenKind::HorizontalMin),
-            "horizontal_max" => Some(TokenKind::HorizontalMax),
-            "dot_product" => Some(TokenKind::DotProduct),
-            "load_vector" => Some(TokenKind::LoadVector),
-            "store_vector" => Some(TokenKind::StoreVector),
-            "from_slice" => Some(TokenKind::FromSlice),
-            "to_array" => Some(TokenKind::ToArray),
-            "splat" => Some(TokenKind::Splat),
-            "shuffle" => Some(TokenKind::Shuffle),
+            // Removed - these are now regular identifiers
             "lanes" => Some(TokenKind::Lanes),
 
             // Hardware features
@@ -909,8 +874,8 @@ mod tests {
         assert!(token_kinds.contains(&&TokenKind::DotAdd));
         assert!(token_kinds.contains(&&TokenKind::TargetFeature));
         assert!(token_kinds.contains(&&TokenKind::AVX2));
-        assert!(token_kinds.contains(&&TokenKind::HorizontalSum));
-        assert!(token_kinds.contains(&&TokenKind::Splat));
+        // HorizontalSum removed - now handled as regular identifier
+        // Splat removed - now handled as regular identifier
     }
 
     #[test]
@@ -1061,10 +1026,20 @@ mod tests {
         let mut lexer = Lexer::new("horizontal_sum from_slice to_array splat");
         let tokens = lexer.tokenize_all().unwrap();
 
-        assert_eq!(tokens[0].kind, TokenKind::HorizontalSum);
-        assert_eq!(tokens[1].kind, TokenKind::FromSlice);
-        assert_eq!(tokens[2].kind, TokenKind::ToArray);
-        assert_eq!(tokens[3].kind, TokenKind::Splat);
+        // SIMD function names are now treated as regular identifiers for context-sensitive parsing
+        assert_eq!(
+            tokens[0].kind,
+            TokenKind::Identifier("horizontal_sum".to_string())
+        );
+        assert_eq!(
+            tokens[1].kind,
+            TokenKind::Identifier("from_slice".to_string())
+        );
+        assert_eq!(
+            tokens[2].kind,
+            TokenKind::Identifier("to_array".to_string())
+        );
+        assert_eq!(tokens[3].kind, TokenKind::Identifier("splat".to_string()));
     }
 
     #[test]

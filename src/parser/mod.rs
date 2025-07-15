@@ -973,7 +973,7 @@ impl Parser {
 
         // Handle built-in functions (print, println, etc.)
         if !self.is_at_end() && matches!(self.peek().kind, TokenKind::Print) {
-            let token = self.advance().clone();
+            self.advance(); // consume Print token
             let func_name = "print";
 
             // This should be a function call
@@ -989,7 +989,7 @@ impl Parser {
 
         // Handle println function
         if !self.is_at_end() && matches!(self.peek().kind, TokenKind::Println) {
-            let token = self.advance().clone();
+            self.advance(); // consume Println token
             let func_name = "println";
 
             // This should be a function call
@@ -1012,6 +1012,23 @@ impl Parser {
                     | TokenKind::HashSetType
                     | TokenKind::StringType
                     | TokenKind::FileType
+                    // SIMD vector types
+                    | TokenKind::F32x2
+                    | TokenKind::F32x4
+                    | TokenKind::F32x8
+                    | TokenKind::F32x16
+                    | TokenKind::F64x2
+                    | TokenKind::F64x4
+                    | TokenKind::F64x8
+                    | TokenKind::I32x2
+                    | TokenKind::I32x4
+                    | TokenKind::I32x8
+                    | TokenKind::I32x16
+                    | TokenKind::I64x2
+                    | TokenKind::I64x4
+                    | TokenKind::I64x8
+                    | TokenKind::U32x4
+                    | TokenKind::U32x8
             )
         {
             let token = self.advance().clone();
@@ -1021,6 +1038,23 @@ impl Parser {
                 TokenKind::HashSetType => "HashSet",
                 TokenKind::StringType => "String",
                 TokenKind::FileType => "File",
+                // SIMD vector types
+                TokenKind::F32x2 => "f32x2",
+                TokenKind::F32x4 => "f32x4",
+                TokenKind::F32x8 => "f32x8",
+                TokenKind::F32x16 => "f32x16",
+                TokenKind::F64x2 => "f64x2",
+                TokenKind::F64x4 => "f64x4",
+                TokenKind::F64x8 => "f64x8",
+                TokenKind::I32x2 => "i32x2",
+                TokenKind::I32x4 => "i32x4",
+                TokenKind::I32x8 => "i32x8",
+                TokenKind::I32x16 => "i32x16",
+                TokenKind::I64x2 => "i64x2",
+                TokenKind::I64x4 => "i64x4",
+                TokenKind::I64x8 => "i64x8",
+                TokenKind::U32x4 => "u32x4",
+                TokenKind::U32x8 => "u32x8",
                 _ => unreachable!(),
             };
 
@@ -1101,29 +1135,35 @@ impl Parser {
             }
         }
 
-        // Handle built-in SIMD reduction functions
-        if self.match_tokens(&[TokenKind::HorizontalSum]) {
-            return self.parse_reduction_function(ReductionOp::Sum);
-        }
-
-        if self.match_tokens(&[TokenKind::HorizontalMin]) {
-            return self.parse_reduction_function(ReductionOp::Min);
-        }
-
-        if self.match_tokens(&[TokenKind::HorizontalMax]) {
-            return self.parse_reduction_function(ReductionOp::Max);
-        }
-
-        if self.match_tokens(&[TokenKind::DotProduct]) {
-            return self.parse_dot_product_function();
-        }
-
-        if self.match_tokens(&[TokenKind::LoadVector]) {
-            return self.parse_load_vector_function();
-        }
-
-        if self.match_tokens(&[TokenKind::StoreVector]) {
-            return self.parse_store_vector_function();
+        // Handle built-in SIMD function calls by checking identifier names
+        if let TokenKind::Identifier(name) = &self.peek().kind {
+            match name.as_str() {
+                "horizontal_sum" if self.peek_next().kind == TokenKind::LeftParen => {
+                    self.advance(); // consume identifier
+                    return self.parse_reduction_function(ReductionOp::Sum);
+                }
+                "horizontal_min" if self.peek_next().kind == TokenKind::LeftParen => {
+                    self.advance(); // consume identifier
+                    return self.parse_reduction_function(ReductionOp::Min);
+                }
+                "horizontal_max" if self.peek_next().kind == TokenKind::LeftParen => {
+                    self.advance(); // consume identifier
+                    return self.parse_reduction_function(ReductionOp::Max);
+                }
+                "dot_product" if self.peek_next().kind == TokenKind::LeftParen => {
+                    self.advance(); // consume identifier
+                    return self.parse_dot_product_function();
+                }
+                "load_vector" if self.peek_next().kind == TokenKind::LeftParen => {
+                    self.advance(); // consume identifier
+                    return self.parse_load_vector_function();
+                }
+                "store_vector" if self.peek_next().kind == TokenKind::LeftParen => {
+                    self.advance(); // consume identifier
+                    return self.parse_store_vector_function();
+                }
+                _ => {}
+            }
         }
 
         // Handle SIMD literals that already come as a single token
@@ -1372,10 +1412,11 @@ impl Parser {
 
     /// Consumes the current token if it's an identifier, or errors.
     fn consume_identifier(&mut self, message: String) -> Result<String> {
-        if self.check(&TokenKind::Identifier(String::new())) {
-            let token = self.advance();
-            if let TokenKind::Identifier(name) = &token.kind {
-                return Ok(name.clone());
+        if !self.is_at_end() {
+            if let TokenKind::Identifier(name) = &self.peek().kind {
+                let name = name.clone();
+                self.advance();
+                return Ok(name);
             }
         }
 
@@ -1561,6 +1602,19 @@ impl Parser {
             &self.tokens[self.current]
         } else if !self.tokens.is_empty() {
             // Return the last token if we're at the end
+            &self.tokens[self.tokens.len() - 1]
+        } else {
+            // This should never happen but add a fallback
+            panic!("Parser: No tokens available")
+        }
+    }
+
+    /// Returns the next token without consuming it.
+    fn peek_next(&self) -> &Token {
+        if self.current + 1 < self.tokens.len() {
+            &self.tokens[self.current + 1]
+        } else if !self.tokens.is_empty() {
+            // Return the last token if we're at or past the end
             &self.tokens[self.tokens.len() - 1]
         } else {
             // This should never happen but add a fallback
@@ -1853,10 +1907,37 @@ impl Parser {
             "Expected ',' between load_vector arguments".to_string(),
         )?;
 
-        // Parse the vector type identifier
-        let vector_type = if let Some(token) =
-            self.match_tokens_and_get(&[TokenKind::Identifier("".to_string())])
-        {
+        // Parse the vector type (accepting SIMD type tokens directly)
+        let vector_type = if let Some(token) = self.match_tokens_and_get(&[
+            TokenKind::F32x2,
+            TokenKind::F32x4,
+            TokenKind::F32x8,
+            TokenKind::F32x16,
+            TokenKind::F64x2,
+            TokenKind::F64x4,
+            TokenKind::F64x8,
+            TokenKind::I32x2,
+            TokenKind::I32x4,
+            TokenKind::I32x8,
+            TokenKind::I32x16,
+            TokenKind::I64x2,
+            TokenKind::I64x4,
+            TokenKind::I64x8,
+            TokenKind::I16x4,
+            TokenKind::I16x8,
+            TokenKind::I16x16,
+            TokenKind::I16x32,
+            TokenKind::I8x8,
+            TokenKind::I8x16,
+            TokenKind::I8x32,
+            TokenKind::I8x64,
+            TokenKind::U32x4,
+            TokenKind::U32x8,
+            TokenKind::U16x8,
+            TokenKind::U16x16,
+            TokenKind::U8x16,
+            TokenKind::U8x32,
+        ]) {
             self.parse_simd_vector_type(&token.kind)?
         } else {
             return Err(CompileError::parse_error(

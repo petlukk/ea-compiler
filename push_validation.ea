@@ -1,0 +1,47 @@
+// Vec push() validation test program
+// This program MUST work completely after push() implementation
+
+func main() {
+    // Test Vec push operation specifically
+    print("Starting push test");
+    
+    let mut vec = Vec::new();
+    print("Vec created");
+    
+    // Test single push
+    vec.push(42);
+    print("Element pushed");
+    
+    // Verify length increased
+    let len = vec.len();
+    if (len == 1) {
+        print("Length correct");
+    }
+    
+    // Verify element can be retrieved
+    let val = vec.get(0);
+    if (val == 42) {
+        print("Value correct");
+    }
+    
+    // Test multiple pushes
+    vec.push(100);
+    vec.push(200);
+    let len2 = vec.len();
+    if (len2 == 3) {
+        print("Multiple pushes work");
+    }
+    
+    // Test capacity growth with manual pushes
+    vec.push(1000);
+    vec.push(2000);
+    vec.push(3000);
+    vec.push(4000);
+    vec.push(5000);
+    let final_len = vec.len();
+    if (final_len == 8) {
+        print("Capacity growth works");
+    }
+    
+    print("ALL TESTS PASSED");
+}

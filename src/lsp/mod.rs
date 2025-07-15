@@ -496,6 +496,20 @@ impl EaLanguageServer {
                     )
                 }
             }
+            CompileError::MemoryExhausted { .. } => {
+                // MemoryExhausted without position info, use document start
+                let pos = Position {
+                    line: 0,
+                    character: 0,
+                };
+                (
+                    pos,
+                    Position {
+                        line: 0,
+                        character: 15,
+                    },
+                )
+            }
         };
 
         Diagnostic {

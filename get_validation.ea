@@ -1,0 +1,60 @@
+// Vec get() validation test program
+// This program MUST work completely after get() implementation
+
+func main() {
+    // Test Vec get operation specifically
+    print("Starting get test");
+    
+    let mut vec = Vec::new();
+    print("Vec created");
+    
+    // Add some elements first
+    vec.push(10);
+    vec.push(20);
+    vec.push(30);
+    print("Elements added");
+    
+    // Test basic get
+    let val0 = vec.get(0);
+    if (val0 == 10) {
+        print("Get index 0 correct");
+    }
+    
+    let val1 = vec.get(1);
+    if (val1 == 20) {
+        print("Get index 1 correct");
+    }
+    
+    let val2 = vec.get(2);
+    if (val2 == 30) {
+        print("Get index 2 correct");
+    }
+    
+    // Test get with different values
+    let mut vec2 = Vec::new();
+    vec2.push(100);
+    vec2.push(200);
+    vec2.push(300);
+    vec2.push(400);
+    vec2.push(500);
+    
+    // Test middle element
+    let middle = vec2.get(2);
+    if (middle == 300) {
+        print("Get middle element correct");
+    }
+    
+    // Test last element
+    let last = vec2.get(4);
+    if (last == 500) {
+        print("Get last element correct");
+    }
+    
+    // Test first element
+    let first = vec2.get(0);
+    if (first == 100) {
+        print("Get first element correct");
+    }
+    
+    print("ALL TESTS PASSED");
+}

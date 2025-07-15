@@ -10,6 +10,7 @@ use crate::{
     resource_manager::{check_resource_limits, record_nesting_depth},
 };
 use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 
 /// Cache key for memoizing parsing results
@@ -250,34 +251,39 @@ impl ParserOptimizer {
 }
 
 /// Global parser optimizer instance
-static mut GLOBAL_PARSER_OPTIMIZER: Option<ParserOptimizer> = None;
+static GLOBAL_PARSER_OPTIMIZER: LazyLock<Mutex<Option<ParserOptimizer>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Initialize the global parser optimizer
 pub fn initialize_parser_optimizer() {
-    unsafe {
-        GLOBAL_PARSER_OPTIMIZER = Some(ParserOptimizer::new());
+    if let Ok(mut optimizer) = GLOBAL_PARSER_OPTIMIZER.lock() {
+        *optimizer = Some(ParserOptimizer::new());
     }
 }
 
-/// Get the global parser optimizer
-pub fn get_parser_optimizer() -> Option<&'static mut ParserOptimizer> {
-    unsafe { GLOBAL_PARSER_OPTIMIZER.as_mut() }
+/// Execute a function with the global parser optimizer
+pub fn with_parser_optimizer<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&mut ParserOptimizer) -> R,
+{
+    if let Ok(mut guard) = GLOBAL_PARSER_OPTIMIZER.lock() {
+        if let Some(ref mut optimizer) = *guard {
+            Some(f(optimizer))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
 }
 
 /// Record entering a recursive parsing context
 pub fn enter_parse_recursion() -> Result<()> {
-    if let Some(optimizer) = get_parser_optimizer() {
-        optimizer.enter_recursion()
-    } else {
-        Ok(())
-    }
+    with_parser_optimizer(|optimizer| optimizer.enter_recursion()).unwrap_or(Ok(()))
 }
 
 /// Record exiting a recursive parsing context
 pub fn exit_parse_recursion() {
-    if let Some(optimizer) = get_parser_optimizer() {
-        optimizer.exit_recursion();
-    }
+    with_parser_optimizer(|optimizer| optimizer.exit_recursion());
 }
 
 /// Time a parsing operation
@@ -285,27 +291,29 @@ pub fn time_parsing_operation<F, T>(operation: F) -> Result<T>
 where
     F: FnOnce() -> Result<T>,
 {
-    if let Some(optimizer) = get_parser_optimizer() {
-        optimizer.time_parse(operation)
-    } else {
-        operation()
+    // Check if optimizer is available
+    if let Ok(mut guard) = GLOBAL_PARSER_OPTIMIZER.lock() {
+        if let Some(ref mut optimizer) = *guard {
+            // Use the timing function directly
+            return optimizer.time_parse(operation);
+        }
     }
+    
+    // Optimizer not available, just run the operation
+    operation()
 }
 
 /// Generate parser performance report
 pub fn generate_parser_performance_report() -> String {
-    if let Some(optimizer) = get_parser_optimizer() {
-        optimizer.generate_performance_report()
-    } else {
-        "Parser optimizer not initialized".to_string()
-    }
+    with_parser_optimizer(|optimizer| optimizer.generate_performance_report())
+        .unwrap_or_else(|| "Parser optimizer not initialized".to_string())
 }
 
 /// Reset parser performance metrics
 pub fn reset_parser_metrics() {
-    if let Some(optimizer) = get_parser_optimizer() {
+    with_parser_optimizer(|optimizer| {
         optimizer.reset_metrics();
-    }
+    });
 }
 
 /// Expression complexity analyzer

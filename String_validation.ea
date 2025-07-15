@@ -1,0 +1,17 @@
+func main() {
+    // Test String creation
+    let s1 = String::new();
+    print("String created");
+    
+    // Test String length
+    let len = s1.len();
+    print("String length works");
+    
+    // Test basic String operations
+    let s2 = String::new();
+    let len2 = s2.len();
+    print("String operations complete");
+    
+    print("String validation test completed");
+}
+

@@ -1,0 +1,20 @@
+func stress_nested_loops() -> i32 {
+    let total = 0;
+    
+    for (let layer1 = 0; layer1 < 5; layer1 += 1) {
+        for (let layer2 = 0; layer2 < 4; layer2 += 1) {
+            for (let layer3 = 0; layer3 < 3; layer3 += 1) {
+                total += layer1 * layer2 + layer3;
+                if (total > 100) {
+                    total = total - 50;
+                }
+            }
+        }
+    }
+    
+    return total;
+}
+
+func main() -> i32 {
+    return stress_nested_loops();
+}
