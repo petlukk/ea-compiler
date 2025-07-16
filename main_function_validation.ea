@@ -1,8 +1,0 @@
-// Main Function Validation Test
-// This program MUST work completely after implementation
-
-func main() {
-    println("Testing main function return type");
-    println("Program should exit with code 0");
-    println("Native execution validation test");
-}
