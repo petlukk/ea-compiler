@@ -6,7 +6,7 @@
 
 use crate::ast::SIMDVectorType;
 use crate::comptime::ComptimeEngine;
-use crate::memory::CacheOptimization;
+// Removed memory dependency - will implement cache optimization separately
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -88,7 +88,7 @@ pub enum AdvancedSIMDOp {
     },
     Prefetch {
         distance: usize,
-        locality: CacheOptimization,
+        // locality: placeholder removed
     },
 
     // Permutation operations

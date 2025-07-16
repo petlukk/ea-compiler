@@ -73,7 +73,7 @@ pub use lexer::{Lexer, Position, Token, TokenKind};
 pub use type_system::{EaType, FunctionType, TypeChecker, TypeContext};
 
 // Re-export JIT cache functionality
-pub use jit_cache::{get_jit_cache, initialize_default_jit_cache, JITCacheConfig, JITCacheStats};
+pub use jit_cache::{with_jit_cache, initialize_default_jit_cache, JITCacheConfig, JITCacheStats};
 pub use jit_cached::jit_execute_cached;
 
 /// Compiler version information
@@ -129,7 +129,7 @@ pub fn type_check(program: &[ast::Stmt]) -> Result<TypeContext> {
     result
 }
 
-/// Complete compilation pipeline: source -> tokens -> AST -> type checking
+/// Complete compilation pipeline: source -> tokens -> AST -> type checking -> memory analysis
 pub fn compile_to_ast(source: &str) -> Result<(Vec<ast::Stmt>, TypeContext)> {
     eprintln!("🎯 Starting compile_to_ast...");
 
@@ -140,6 +140,12 @@ pub fn compile_to_ast(source: &str) -> Result<(Vec<ast::Stmt>, TypeContext)> {
     eprintln!("🎯 Calling type_check...");
     let type_context = type_check(&program)?;
     eprintln!("✅ Type check completed");
+
+    eprintln!("🧠 Analyzing memory regions...");
+    let memory_analysis = memory::analyze_memory_regions(&program);
+    eprintln!("✅ Memory analysis completed - {} variables analyzed", memory_analysis.variables.len());
+    eprintln!("   Stack usage: {} bytes", memory_analysis.stack_usage);
+    eprintln!("   Working set: {} bytes", memory_analysis.working_set_size);
 
     eprintln!("✅ compile_to_ast completed successfully");
     Ok((program, type_context))
@@ -176,8 +182,10 @@ pub fn compile_to_llvm(source: &str, module_name: &str) -> Result<()> {
     eprintln!("✅ Program compiled to LLVM IR");
 
     eprintln!("🔧 Creating LLVM optimizer...");
-    // Apply LLVM optimization
-    let mut optimizer = llvm_optimization::LLVMOptimizer::new();
+    // Apply LLVM optimization with None level to skip optimization
+    let mut optimizer = llvm_optimization::LLVMOptimizer::with_config(
+        llvm_optimization::apply_emit_llvm_preset()
+    );
     eprintln!("✅ LLVM optimizer created");
 
     eprintln!("🔧 Optimizing LLVM module...");
@@ -338,20 +346,27 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
     use std::time::Instant;
 
     // Check JIT cache first
-    let cache = jit_cache::get_jit_cache();
-    if let Some(cached_jit) = cache.get(source) {
-        eprintln!(
-            "🚀 Cache hit! Using cached JIT compilation (hit count: {})",
-            cached_jit.hit_count
-        );
-        eprintln!(
-            "   Saved compilation time: {:?}",
-            cached_jit.compilation_time
-        );
-        eprintln!("   Saved memory usage: {} bytes", cached_jit.memory_usage);
+    let cache_result = jit_cache::with_jit_cache(|cache| {
+        if let Some(cached_jit) = cache.get(source) {
+            eprintln!(
+                "🚀 Cache hit! Using cached JIT compilation (hit count: {})",
+                cached_jit.hit_count
+            );
+            eprintln!(
+                "   Saved compilation time: {:?}",
+                cached_jit.compilation_time
+            );
+            eprintln!("   Saved memory usage: {} bytes", cached_jit.memory_usage);
 
-        // Execute cached machine code directly
-        return jit_execution::execute_cached_jit(cached_jit);
+            // Execute cached machine code directly
+            Some(jit_execution::execute_cached_jit(cached_jit))
+        } else {
+            None
+        }
+    });
+
+    if let Some(result) = cache_result {
+        return result;
     }
 
     eprintln!("🔧 Cache miss - compiling from source...");

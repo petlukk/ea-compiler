@@ -1053,7 +1053,7 @@ impl TypeChecker {
     fn literal_type(&self, literal: &Literal) -> EaType {
         match literal {
             Literal::Integer(_) => EaType::I64,
-            Literal::Float(_) => EaType::F64,
+            Literal::Float(_) => EaType::F32,
             Literal::String(_) => EaType::String,
             Literal::Boolean(_) => EaType::Bool,
             Literal::Vector {
@@ -1325,6 +1325,18 @@ impl TypeChecker {
             Expr::Variable(type_name) if type_name == "File" => {
                 self.check_file_static_method(method_name, args)
             }
+            Expr::Variable(type_name) if type_name == "Package" => {
+                self.check_package_static_method(method_name, args)
+            }
+            Expr::Variable(type_name) if type_name == "PackageManager" => {
+                self.check_package_manager_static_method(method_name, args)
+            }
+            Expr::Variable(type_name) if type_name == "BuildConfig" => {
+                self.check_build_config_static_method(method_name, args)
+            }
+            Expr::Variable(type_name) if type_name == "BenchmarkConfig" => {
+                self.check_benchmark_config_static_method(method_name, args)
+            }
             // Instance method call: vec.push(), vec.len(), etc.
             _ => {
                 let base_type = self.check_expression(base)?;
@@ -1575,6 +1587,86 @@ impl TypeChecker {
         }
     }
 
+    fn check_package_static_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "new" => {
+                if args.len() != 2 {
+                    return Err(CompileError::type_error(
+                        "Package::new() takes exactly two arguments (name, version)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let name_type = self.check_expression(&args[0])?;
+                let version_type = self.check_expression(&args[1])?;
+                if !matches!(name_type, EaType::String) || !matches!(version_type, EaType::String) {
+                    return Err(CompileError::type_error(
+                        "Package::new() arguments must be strings (name, version)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Custom("Package".to_string()))
+            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown Package static method: {}", method_name),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+
+    fn check_package_manager_static_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "new" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "PackageManager::new() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Custom("PackageManager".to_string()))
+            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown PackageManager static method: {}", method_name),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+
+    fn check_build_config_static_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "new" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "BuildConfig::new() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Custom("BuildConfig".to_string()))
+            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown BuildConfig static method: {}", method_name),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+
+    fn check_benchmark_config_static_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "new" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "BenchmarkConfig::new() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Custom("BenchmarkConfig".to_string()))
+            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown BenchmarkConfig static method: {}", method_name),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+
     fn check_instance_method(
         &mut self,
         base_type: &EaType,
@@ -1592,8 +1684,318 @@ impl TypeChecker {
             }
             EaType::StdHashSet(_) => self.check_hashset_instance_method(method_name, args),
             EaType::StdString => self.check_string_instance_method(method_name, args),
+            EaType::Custom(type_name) if type_name == "Package" => {
+                self.check_package_instance_method(method_name, args)
+            }
+            EaType::Custom(type_name) if type_name == "PackageManager" => {
+                self.check_package_manager_instance_method(method_name, args)
+            }
+            EaType::Custom(type_name) if type_name == "BuildConfig" => {
+                self.check_build_config_instance_method(method_name, args)
+            }
+            EaType::Custom(type_name) if type_name == "BenchmarkConfig" => {
+                self.check_benchmark_config_instance_method(method_name, args)
+            }
+            EaType::Custom(type_name) if type_name == "DependencyResolution" => {
+                self.check_dependency_resolution_instance_method(method_name, args)
+            }
+            EaType::Custom(type_name) if type_name == "BuildResult" => {
+                self.check_build_result_instance_method(method_name, args)
+            }
+            EaType::Custom(type_name) if type_name == "BenchmarkResults" => {
+                self.check_benchmark_results_instance_method(method_name, args)
+            }
             _ => Err(CompileError::type_error(
                 format!("Type {:?} has no method '{}'", base_type, method_name),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+
+    fn check_package_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "add_dependency" => {
+                if args.len() != 3 {
+                    return Err(CompileError::type_error(
+                        "add_dependency() takes exactly 3 arguments (name, version, features)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let name_type = self.check_expression(&args[0])?;
+                let version_type = self.check_expression(&args[1])?;
+                let _features_type = self.check_expression(&args[2])?;
+                if !matches!(name_type, EaType::String) || !matches!(version_type, EaType::String) {
+                    return Err(CompileError::type_error(
+                        "add_dependency() name and version must be strings".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit)
+            }
+            "set_performance_requirements" => {
+                if args.len() != 3 {
+                    return Err(CompileError::type_error(
+                        "set_performance_requirements() takes exactly 3 arguments (compile_time, memory, performance)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let compile_time_type = self.check_expression(&args[0])?;
+                let memory_type = self.check_expression(&args[1])?;
+                let performance_type = self.check_expression(&args[2])?;
+                if !matches!(compile_time_type, EaType::I32) || !matches!(memory_type, EaType::I32) || !matches!(performance_type, EaType::F32) {
+                    return Err(CompileError::type_error(
+                        "set_performance_requirements() arguments must be (i32, i32, f32)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit)
+            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown Package method: {}", method_name),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+
+    fn check_package_manager_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "resolve_dependencies" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "resolve_dependencies() takes exactly 1 argument (package)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let package_type = self.check_expression(&args[0])?;
+                if !matches!(package_type, EaType::Custom(ref name) if name == "Package") {
+                    return Err(CompileError::type_error(
+                        "resolve_dependencies() argument must be a Package".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Custom("DependencyResolution".to_string()))
+            }
+            "build_package" => {
+                if args.len() != 2 {
+                    return Err(CompileError::type_error(
+                        "build_package() takes exactly 2 arguments (package, build_config)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let package_type = self.check_expression(&args[0])?;
+                let config_type = self.check_expression(&args[1])?;
+                if !matches!(package_type, EaType::Custom(ref name) if name == "Package") {
+                    return Err(CompileError::type_error(
+                        "build_package() first argument must be a Package".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                if !matches!(config_type, EaType::Custom(ref name) if name == "BuildConfig") {
+                    return Err(CompileError::type_error(
+                        "build_package() second argument must be a BuildConfig".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Custom("BuildResult".to_string()))
+            }
+            "run_benchmarks" => {
+                if args.len() != 2 {
+                    return Err(CompileError::type_error(
+                        "run_benchmarks() takes exactly 2 arguments (package, benchmark_config)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let package_type = self.check_expression(&args[0])?;
+                let config_type = self.check_expression(&args[1])?;
+                if !matches!(package_type, EaType::Custom(ref name) if name == "Package") {
+                    return Err(CompileError::type_error(
+                        "run_benchmarks() first argument must be a Package".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                if !matches!(config_type, EaType::Custom(ref name) if name == "BenchmarkConfig") {
+                    return Err(CompileError::type_error(
+                        "run_benchmarks() second argument must be a BenchmarkConfig".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Custom("BenchmarkResults".to_string()))
+            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown PackageManager method: {}", method_name),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+
+    fn check_build_config_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "add_target" => {
+                if args.len() != 2 {
+                    return Err(CompileError::type_error(
+                        "add_target() takes exactly 2 arguments (target_type, source_file)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let target_type = self.check_expression(&args[0])?;
+                let source_type = self.check_expression(&args[1])?;
+                if !matches!(target_type, EaType::String) || !matches!(source_type, EaType::String) {
+                    return Err(CompileError::type_error(
+                        "add_target() arguments must be strings".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit)
+            }
+            "set_optimization" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "set_optimization() takes exactly 1 argument (optimization_level)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let opt_type = self.check_expression(&args[0])?;
+                if !matches!(opt_type, EaType::String) {
+                    return Err(CompileError::type_error(
+                        "set_optimization() argument must be a string".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit)
+            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown BuildConfig method: {}", method_name),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+
+    fn check_benchmark_config_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "set_iterations" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "set_iterations() takes exactly 1 argument (iterations)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let iterations_type = self.check_expression(&args[0])?;
+                if !matches!(iterations_type, EaType::I32) {
+                    return Err(CompileError::type_error(
+                        "set_iterations() argument must be an integer".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit)
+            }
+            "set_timeout" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error(
+                        "set_timeout() takes exactly 1 argument (timeout)".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                let timeout_type = self.check_expression(&args[0])?;
+                if !matches!(timeout_type, EaType::I32) {
+                    return Err(CompileError::type_error(
+                        "set_timeout() argument must be an integer".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Unit)
+            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown BenchmarkConfig method: {}", method_name),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+
+    fn check_dependency_resolution_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "count" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "count() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32)
+            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown DependencyResolution method: {}", method_name),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+
+    fn check_build_result_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "compilation_time_ms" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "compilation_time_ms() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32)
+            }
+            "peak_memory_mb" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "peak_memory_mb() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32)
+            }
+            "cache_hit_rate" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "cache_hit_rate() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::F32)
+            }
+            "performance_gain" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "performance_gain() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::F32)
+            }
+            "from_cache" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "from_cache() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::Bool)
+            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown BuildResult method: {}", method_name),
+                Position::new(0, 0, 0),
+            )),
+        }
+    }
+
+    fn check_benchmark_results_instance_method(&mut self, method_name: &str, args: &[Expr]) -> Result<EaType> {
+        match method_name {
+            "count" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error(
+                        "count() takes no arguments".to_string(),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+                Ok(EaType::I32)
+            }
+            _ => Err(CompileError::type_error(
+                format!("Unknown BenchmarkResults method: {}", method_name),
                 Position::new(0, 0, 0),
             )),
         }
@@ -2596,6 +2998,15 @@ impl TypeChecker {
             "HashSet" => Ok(EaType::Custom("HashSet".to_string())),
             "String" => Ok(EaType::Custom("String".to_string())), // Eä String type (different from primitive string)
             "File" => Ok(EaType::Custom("File".to_string())),
+            
+            // Package management types
+            "Package" => Ok(EaType::Custom("Package".to_string())),
+            "PackageManager" => Ok(EaType::Custom("PackageManager".to_string())),
+            "BuildConfig" => Ok(EaType::Custom("BuildConfig".to_string())),
+            "BenchmarkConfig" => Ok(EaType::Custom("BenchmarkConfig".to_string())),
+            "DependencyResolution" => Ok(EaType::Custom("DependencyResolution".to_string())),
+            "BuildResult" => Ok(EaType::Custom("BuildResult".to_string())),
+            "BenchmarkResults" => Ok(EaType::Custom("BenchmarkResults".to_string())),
             // Common type aliases that might help with parsing issues
             "int" => Ok(EaType::I32),
             "float" => Ok(EaType::F64),

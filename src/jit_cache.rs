@@ -9,7 +9,7 @@ use crate::error::Result;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Serialization helper for Instant
@@ -406,23 +406,21 @@ impl JITCache {
 }
 
 /// Global JIT cache instance
-static mut GLOBAL_JIT_CACHE: Option<JITCache> = None;
-static CACHE_INIT: std::sync::Once = std::sync::Once::new();
+static GLOBAL_JIT_CACHE: LazyLock<Mutex<Option<JITCache>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Initialize the global JIT cache
 pub fn initialize_jit_cache(config: JITCacheConfig) {
-    CACHE_INIT.call_once(|| unsafe {
-        GLOBAL_JIT_CACHE = Some(JITCache::with_config(config));
-    });
+    let mut cache = GLOBAL_JIT_CACHE.lock().unwrap();
+    if cache.is_none() {
+        *cache = Some(JITCache::with_config(config));
+    }
 }
 
 /// Get reference to the global JIT cache
-pub fn get_jit_cache() -> &'static JITCache {
-    unsafe {
-        GLOBAL_JIT_CACHE
-            .as_ref()
-            .expect("JIT cache not initialized")
-    }
+pub fn with_jit_cache<T>(f: impl FnOnce(&JITCache) -> T) -> T {
+    let cache = GLOBAL_JIT_CACHE.lock().unwrap();
+    let cache_ref = cache.as_ref().expect("JIT cache not initialized");
+    f(cache_ref)
 }
 
 /// Initialize JIT cache with default configuration

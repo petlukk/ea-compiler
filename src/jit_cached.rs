@@ -2,7 +2,7 @@
 //! Cached JIT execution function for the Eä programming language.
 
 use crate::error::{CompileError, Result};
-use crate::jit_cache::get_jit_cache;
+use crate::jit_cache::with_jit_cache;
 use crate::jit_execution::{execute_jit_program, map_essential_symbols};
 use crate::memory_profiler::get_current_memory_usage;
 use crate::{codegen, compile_to_ast};
@@ -14,21 +14,28 @@ use std::time::Instant;
 #[cfg(feature = "llvm")]
 pub fn jit_execute_cached(source: &str, module_name: &str) -> Result<i32> {
     // Check JIT cache first
-    let cache = get_jit_cache();
-    if let Some(cached_jit) = cache.get(source) {
-        eprintln!(
-            "🚀 Cache hit! Using cached JIT compilation (hit count: {})",
-            cached_jit.hit_count
-        );
-        eprintln!(
-            "   Saved compilation time: {:?}",
-            cached_jit.compilation_time
-        );
-        eprintln!("   Saved memory usage: {} bytes", cached_jit.memory_usage);
+    let cache_result = with_jit_cache(|cache| {
+        if let Some(cached_jit) = cache.get(source) {
+            eprintln!(
+                "🚀 Cache hit! Using cached JIT compilation (hit count: {})",
+                cached_jit.hit_count
+            );
+            eprintln!(
+                "   Saved compilation time: {:?}",
+                cached_jit.compilation_time
+            );
+            eprintln!("   Saved memory usage: {} bytes", cached_jit.memory_usage);
 
-        // Re-execute the cached program by recompiling with cached optimizations
-        eprintln!("⚡ Executing cached compilation...");
+            // Re-execute the cached program by recompiling with cached optimizations
+            eprintln!("⚡ Executing cached compilation...");
 
+            Some(cached_jit.clone())
+        } else {
+            None
+        }
+    });
+
+    if let Some(_cached_jit) = cache_result {
         // Fast path: recompile and execute immediately since we have cached metadata
         let (program, _type_context) = compile_to_ast(source)?;
         let context = Context::create();
@@ -122,18 +129,20 @@ pub fn jit_execute_cached(source: &str, module_name: &str) -> Result<i32> {
     // In a production system, you'd want to extract the actual machine code from the execution engine
     let machine_code = Vec::new(); // Note: LLVM JIT doesn't expose machine code directly; this is a known limitation
 
-    cache
-        .put(
-            source,
-            machine_code,
-            0,
-            symbol_table,
-            memory_usage as u64,
-            compilation_time,
-        )
-        .map_err(|e| {
-            CompileError::codegen_error(format!("Failed to cache JIT result: {}", e), None)
-        })?;
+    with_jit_cache(|cache| {
+        cache
+            .put(
+                source,
+                machine_code,
+                0,
+                symbol_table,
+                memory_usage as u64,
+                compilation_time,
+            )
+            .map_err(|e| {
+                CompileError::codegen_error(format!("Failed to cache JIT result: {}", e), None)
+            })
+    })?;
 
     eprintln!("✅ JIT compilation cached successfully");
     eprintln!("   Compilation time: {:?}", compilation_time);

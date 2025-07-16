@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, SystemTime};
 
 /// Represents a compilation unit with its dependencies and metadata
@@ -379,23 +380,20 @@ impl IncrementalCompiler {
 }
 
 /// Global incremental compiler instance
-static mut GLOBAL_INCREMENTAL_COMPILER: Option<IncrementalCompiler> = None;
-static INCREMENTAL_INIT: std::sync::Once = std::sync::Once::new();
-
+static GLOBAL_INCREMENTAL_COMPILER: LazyLock<Mutex<Option<IncrementalCompiler>>> = LazyLock::new(|| Mutex::new(None));
 /// Initialize the global incremental compiler
 pub fn initialize_incremental_compiler(config: IncrementalConfig) {
-    INCREMENTAL_INIT.call_once(|| unsafe {
-        GLOBAL_INCREMENTAL_COMPILER = Some(IncrementalCompiler::with_config(config));
-    });
+    let mut compiler = GLOBAL_INCREMENTAL_COMPILER.lock().unwrap();
+    if compiler.is_none() {
+        *compiler = Some(IncrementalCompiler::with_config(config));
+    }
 }
 
-/// Get reference to the global incremental compiler
-pub fn get_incremental_compiler() -> &'static mut IncrementalCompiler {
-    unsafe {
-        GLOBAL_INCREMENTAL_COMPILER
-            .as_mut()
-            .expect("Incremental compiler not initialized")
-    }
+/// Run operation with the global incremental compiler
+pub fn with_incremental_compiler<T>(f: impl FnOnce(&mut IncrementalCompiler) -> T) -> T {
+    let mut compiler = GLOBAL_INCREMENTAL_COMPILER.lock().unwrap();
+    let compiler_ref = compiler.as_mut().expect("Incremental compiler not initialized");
+    f(compiler_ref)
 }
 
 /// Initialize incremental compiler with default configuration
@@ -405,49 +403,49 @@ pub fn initialize_default_incremental_compiler() {
 
 /// Compile a file with incremental compilation
 pub fn compile_file_incremental(file_path: &Path) -> Result<(Vec<Stmt>, TypeContext)> {
-    let compiler = get_incremental_compiler();
+    with_incremental_compiler(|compiler| {
+        // Check if we can use cached result
+        if let Some((ast, type_context)) = compiler.get_cached_result(file_path) {
+            eprintln!(
+                "✅ Using cached compilation result for {}",
+                file_path.display()
+            );
+            return Ok((ast.clone(), type_context.clone()));
+        }
 
-    // Check if we can use cached result
-    if let Some((ast, type_context)) = compiler.get_cached_result(file_path) {
+        // Need to recompile
+        eprintln!("🔧 Recompiling {}", file_path.display());
+        let start_time = SystemTime::now();
+
+        let source = fs::read_to_string(file_path).map_err(|e| {
+            CompileError::codegen_error(
+                format!("Failed to read file {}: {}", file_path.display(), e),
+                None,
+            )
+        })?;
+
+        let (ast, type_context) = crate::compile_to_ast(&source)?;
+
+        let compilation_time = start_time.elapsed().unwrap_or(Duration::from_secs(0));
+
+        // Cache the result
+        compiler.add_unit(
+            file_path.to_path_buf(),
+            ast.clone(),
+            type_context.clone(),
+            compilation_time,
+        )?;
+        compiler.stats.units_recompiled += 1;
+        compiler.stats.time_spent += compilation_time;
+
         eprintln!(
-            "✅ Using cached compilation result for {}",
-            file_path.display()
+            "✅ Compiled {} in {:?}",
+            file_path.display(),
+            compilation_time
         );
-        return Ok((ast.clone(), type_context.clone()));
-    }
 
-    // Need to recompile
-    eprintln!("🔧 Recompiling {}", file_path.display());
-    let start_time = SystemTime::now();
-
-    let source = fs::read_to_string(file_path).map_err(|e| {
-        CompileError::codegen_error(
-            format!("Failed to read file {}: {}", file_path.display(), e),
-            None,
-        )
-    })?;
-
-    let (ast, type_context) = crate::compile_to_ast(&source)?;
-
-    let compilation_time = start_time.elapsed().unwrap_or(Duration::from_secs(0));
-
-    // Cache the result
-    compiler.add_unit(
-        file_path.to_path_buf(),
-        ast.clone(),
-        type_context.clone(),
-        compilation_time,
-    )?;
-    compiler.stats.units_recompiled += 1;
-    compiler.stats.time_spent += compilation_time;
-
-    eprintln!(
-        "✅ Compiled {} in {:?}",
-        file_path.display(),
-        compilation_time
-    );
-
-    Ok((ast, type_context))
+        Ok((ast, type_context))
+    })
 }
 
 #[cfg(test)]

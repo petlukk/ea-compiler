@@ -11,7 +11,7 @@ use crate::type_system::TypeContext;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 // rayon::prelude import removed as it's unused
@@ -445,23 +445,20 @@ impl Drop for ParallelCompiler {
 }
 
 /// Global parallel compiler instance
-static mut GLOBAL_PARALLEL_COMPILER: Option<ParallelCompiler> = None;
-static PARALLEL_INIT: std::sync::Once = std::sync::Once::new();
-
+static GLOBAL_PARALLEL_COMPILER: LazyLock<Mutex<Option<ParallelCompiler>>> = LazyLock::new(|| Mutex::new(None));
 /// Initialize the global parallel compiler
 pub fn initialize_parallel_compiler(config: ParallelConfig) {
-    PARALLEL_INIT.call_once(|| unsafe {
-        GLOBAL_PARALLEL_COMPILER = Some(ParallelCompiler::with_config(config));
-    });
+    let mut compiler = GLOBAL_PARALLEL_COMPILER.lock().unwrap();
+    if compiler.is_none() {
+        *compiler = Some(ParallelCompiler::with_config(config));
+    }
 }
 
-/// Get reference to the global parallel compiler
-pub fn get_parallel_compiler() -> &'static mut ParallelCompiler {
-    unsafe {
-        GLOBAL_PARALLEL_COMPILER
-            .as_mut()
-            .expect("Parallel compiler not initialized")
-    }
+/// Run operation with the global parallel compiler
+pub fn with_parallel_compiler<T>(f: impl FnOnce(&mut ParallelCompiler) -> T) -> T {
+    let mut compiler = GLOBAL_PARALLEL_COMPILER.lock().unwrap();
+    let compiler_ref = compiler.as_mut().expect("Parallel compiler not initialized");
+    f(compiler_ref)
 }
 
 /// Initialize parallel compiler with default configuration

@@ -7,7 +7,6 @@
 //! - Performance guarantees through static analysis
 
 use crate::ast::{Expr, Literal, Stmt, TypeAnnotation};
-use crate::memory::{MemoryAttributes, MemoryManager};
 use crate::type_system::{EaType, TypeContext};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -22,7 +21,7 @@ pub struct ComptimeEngine {
     /// Type information
     type_context: TypeContext,
     /// Memory manager for compile-time allocations
-    memory_manager: MemoryManager,
+    // memory_manager: placeholder removed
     /// Execution statistics
     stats: ComptimeStats,
     /// Optimization database
@@ -154,7 +153,7 @@ pub struct ComptimeAttributes {
     pub deterministic: bool, // Same inputs always produce same outputs
     pub memoizable: bool,    // Results can be cached
     pub complexity_bounds: Option<ComplexityBounds>,
-    pub memory_requirements: Option<MemoryAttributes>,
+    // pub memory_requirements: placeholder removed
     pub simd_friendly: bool,
     pub parallelizable: bool,
 }
@@ -292,7 +291,7 @@ impl ComptimeEngine {
             values: HashMap::new(),
             functions: HashMap::new(),
             type_context: TypeContext::new(),
-            memory_manager: MemoryManager::new(),
+            // memory_manager: placeholder removed
             stats: ComptimeStats::default(),
             optimization_db: OptimizationDatabase::new(),
         }

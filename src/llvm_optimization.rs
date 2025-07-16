@@ -12,6 +12,7 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::OptimizationLevel;
+use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 
 /// LLVM optimization configuration
@@ -165,33 +166,30 @@ impl LLVMOptimizer {
         let function_pass_manager = PassManager::create(module);
         eprintln!("✅ Function pass manager created");
 
-        // CRITICAL FIX: Use minimal, safe optimization passes only
-        // The segmentation fault is caused by aggressive optimization passes
-        // that don't work with the current LLVM IR structure
-
-        // These are the ONLY safe passes that work with our IR:
+        // Add standard optimization passes
         function_pass_manager.add_instruction_combining_pass();
         function_pass_manager.add_cfg_simplification_pass();
-        self.stats.passes_run += 2;
-
-        // REMOVED: All other passes cause segfaults with our IR structure
-        // This is a REAL fix that prioritizes working functionality over optimization theater
+        function_pass_manager.add_dead_store_elimination_pass();
+        
+        if self.config.enable_constant_propagation {
+            function_pass_manager.add_constant_merge_pass();
+        }
+        
+        self.stats.passes_run += 3;
+        if self.config.enable_constant_propagation {
+            self.stats.passes_run += 1;
+        }
 
         // Initialize and run function passes (with safety checks)
         eprintln!("🔍 About to initialize function pass manager...");
         function_pass_manager.initialize();
         eprintln!("✅ Function pass manager initialized");
 
-        // Run passes on all functions - with ACTUAL fix for the SIGSEGV root cause
+        // Run passes on all functions - simplified approach
         eprintln!(
             "🔍 About to run passes on {} functions...",
             module.get_functions().count()
         );
-
-        // DEVELOPMENT_PROCESS.md: Implement REAL fix, not just error handling
-        // Root cause: The function pass manager finalization is causing the SIGSEGV
-        // Solution: Skip function passes entirely for functions with control flow
-        // until we implement proper LLVM IR validation
 
         for function in module.get_functions() {
             // Skip external functions (declarations only)
@@ -200,18 +198,6 @@ impl LLVMOptimizer {
             }
 
             let function_name = function.get_name().to_string_lossy();
-            eprintln!("🔍 Checking function: {}", function_name);
-
-            let basic_block_count = function.count_basic_blocks();
-
-            // REAL FIX: Control flow functions have invalid IR that causes SIGSEGV
-            // Skip optimization for functions with >1 basic block (control flow)
-            // This is the actual root cause - not complexity, but control flow IR structure
-            if basic_block_count > 1 {
-                eprintln!("⚠️  Skipping optimization for function {} with {} basic blocks (control flow detected)", function_name, basic_block_count);
-                continue;
-            }
-
             eprintln!("🔍 Running passes on function: {}", function_name);
 
             // Run optimization passes with proper error handling
@@ -224,11 +210,9 @@ impl LLVMOptimizer {
                 }
                 Err(_) => {
                     eprintln!(
-                        "⚠️  Optimization failed for function {} - IR structure issue",
+                        "⚠️  Optimization failed for function {} - continuing with next function",
                         function_name
                     );
-                    // DEVELOPMENT_PROCESS.md: This indicates a real problem in our IR generation
-                    // that needs investigation, but shouldn't crash the compiler
                 }
             }
         }
@@ -346,23 +330,20 @@ impl LLVMOptimizer {
 }
 
 /// Global LLVM optimizer instance
-static mut GLOBAL_LLVM_OPTIMIZER: Option<LLVMOptimizer> = None;
-static OPTIMIZER_INIT: std::sync::Once = std::sync::Once::new();
-
+static GLOBAL_LLVM_OPTIMIZER: LazyLock<Mutex<Option<LLVMOptimizer>>> = LazyLock::new(|| Mutex::new(None));
 /// Initialize the global LLVM optimizer
 pub fn initialize_llvm_optimizer(config: LLVMOptimizationConfig) {
-    OPTIMIZER_INIT.call_once(|| unsafe {
-        GLOBAL_LLVM_OPTIMIZER = Some(LLVMOptimizer::with_config(config));
-    });
+    let mut optimizer = GLOBAL_LLVM_OPTIMIZER.lock().unwrap();
+    if optimizer.is_none() {
+        *optimizer = Some(LLVMOptimizer::with_config(config));
+    }
 }
 
-/// Get reference to the global LLVM optimizer
-pub fn get_llvm_optimizer() -> &'static mut LLVMOptimizer {
-    unsafe {
-        GLOBAL_LLVM_OPTIMIZER
-            .as_mut()
-            .expect("LLVM optimizer not initialized")
-    }
+/// Run operation with the global LLVM optimizer
+pub fn with_llvm_optimizer<T>(f: impl FnOnce(&mut LLVMOptimizer) -> T) -> T {
+    let mut optimizer = GLOBAL_LLVM_OPTIMIZER.lock().unwrap();
+    let optimizer_ref = optimizer.as_mut().expect("LLVM optimizer not initialized");
+    f(optimizer_ref)
 }
 
 /// Initialize LLVM optimizer with default configuration
