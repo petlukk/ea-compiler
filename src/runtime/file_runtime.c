@@ -50,6 +50,14 @@ EaFile* file_open(const char* filename, const char* mode) {
     return file;
 }
 
+// Create a new File for writing (convenience function)
+EaFile* file_create(const char* filename) {
+    if (!filename) return NULL;
+    
+    // Use file_open with "w" mode to create/overwrite a file
+    return file_open(filename, "w");
+}
+
 // Check if a file exists
 int32_t file_exists(const char* filename) {
     if (!filename) return 0;

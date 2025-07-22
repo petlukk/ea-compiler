@@ -22,7 +22,7 @@ use inkwell::{
     module::Module,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
     types::{BasicType, BasicTypeEnum, StructType, VectorType},
-    values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue, VectorValue},
+    values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, VectorValue},
     AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel,
 };
 use std::collections::HashMap;
@@ -222,6 +222,36 @@ impl<'ctx> CodeGenerator<'ctx> {
         );
         self.builder.build_return(None).unwrap();
 
+        // Add print_f32 function that maps to printf
+        let f32_type = self.context.f32_type();
+        let print_f32_type = self.context.void_type().fn_type(&[f32_type.into()], false);
+        let print_f32_function = self.module.add_function("print_f32", print_f32_type, None);
+        self.functions
+            .insert("print_f32".to_string(), print_f32_function);
+        // Implement print_f32 function using printf
+        let print_f32_entry = self.context.append_basic_block(print_f32_function, "entry");
+        self.builder.position_at_end(print_f32_entry);
+        let f32_param = print_f32_function.get_nth_param(0).unwrap();
+        // Convert f32 to f64 for printf (C varargs promote float to double)
+        let f64_param = self
+            .builder
+            .build_float_ext(
+                f32_param.into_float_value(),
+                self.context.f64_type(),
+                "f32_to_f64",
+            )
+            .unwrap();
+        let f32_format_str = self
+            .builder
+            .build_global_string_ptr("%.6f\n", "f32_format_minimal")
+            .unwrap();
+        let _printf_call = self.builder.build_call(
+            printf_function,
+            &[f32_format_str.as_pointer_value().into(), f64_param.into()],
+            "printf_call",
+        );
+        self.builder.build_return(None).unwrap();
+
         // Add print(string) -> void function
         let print_type = self
             .context
@@ -241,6 +271,23 @@ impl<'ctx> CodeGenerator<'ctx> {
         let _puts_call = self
             .builder
             .build_call(puts_function, &[param.into()], "puts_call");
+        self.builder.build_return(None).unwrap();
+
+        // Add print_string(string) -> void function (alias for print)
+        let print_string_type = self
+            .context
+            .void_type()
+            .fn_type(&[string_type.into()], false);
+        let print_string_function = self.module.add_function("print_string", print_string_type, None);
+        self.functions.insert("print_string".to_string(), print_string_function);
+
+        // Implement print_string function using puts (same as print)
+        let print_string_entry = self.context.append_basic_block(print_string_function, "entry");
+        self.builder.position_at_end(print_string_entry);
+        let string_param = print_string_function.get_nth_param(0).unwrap();
+        let _puts_call_string = self
+            .builder
+            .build_call(puts_function, &[string_param.into()], "puts_call");
         self.builder.build_return(None).unwrap();
 
         // Restore builder position if needed
@@ -528,6 +575,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let string_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
         let i32_type = self.context.i32_type();
         let i64_type = self.context.i64_type();
+        let f32_type = self.context.f32_type();
         let void_type = self.context.void_type();
 
         // External vec_new() -> *Vec
@@ -542,15 +590,15 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.functions
             .insert("vec_push".to_string(), vec_push_function);
 
-        // External vec_len(vec: *Vec) -> i32
-        let vec_len_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        // External vec_len(vec: **Vec) -> i32 (adjusted for Vec<string> which is stored as i8**)
+        let vec_len_type = i32_type.fn_type(&[opaque_ptr_type.ptr_type(AddressSpace::default()).into()], false);
         let vec_len_function = self.module.add_function("vec_len", vec_len_type, None);
         self.functions
             .insert("vec_len".to_string(), vec_len_function);
 
-        // External vec_get(vec: *Vec, index: i32) -> *i32 (pointer to element or null)
+        // External vec_get(vec: **Vec, index: i32) -> *i32 (pointer to element or null)
         let vec_get_type =
-            opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+            opaque_ptr_type.fn_type(&[opaque_ptr_type.ptr_type(AddressSpace::default()).into(), i32_type.into()], false);
         let vec_get_function = self.module.add_function("vec_get", vec_get_type, None);
         self.functions
             .insert("vec_get".to_string(), vec_get_function);
@@ -743,6 +791,10 @@ impl<'ctx> CodeGenerator<'ctx> {
             .add_function("string_trim", string_trim_type, None);
         self.functions
             .insert("string_trim".to_string(), string_trim_function);
+        
+        // Map trim(string) -> string_trim
+        self.functions
+            .insert("trim".to_string(), string_trim_function);
 
         // External string_free(str: *String) -> void
         let string_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
@@ -752,6 +804,17 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.functions
             .insert("string_free".to_string(), string_free_function);
 
+        // Note: String functions are now declared in add_minimal_builtin_functions
+        // to avoid duplicate declarations that cause name mangling issues
+
+        // External string_array_free(arr: *StringArray) -> void
+        let string_array_free_type = void_type.fn_type(&[opaque_ptr_type.into()], false);
+        let string_array_free_function = self
+            .module
+            .add_function("string_array_free", string_array_free_type, None);
+        self.functions
+            .insert("string_array_free".to_string(), string_array_free_function);
+
         // File runtime functions
         // External file_open(filename: *i8, mode: *i8) -> *File
         let file_open_type =
@@ -759,6 +822,12 @@ impl<'ctx> CodeGenerator<'ctx> {
         let file_open_function = self.module.add_function("file_open", file_open_type, None);
         self.functions
             .insert("file_open".to_string(), file_open_function);
+
+        // External file_create(filename: *i8) -> *File
+        let file_create_type = opaque_ptr_type.fn_type(&[string_ptr_type.into()], false);
+        let file_create_function = self.module.add_function("file_create", file_create_type, None);
+        self.functions
+            .insert("file_create".to_string(), file_create_function);
 
         // External file_exists(filename: *i8) -> i32 (boolean)
         let file_exists_type = i32_type.fn_type(&[string_ptr_type.into()], false);
@@ -1024,6 +1093,487 @@ impl<'ctx> CodeGenerator<'ctx> {
         if let Some(block) = current_block {
             self.builder.position_at_end(block);
         }
+
+        // Add essential string functions for JIT
+        let opaque_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i32_type = self.context.i32_type();
+        let f32_type = self.context.f32_type();
+        
+        // External string_format(template: *i8, value: *i8) -> *String
+        let string_format_type = opaque_ptr_type.fn_type(&[string_type.into(), string_type.into()], false);
+        let string_format_function = self.module.add_function("string_format", string_format_type, None);
+        self.functions.insert("string_format".to_string(), string_format_function);
+        self.functions.insert("format".to_string(), string_format_function);
+        
+        // External string_split(str: *String, delimiter: *i8) -> *StringArray
+        let string_split_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), string_type.into()], false);
+        let string_split_function = self.module.add_function("string_split", string_split_type, None);
+        self.functions.insert("string_split".to_string(), string_split_function);
+        self.functions.insert("split".to_string(), string_split_function);
+        
+        // string_concat will be declared later with correct signature
+        
+        // External string_trim(str: *String) -> *String
+        let string_trim_type = opaque_ptr_type.fn_type(&[opaque_ptr_type.into()], false);
+        let string_trim_function = self.module.add_function("string_trim", string_trim_type, None);
+        self.functions.insert("string_trim".to_string(), string_trim_function);
+        self.functions.insert("trim".to_string(), string_trim_function);
+        
+        // External string_starts_with(str: *String, prefix: *i8) -> i32
+        let string_starts_with_type = i32_type.fn_type(&[opaque_ptr_type.into(), string_type.into()], false);
+        let string_starts_with_function = self.module.add_function("string_starts_with", string_starts_with_type, None);
+        self.functions.insert("string_starts_with".to_string(), string_starts_with_function);
+        self.functions.insert("starts_with".to_string(), string_starts_with_function);
+        
+        // External string_ends_with(str: *String, suffix: *i8) -> i32
+        let string_ends_with_type = i32_type.fn_type(&[opaque_ptr_type.into(), string_type.into()], false);
+        let string_ends_with_function = self.module.add_function("string_ends_with", string_ends_with_type, None);
+        self.functions.insert("string_ends_with".to_string(), string_ends_with_function);
+        self.functions.insert("ends_with".to_string(), string_ends_with_function);
+        
+        // External string_to_i32(str: *String) -> i32
+        let string_to_i32_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let string_to_i32_function = self.module.add_function("string_to_i32", string_to_i32_type, None);
+        self.functions.insert("string_to_i32".to_string(), string_to_i32_function);
+        self.functions.insert("to_i32".to_string(), string_to_i32_function);
+        
+        // External string_to_f32(str: *String) -> f32
+        let string_to_f32_type = f32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let string_to_f32_function = self.module.add_function("string_to_f32", string_to_f32_type, None);
+        self.functions.insert("string_to_f32".to_string(), string_to_f32_function);
+        self.functions.insert("to_f32".to_string(), string_to_f32_function);
+        
+        // Add sqrt_i32 function for PGM image dimension calculation
+        let sqrt_i32_type = i32_type.fn_type(&[i32_type.into()], false);
+        let sqrt_i32_function = self.module.add_function("sqrt_i32", sqrt_i32_type, None);
+        self.functions.insert("sqrt_i32".to_string(), sqrt_i32_function);
+        
+        // Implement sqrt_i32 function
+        let sqrt_i32_entry = self.context.append_basic_block(sqrt_i32_function, "entry");
+        let current_block = self.builder.get_insert_block();
+        self.builder.position_at_end(sqrt_i32_entry);
+        
+        let n_param = sqrt_i32_function.get_nth_param(0).unwrap().into_int_value();
+        
+        // Handle n < 0 case
+        let zero = i32_type.const_int(0, false);
+        let negative_check = self.builder.build_int_compare(
+            IntPredicate::SLT,
+            n_param,
+            zero,
+            "is_negative"
+        ).unwrap();
+        
+        let negative_bb = self.context.append_basic_block(sqrt_i32_function, "negative");
+        let positive_bb = self.context.append_basic_block(sqrt_i32_function, "positive");
+        
+        self.builder.build_conditional_branch(negative_check, negative_bb, positive_bb).unwrap();
+        
+        // Handle negative case: return 0
+        self.builder.position_at_end(negative_bb);
+        self.builder.build_return(Some(&zero)).unwrap();
+        
+        // Handle positive case: Newton's method for integer square root
+        self.builder.position_at_end(positive_bb);
+        
+        // if n < 2, return n
+        let two = i32_type.const_int(2, false);
+        let small_check = self.builder.build_int_compare(
+            IntPredicate::SLT,
+            n_param,
+            two,
+            "is_small"
+        ).unwrap();
+        
+        let small_bb = self.context.append_basic_block(sqrt_i32_function, "small");
+        let large_bb = self.context.append_basic_block(sqrt_i32_function, "large");
+        let loop_bb = self.context.append_basic_block(sqrt_i32_function, "loop");
+        let loop_end_bb = self.context.append_basic_block(sqrt_i32_function, "loop_end");
+        
+        self.builder.build_conditional_branch(small_check, small_bb, large_bb).unwrap();
+        
+        // Handle small case: return n
+        self.builder.position_at_end(small_bb);
+        self.builder.build_return(Some(&n_param)).unwrap();
+        
+        // Handle large case: Newton's method
+        self.builder.position_at_end(large_bb);
+        
+        // x = n / 2
+        let x_initial = self.builder.build_int_signed_div(n_param, two, "x_initial").unwrap();
+        self.builder.build_unconditional_branch(loop_bb).unwrap();
+        
+        // Loop: while x * x > n { x = (x + n / x) / 2 }
+        self.builder.position_at_end(loop_bb);
+        let x_phi = self.builder.build_phi(i32_type, "x").unwrap();
+        x_phi.add_incoming(&[(&x_initial, large_bb)]);
+        
+        let x_val = x_phi.as_basic_value().into_int_value();
+        let x_squared = self.builder.build_int_mul(x_val, x_val, "x_squared").unwrap();
+        let loop_condition = self.builder.build_int_compare(
+            IntPredicate::SGT,
+            x_squared,
+            n_param,
+            "loop_condition"
+        ).unwrap();
+        
+        let loop_body_bb = self.context.append_basic_block(sqrt_i32_function, "loop_body");
+        self.builder.build_conditional_branch(loop_condition, loop_body_bb, loop_end_bb).unwrap();
+        
+        // Loop body: x = (x + n / x) / 2
+        self.builder.position_at_end(loop_body_bb);
+        let n_div_x = self.builder.build_int_signed_div(n_param, x_val, "n_div_x").unwrap();
+        let sum = self.builder.build_int_add(x_val, n_div_x, "sum").unwrap();
+        let x_new = self.builder.build_int_signed_div(sum, two, "x_new").unwrap();
+        
+        x_phi.add_incoming(&[(&x_new, loop_body_bb)]);
+        self.builder.build_unconditional_branch(loop_bb).unwrap();
+        
+        // Loop end: return x
+        self.builder.position_at_end(loop_end_bb);
+        self.builder.build_return(Some(&x_val)).unwrap();
+        
+        // Restore builder position
+        if let Some(block) = current_block {
+            self.builder.position_at_end(block);
+        }
+        
+        // Add Result type constructors
+        // Ok function - takes an i32 value and returns a Result
+        let opaque_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i32_type = self.context.i32_type();
+        let ok_type = opaque_ptr_type.fn_type(&[i32_type.into()], false);
+        let ok_function = self.module.add_function("Ok", ok_type, None);
+        self.functions.insert("Ok".to_string(), ok_function);
+        
+        // Err function - takes a string error value and returns a Result
+        let string_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let err_type = opaque_ptr_type.fn_type(&[string_type.into()], false);
+        let err_function = self.module.add_function("Err", err_type, None);
+        self.functions.insert("Err".to_string(), err_function);
+
+        // Implement Ok function - creates Result enum with tag=0 (Ok) and stores the value
+        let ok_entry = self.context.append_basic_block(ok_function, "entry");
+        self.builder.position_at_end(ok_entry);
+        let ok_value_param = ok_function.get_nth_param(0).unwrap();
+        
+        // Allocate memory for Result struct: { i32 tag, i64 data }
+        let struct_type = self.context.struct_type(&[
+            self.context.i32_type().into(),  // tag
+            self.context.i64_type().into(),  // data
+        ], false);
+        let result_ptr = self.builder.build_malloc(
+            struct_type, 
+            "result_alloc"
+        ).unwrap();
+        
+        // Set tag = 0 (Ok variant)
+        let tag_ptr = self.builder.build_struct_gep(
+            result_ptr,
+            0,
+            "tag_ptr"
+        ).unwrap();
+        let ok_tag = self.context.i32_type().const_int(0, false);
+        self.builder.build_store(tag_ptr, ok_tag).unwrap();
+        
+        // Set data = value (extend i32 to i64)
+        let data_ptr = self.builder.build_struct_gep(
+            result_ptr,
+            1,
+            "data_ptr"
+        ).unwrap();
+        let extended_value = self.builder.build_int_z_extend(
+            ok_value_param.into_int_value(),
+            self.context.i64_type(),
+            "extended_value"
+        ).unwrap();
+        self.builder.build_store(data_ptr, extended_value).unwrap();
+        
+        // Return the struct pointer (cast back to i8*)
+        let result_return = self.builder.build_pointer_cast(
+            result_ptr,
+            opaque_ptr_type,
+            "result_return"
+        ).unwrap();
+        self.builder.build_return(Some(&result_return)).unwrap();
+
+        // Implement Err function - creates Result enum with tag=1 (Err) and stores the error
+        let err_entry = self.context.append_basic_block(err_function, "entry");
+        self.builder.position_at_end(err_entry);
+        let err_value_param = err_function.get_nth_param(0).unwrap();
+        
+        // Allocate memory for Result struct
+        let err_result_ptr = self.builder.build_malloc(
+            struct_type, 
+            "err_result_alloc"
+        ).unwrap();
+        
+        // Set tag = 1 (Err variant)
+        let err_tag_ptr = self.builder.build_struct_gep(
+            err_result_ptr,
+            0,
+            "err_tag_ptr"
+        ).unwrap();
+        let err_tag = self.context.i32_type().const_int(1, false);
+        self.builder.build_store(err_tag_ptr, err_tag).unwrap();
+        
+        // Set data = error string pointer (cast to i64)
+        let err_data_ptr = self.builder.build_struct_gep(
+            err_result_ptr,
+            1,
+            "err_data_ptr"
+        ).unwrap();
+        let ptr_as_int = self.builder.build_ptr_to_int(
+            err_value_param.into_pointer_value(),
+            self.context.i64_type(),
+            "ptr_as_int"
+        ).unwrap();
+        self.builder.build_store(err_data_ptr, ptr_as_int).unwrap();
+        
+        // Return the struct pointer (cast back to i8*)
+        let err_result_return = self.builder.build_pointer_cast(
+            err_result_ptr,
+            opaque_ptr_type,
+            "err_result_return"
+        ).unwrap();
+        self.builder.build_return(Some(&err_result_return)).unwrap();
+
+        // Add i32_to_string function for string conversion
+        let i32_to_string_type = string_type.fn_type(&[i32_type.into()], false);
+        let i32_to_string_function = self.module.add_function("i32_to_string", i32_to_string_type, None);
+        self.functions.insert("i32_to_string".to_string(), i32_to_string_function);
+
+        // Implement i32_to_string function (simplified - returns fixed string for now)
+        let i32_to_string_entry = self.context.append_basic_block(i32_to_string_function, "entry");
+        let current_block = self.builder.get_insert_block();
+        self.builder.position_at_end(i32_to_string_entry);
+
+        let number_str = self.builder.build_global_string_ptr("42", "number_string").unwrap();
+        self.builder.build_return(Some(&number_str.as_pointer_value())).unwrap();
+
+        // Add string_concat function for string concatenation support
+        let string_concat_type =
+            string_type.fn_type(&[string_type.into(), string_type.into()], false);
+        let string_concat_function =
+            self.module
+                .add_function("string_concat", string_concat_type, None);
+        self.functions
+            .insert("string_concat".to_string(), string_concat_function);
+        
+        // Add string_concat_free function for memory cleanup
+        let string_concat_free_type = self.context.void_type().fn_type(&[string_type.into()], false);
+        let string_concat_free_function = self.module.add_function("string_concat_free", string_concat_free_type, None);
+        self.functions.insert("string_concat_free".to_string(), string_concat_free_function);
+        
+        // Add string_equals function for string equality comparison (essential for basic operations)
+        let string_equals_type = self
+            .context
+            .bool_type()
+            .fn_type(&[string_type.into(), string_type.into()], false);
+        let string_equals_function =
+            self.module
+                .add_function("string_equals", string_equals_type, None);
+        self.functions
+            .insert("string_equals".to_string(), string_equals_function);
+
+        // Add external strcmp function for string_equals implementation
+        let i32_type = self.context.i32_type();
+        let strcmp_function = self.module.add_function(
+            "strcmp",
+            i32_type.fn_type(&[string_type.into(), string_type.into()], false),
+            None,
+        );
+
+        // Implement string_equals function using strcmp
+        let string_equals_entry = self
+            .context
+            .append_basic_block(string_equals_function, "entry");
+        let current_block_equals = self.builder.get_insert_block();
+        self.builder.position_at_end(string_equals_entry);
+
+        let str1_param = string_equals_function.get_nth_param(0).unwrap();
+        let str2_param = string_equals_function.get_nth_param(1).unwrap();
+
+        let strcmp_result = self
+            .builder
+            .build_call(
+                strcmp_function,
+                &[str1_param.into(), str2_param.into()],
+                "strcmp_result",
+            )
+            .unwrap();
+        let zero = self.context.i32_type().const_int(0, false);
+        let is_equal = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                strcmp_result
+                    .try_as_basic_value()
+                    .unwrap_left()
+                    .into_int_value(),
+                zero,
+                "is_equal",
+            )
+            .unwrap();
+
+        self.builder.build_return(Some(&is_equal)).unwrap();
+
+        // Restore builder position
+        if let Some(block) = current_block_equals {
+            self.builder.position_at_end(block);
+        }
+        
+        // Add SIMD horizontal reduction functions for JIT compatibility
+        let f32_type = self.context.f32_type();
+        let f32x4_type = f32_type.vec_type(4);
+        
+        // Save current builder position
+        let current_builder_block = self.builder.get_insert_block();
+        
+        // Add horizontal_sum(f32x4) -> f32 function
+        let horizontal_sum_type = f32_type.fn_type(&[f32x4_type.into()], false);
+        let horizontal_sum_function = self.module.add_function("horizontal_sum", horizontal_sum_type, None);
+        self.functions.insert("horizontal_sum".to_string(), horizontal_sum_function);
+
+        // Implement horizontal_sum function
+        let horizontal_sum_entry = self.context.append_basic_block(horizontal_sum_function, "entry");
+        self.builder.position_at_end(horizontal_sum_entry);
+
+        let vector_param = horizontal_sum_function.get_nth_param(0).unwrap().into_vector_value();
+
+        // Extract elements and sum them
+        let elem0 = self.builder.build_extract_element(
+            vector_param,
+            self.context.i32_type().const_int(0, false),
+            "elem0",
+        ).unwrap().into_float_value();
+        let elem1 = self.builder.build_extract_element(
+            vector_param,
+            self.context.i32_type().const_int(1, false),
+            "elem1",
+        ).unwrap().into_float_value();
+        let elem2 = self.builder.build_extract_element(
+            vector_param,
+            self.context.i32_type().const_int(2, false),
+            "elem2",
+        ).unwrap().into_float_value();
+        let elem3 = self.builder.build_extract_element(
+            vector_param,
+            self.context.i32_type().const_int(3, false),
+            "elem3",
+        ).unwrap().into_float_value();
+
+        let sum01 = self.builder.build_float_add(elem0, elem1, "sum01").unwrap();
+        let sum23 = self.builder.build_float_add(elem2, elem3, "sum23").unwrap();
+        let total_sum = self.builder.build_float_add(sum01, sum23, "total_sum").unwrap();
+
+        self.builder.build_return(Some(&total_sum)).unwrap();
+
+        // Add horizontal_min(f32x4) -> f32 function
+        let horizontal_min_type = f32_type.fn_type(&[f32x4_type.into()], false);
+        let horizontal_min_function = self.module.add_function("horizontal_min", horizontal_min_type, None);
+        self.functions.insert("horizontal_min".to_string(), horizontal_min_function);
+
+        // Implement horizontal_min function
+        let horizontal_min_entry = self.context.append_basic_block(horizontal_min_function, "entry");
+        self.builder.position_at_end(horizontal_min_entry);
+
+        let vector_param = horizontal_min_function.get_nth_param(0).unwrap().into_vector_value();
+
+        // Extract elements and find minimum
+        let elem0 = self.builder.build_extract_element(
+            vector_param,
+            self.context.i32_type().const_int(0, false),
+            "elem0",
+        ).unwrap().into_float_value();
+        let elem1 = self.builder.build_extract_element(
+            vector_param,
+            self.context.i32_type().const_int(1, false),
+            "elem1",
+        ).unwrap().into_float_value();
+        let elem2 = self.builder.build_extract_element(
+            vector_param,
+            self.context.i32_type().const_int(2, false),
+            "elem2",
+        ).unwrap().into_float_value();
+        let elem3 = self.builder.build_extract_element(
+            vector_param,
+            self.context.i32_type().const_int(3, false),
+            "elem3",
+        ).unwrap().into_float_value();
+
+        let min01_cmp = self.builder.build_float_compare(
+            inkwell::FloatPredicate::OLT, elem0, elem1, "min01_cmp"
+        ).unwrap();
+        let min01 = self.builder.build_select(min01_cmp, elem0, elem1, "min01").unwrap();
+        let min23_cmp = self.builder.build_float_compare(
+            inkwell::FloatPredicate::OLT, elem2, elem3, "min23_cmp"
+        ).unwrap();
+        let min23 = self.builder.build_select(min23_cmp, elem2, elem3, "min23").unwrap();
+        let final_min_cmp = self.builder.build_float_compare(
+            inkwell::FloatPredicate::OLT, min01.into_float_value(), min23.into_float_value(), "final_min_cmp"
+        ).unwrap();
+        let final_min = self.builder.build_select(final_min_cmp, min01, min23, "final_min").unwrap();
+
+        self.builder.build_return(Some(&final_min)).unwrap();
+
+        // Add horizontal_max(f32x4) -> f32 function
+        let horizontal_max_type = f32_type.fn_type(&[f32x4_type.into()], false);
+        let horizontal_max_function = self.module.add_function("horizontal_max", horizontal_max_type, None);
+        self.functions.insert("horizontal_max".to_string(), horizontal_max_function);
+
+        // Implement horizontal_max function
+        let horizontal_max_entry = self.context.append_basic_block(horizontal_max_function, "entry");
+        self.builder.position_at_end(horizontal_max_entry);
+
+        let vector_param = horizontal_max_function.get_nth_param(0).unwrap().into_vector_value();
+
+        // Extract elements and find maximum
+        let elem0 = self.builder.build_extract_element(
+            vector_param,
+            self.context.i32_type().const_int(0, false),
+            "elem0",
+        ).unwrap().into_float_value();
+        let elem1 = self.builder.build_extract_element(
+            vector_param,
+            self.context.i32_type().const_int(1, false),
+            "elem1",
+        ).unwrap().into_float_value();
+        let elem2 = self.builder.build_extract_element(
+            vector_param,
+            self.context.i32_type().const_int(2, false),
+            "elem2",
+        ).unwrap().into_float_value();
+        let elem3 = self.builder.build_extract_element(
+            vector_param,
+            self.context.i32_type().const_int(3, false),
+            "elem3",
+        ).unwrap().into_float_value();
+
+        let max01_cmp = self.builder.build_float_compare(
+            inkwell::FloatPredicate::OGT, elem0, elem1, "max01_cmp"
+        ).unwrap();
+        let max01 = self.builder.build_select(max01_cmp, elem0, elem1, "max01").unwrap();
+        let max23_cmp = self.builder.build_float_compare(
+            inkwell::FloatPredicate::OGT, elem2, elem3, "max23_cmp"
+        ).unwrap();
+        let max23 = self.builder.build_select(max23_cmp, elem2, elem3, "max23").unwrap();
+        let final_max_cmp = self.builder.build_float_compare(
+            inkwell::FloatPredicate::OGT, max01.into_float_value(), max23.into_float_value(), "final_max_cmp"
+        ).unwrap();
+        let final_max = self.builder.build_select(final_max_cmp, max01, max23, "final_max").unwrap();
+
+        self.builder.build_return(Some(&final_max)).unwrap();
+
+        // Restore builder position
+        if let Some(block) = current_builder_block {
+            self.builder.position_at_end(block);
+        }
+
+        // Restore current builder position
+        if let Some(block) = current_block {
+            self.builder.position_at_end(block);
+        }
     }
 
     /// Adds built-in functions to the code generator
@@ -1247,17 +1797,51 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.functions
             .insert("read_file".to_string(), read_file_function);
 
-        // Implement simplified read_file function (returns empty string for now)
+        // Implement read_file function using C runtime
         let read_file_entry = self.context.append_basic_block(read_file_function, "entry");
         self.builder.position_at_end(read_file_entry);
 
-        let empty_string = self
+        // Get the filename parameter
+        let filename_param = read_file_function.get_nth_param(0).unwrap();
+        
+        // Create "r" mode string for reading
+        let read_mode = self
             .builder
-            .build_global_string_ptr("", "empty_file_content")
+            .build_global_string_ptr("r", "read_mode")
             .unwrap();
-        self.builder
-            .build_return(Some(&empty_string.as_pointer_value()))
+        
+        // Call file_open(filename, "r") 
+        let file_open_func = self.functions.get("file_open").unwrap();
+        let file_handle = self
+            .builder
+            .build_call(
+                *file_open_func,
+                &[filename_param.into(), read_mode.as_pointer_value().into()],
+                "file_handle",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
             .unwrap();
+        
+        // Call file_read_all(file_handle)
+        let file_read_all_func = self.functions.get("file_read_all").unwrap();
+        let content = self
+            .builder
+            .build_call(*file_read_all_func, &[file_handle.into()], "content")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+        
+        // Call file_close(file_handle)
+        let file_close_func = self.functions.get("file_close").unwrap();
+        let _close_result = self
+            .builder
+            .build_call(*file_close_func, &[file_handle.into()], "close_result");
+        
+        // Return the content
+        self.builder.build_return(Some(&content)).unwrap();
 
         // Add write_file(string, string) -> void function (simplified implementation)
         let write_file_type = self
@@ -1270,11 +1854,42 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.functions
             .insert("write_file".to_string(), write_file_function);
 
-        // Implement simplified write_file function (no-op for now)
+        // Implement write_file function using C runtime
         let write_file_entry = self
             .context
             .append_basic_block(write_file_function, "entry");
         self.builder.position_at_end(write_file_entry);
+        
+        // Get parameters
+        let filename_param = write_file_function.get_nth_param(0).unwrap();
+        let content_param = write_file_function.get_nth_param(1).unwrap();
+        
+        // Call file_create(filename)
+        let file_create_func = self.functions.get("file_create").unwrap();
+        let file_handle = self
+            .builder
+            .build_call(*file_create_func, &[filename_param.into()], "file_handle")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+        
+        // Call file_write(file_handle, content)
+        let file_write_func = self.functions.get("file_write").unwrap();
+        let _write_result = self
+            .builder
+            .build_call(
+                *file_write_func, 
+                &[file_handle.into(), content_param.into()], 
+                "write_result"
+            );
+        
+        // Call file_close(file_handle)
+        let file_close_func = self.functions.get("file_close").unwrap();
+        let _close_result = self
+            .builder
+            .build_call(*file_close_func, &[file_handle.into()], "close_result");
+        
         self.builder.build_return(None).unwrap();
 
         // Add file_exists(string) -> bool function (simplified implementation)
@@ -1349,15 +1964,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 .add_function("string_concat", string_concat_type, None);
         self.functions
             .insert("string_concat".to_string(), string_concat_function);
-
-        // Implement string_concat function (simplified - returns first parameter for now)
-        let string_concat_entry = self
-            .context
-            .append_basic_block(string_concat_function, "entry");
-        self.builder.position_at_end(string_concat_entry);
-
-        let str1_param = string_concat_function.get_nth_param(0).unwrap();
-        self.builder.build_return(Some(&str1_param)).unwrap();
+        
+        // Map concat(string, string) -> string_concat
+        self.functions
+            .insert("concat".to_string(), string_concat_function);
 
         // Add string_equals(string, string) -> bool function
         let string_equals_type = self
@@ -2238,6 +2848,12 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Add enhanced I/O functions
         self.add_enhanced_io_functions();
 
+        // Add CLI runtime functions
+        self.add_cli_runtime_functions();
+
+        // Add PGM runtime functions
+        self.add_pgm_runtime_functions();
+
         // Restore previous position if there was one
         if let Some(block) = current_block {
             self.builder.position_at_end(block);
@@ -2355,13 +2971,13 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.builder.build_return(None).unwrap();
 
         // Vec::len(vec: *Vec) -> i32
-        let vec_len_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_len_type = i32_type.fn_type(&[opaque_ptr_type.ptr_type(AddressSpace::default()).into()], false);
         let vec_len_function = self.module.add_function("Vec::len", vec_len_type, None);
         self.functions
             .insert("Vec::len".to_string(), vec_len_function);
 
         // Add external vec_len runtime function - make it match the wrapper (i32 return)
-        let vec_len_runtime_type = i32_type.fn_type(&[opaque_ptr_type.into()], false);
+        let vec_len_runtime_type = i32_type.fn_type(&[opaque_ptr_type.ptr_type(AddressSpace::default()).into()], false);
         let vec_len_runtime_function =
             self.module
                 .add_function("vec_len", vec_len_runtime_type, None);
@@ -2388,15 +3004,15 @@ impl<'ctx> CodeGenerator<'ctx> {
         // No type conversion needed - both are i32
         self.builder.build_return(Some(&len_result)).unwrap();
 
-        // Vec::get(vec: *Vec, index: i32) -> i32 (returns value or 0 if out of bounds)
-        let vec_get_type = i32_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+        // Vec::get(vec: **Vec, index: i32) -> i32 (returns value or 0 if out of bounds)
+        let vec_get_type = i32_type.fn_type(&[opaque_ptr_type.ptr_type(AddressSpace::default()).into(), i32_type.into()], false);
         let vec_get_function = self.module.add_function("Vec::get", vec_get_type, None);
         self.functions
             .insert("Vec::get".to_string(), vec_get_function);
 
         // Add external vec_get runtime function (returns pointer) - use i32 index
         let vec_get_runtime_type =
-            opaque_ptr_type.fn_type(&[opaque_ptr_type.into(), i32_type.into()], false);
+            opaque_ptr_type.fn_type(&[opaque_ptr_type.ptr_type(AddressSpace::default()).into(), i32_type.into()], false);
         let vec_get_runtime_function =
             self.module
                 .add_function("vec_get", vec_get_runtime_type, None);
@@ -4641,6 +5257,222 @@ impl<'ctx> CodeGenerator<'ctx> {
         Ok(enum_value.into())
     }
 
+    /// Generates code for match expression
+    fn generate_match_expression(
+        &mut self,
+        value: &Expr,
+        arms: &[crate::ast::MatchArm],
+    ) -> Result<BasicValueEnum<'ctx>> {
+        use crate::ast::{Pattern, Literal};
+
+        // Generate the value to match against
+        let match_value = self.generate_expression(value)?;
+        
+        // Get the current function to add basic blocks
+        let current_function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+        
+        // Create basic blocks
+        let mut match_blocks = Vec::new();
+        let merge_block = self.context.append_basic_block(current_function, "match_merge");
+        
+        // Create PHI node for result values
+        let result_type = self.infer_match_result_type(arms)?;
+        
+        // Create blocks for each match arm
+        for (i, _) in arms.iter().enumerate() {
+            let block = self.context.append_basic_block(current_function, &format!("match_arm_{}", i));
+            match_blocks.push(block);
+        }
+        
+        // Create default block (for unmatched cases)
+        let default_block = self.context.append_basic_block(current_function, "match_default");
+        
+        // Generate comparison chain using conditional branches
+        let mut current_block = self.builder.get_insert_block().unwrap();
+        
+        for (i, arm) in arms.iter().enumerate() {
+            self.builder.position_at_end(current_block);
+            
+            match &arm.pattern {
+                Pattern::Literal(Literal::Integer(lit_val)) => {
+                    if let BasicValueEnum::IntValue(int_val) = match_value {
+                        let case_val = self.context.i32_type().const_int(*lit_val as u64, false);
+                        let condition = self.builder.build_int_compare(
+                            inkwell::IntPredicate::EQ,
+                            int_val,
+                            case_val,
+                            "match_cmp"
+                        ).unwrap();
+                        
+                        let next_test_block = if i < arms.len() - 1 {
+                            self.context.append_basic_block(current_function, &format!("match_test_{}", i + 1))
+                        } else {
+                            default_block
+                        };
+                        
+                        self.builder.build_conditional_branch(
+                            condition,
+                            match_blocks[i],
+                            next_test_block
+                        ).unwrap();
+                        
+                        current_block = next_test_block;
+                    }
+                }
+                Pattern::Wildcard => {
+                    // Wildcard matches anything - unconditional jump
+                    self.builder.build_unconditional_branch(match_blocks[i]).unwrap();
+                    break;
+                }
+                Pattern::EnumVariant { variant, .. } => {
+                    // For enum variants, check the tag field of the Result struct
+                    if let BasicValueEnum::PointerValue(result_ptr) = match_value {
+                        // Cast to our Result struct type
+                        let struct_type = self.context.struct_type(&[
+                            self.context.i32_type().into(),  // tag
+                            self.context.i64_type().into(),  // data
+                        ], false);
+                        let result_struct_ptr = self.builder.build_pointer_cast(
+                            result_ptr,
+                            struct_type.ptr_type(AddressSpace::default()),
+                            "pattern_result_cast"
+                        ).unwrap();
+                        
+                        // Get the tag field (index 0)
+                        let tag_ptr = self.builder.build_struct_gep(
+                            result_struct_ptr,
+                            0,
+                            "pattern_tag_ptr"
+                        ).unwrap();
+                        let tag_value = self.builder.build_load(
+                            tag_ptr,
+                            "pattern_tag_load"
+                        ).unwrap();
+                        
+                        // Check if tag matches the expected variant (Ok = 0, Err = 1)
+                        let expected_tag = if variant == "Ok" { 0 } else { 1 };
+                        let expected_tag_value = self.context.i32_type().const_int(expected_tag, false);
+                        let condition = self.builder.build_int_compare(
+                            inkwell::IntPredicate::EQ,
+                            tag_value.into_int_value(),
+                            expected_tag_value,
+                            "variant_match_cmp"
+                        ).unwrap();
+                        
+                        let next_test_block = if i < arms.len() - 1 {
+                            self.context.append_basic_block(current_function, &format!("match_test_{}", i + 1))
+                        } else {
+                            default_block
+                        };
+                        
+                        self.builder.build_conditional_branch(
+                            condition,
+                            match_blocks[i],
+                            next_test_block
+                        ).unwrap();
+                        
+                        current_block = next_test_block;
+                    }
+                }
+                _ => {
+                    // Other pattern types - skip for now
+                    continue;
+                }
+            }
+        }
+        
+        // Generate code for each match arm
+        let mut result_values = Vec::new();
+        let mut result_blocks = Vec::new();
+        
+        for (i, arm) in arms.iter().enumerate() {
+            self.builder.position_at_end(match_blocks[i]);
+            
+            // Handle pattern variable binding
+            match &arm.pattern {
+                Pattern::EnumVariant { patterns, .. } if !patterns.is_empty() => {
+                    // Extract value from enum for variable binding
+                    if let Pattern::Variable(var_name) = &patterns[0] {
+                        // Extract the actual value from the Result enum struct
+                        if let BasicValueEnum::PointerValue(result_ptr) = match_value {
+                            // Cast to our Result struct type
+                            let struct_type = self.context.struct_type(&[
+                                self.context.i32_type().into(),  // tag
+                                self.context.i64_type().into(),  // data
+                            ], false);
+                            let result_struct_ptr = self.builder.build_pointer_cast(
+                                result_ptr,
+                                struct_type.ptr_type(AddressSpace::default()),
+                                "result_cast"
+                            ).unwrap();
+                            
+                            // Get the data field (index 1)
+                            let data_ptr = self.builder.build_struct_gep(
+                                result_struct_ptr,
+                                1,
+                                "data_ptr"
+                            ).unwrap();
+                            let data_value = self.builder.build_load(
+                                data_ptr,
+                                "data_load"
+                            ).unwrap();
+                            
+                            // Truncate i64 back to i32 (since we stored i32 extended to i64)
+                            let value = self.builder.build_int_truncate(
+                                data_value.into_int_value(),
+                                self.context.i32_type(),
+                                "value_truncate"
+                            ).unwrap();
+                            
+                            // Create variable for this scope
+                            let var_ptr = self.builder.build_alloca(self.context.i32_type(), var_name).unwrap();
+                            self.builder.build_store(var_ptr, value).unwrap();
+                            self.variables.insert(var_name.clone(), var_ptr);
+                        }
+                    }
+                }
+                _ => {}
+            }
+            
+            // Generate the expression for this arm
+            let arm_result = self.generate_expression(&arm.expression)?;
+            result_values.push(arm_result);
+            result_blocks.push(self.builder.get_insert_block().unwrap());
+            
+            // Branch to merge block
+            self.builder.build_unconditional_branch(merge_block).unwrap();
+        }
+        
+        // Generate default case (should not be reached in well-typed programs)
+        self.builder.position_at_end(default_block);
+        let default_value = match result_type {
+            BasicTypeEnum::IntType(int_type) => int_type.const_int(0, false).into(),
+            _ => return Err(CompileError::codegen_error(
+                "Unsupported match result type".to_string(),
+                None,
+            )),
+        };
+        result_values.push(default_value);
+        result_blocks.push(default_block);
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        
+        // Create PHI node in merge block
+        self.builder.position_at_end(merge_block);
+        let phi = self.builder.build_phi(result_type, "match_result").unwrap();
+        
+        for (value, block) in result_values.iter().zip(result_blocks.iter()) {
+            phi.add_incoming(&[(&(*value), *block)]);
+        }
+        
+        Ok(phi.as_basic_value())
+    }
+    
+    /// Infer the result type of a match expression
+    fn infer_match_result_type(&self, arms: &[crate::ast::MatchArm]) -> Result<BasicTypeEnum<'ctx>> {
+        // For simplicity, assume i32 type - in a full implementation we'd do proper type inference
+        Ok(self.context.i32_type().into())
+    }
+
     /// Sets the optimization level.
     pub fn set_optimization_level(&mut self, level: OptimizationLevel) {
         self.optimization_level = level;
@@ -5116,8 +5948,8 @@ impl<'ctx> CodeGenerator<'ctx> {
             .build_store(counter_ptr, self.context.i32_type().const_zero())
             .unwrap();
 
-        // For simplicity, we'll use a fixed array size (should be improved to dynamic sizing)
-        let array_size = self.context.i32_type().const_int(5, false); // Placeholder: use actual array size
+        // Get the actual array size from the iterable expression
+        let array_size = self.get_array_size(iterable)?;
 
         // Branch to condition check
         self.builder
@@ -5221,6 +6053,51 @@ impl<'ctx> CodeGenerator<'ctx> {
         Ok(())
     }
 
+    /// Get the size of an array from an iterable expression
+    fn get_array_size(&mut self, iterable: &Expr) -> Result<IntValue<'ctx>> {
+        match iterable {
+            // Handle array literals: [1, 2, 3] -> size = 3
+            Expr::Literal(Literal::Vector { elements, .. }) => {
+                Ok(self.context.i32_type().const_int(elements.len() as u64, false))
+            }
+            // Handle variables: get size from type information
+            Expr::Variable(name) => {
+                // Look up the variable to get its type
+                if let Some(var_ptr) = self.variables.get(name) {
+                    // The variable is a pointer to an array
+                    // Get the pointed-to type (the array type)
+                    let ptr_type = var_ptr.get_type();
+                    let pointee_type = ptr_type.get_element_type();
+                    match pointee_type {
+                        inkwell::types::AnyTypeEnum::ArrayType(arr_type) => {
+                            let size = arr_type.len();
+                            Ok(self.context.i32_type().const_int(size as u64, false))
+                        }
+                        _ => {
+                            Err(CompileError::codegen_error(
+                                format!("Variable '{}' points to non-array type", name),
+                                None,
+                            ))
+                        }
+                    }
+                } else {
+                    Err(CompileError::codegen_error(
+                        format!("Undefined variable: {}", name),
+                        None,
+                    ))
+                }
+            }
+            // Handle other expression types (could be function calls, etc.)
+            _ => {
+                // For now, fall back to a runtime size detection or error
+                Err(CompileError::codegen_error(
+                    "Unsupported iterable type in for-in loop - only array literals and variables are supported".to_string(),
+                    None,
+                ))
+            }
+        }
+    }
+
     /// Converts a value to a boolean for use in conditional branches.
     fn convert_to_bool(
         &self,
@@ -5301,58 +6178,10 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Determine the return type
         let return_llvm_type: Option<BasicTypeEnum> = match return_type {
             Some(type_ann) => {
-                match type_ann.name.as_str() {
-                    "i32" => Some(self.context.i32_type().into()),
-                    "i64" => Some(self.context.i64_type().into()),
-                    "f32" => Some(self.context.f32_type().into()),
-                    "f64" => Some(self.context.f64_type().into()),
-                    "bool" => Some(self.context.bool_type().into()),
-                    "string" => Some(
-                        self.context
-                            .i8_type()
-                            .ptr_type(AddressSpace::default())
-                            .into(),
-                    ),
-                    "()" => None, // void type
-                    // SIMD vector types
-                    "f32x2" => Some(self.context.f32_type().vec_type(2).into()),
-                    "f32x4" => Some(self.context.f32_type().vec_type(4).into()),
-                    "f32x8" => Some(self.context.f32_type().vec_type(8).into()),
-                    "f32x16" => Some(self.context.f32_type().vec_type(16).into()),
-                    "f64x2" => Some(self.context.f64_type().vec_type(2).into()),
-                    "f64x4" => Some(self.context.f64_type().vec_type(4).into()),
-                    "f64x8" => Some(self.context.f64_type().vec_type(8).into()),
-                    "i32x2" => Some(self.context.i32_type().vec_type(2).into()),
-                    "i32x4" => Some(self.context.i32_type().vec_type(4).into()),
-                    "i32x8" => Some(self.context.i32_type().vec_type(8).into()),
-                    "i32x16" => Some(self.context.i32_type().vec_type(16).into()),
-                    "i64x2" => Some(self.context.i64_type().vec_type(2).into()),
-                    "i64x4" => Some(self.context.i64_type().vec_type(4).into()),
-                    "i64x8" => Some(self.context.i64_type().vec_type(8).into()),
-                    "i16x4" => Some(self.context.i16_type().vec_type(4).into()),
-                    "i16x8" => Some(self.context.i16_type().vec_type(8).into()),
-                    "i16x16" => Some(self.context.i16_type().vec_type(16).into()),
-                    "i16x32" => Some(self.context.i16_type().vec_type(32).into()),
-                    "i8x8" => Some(self.context.i8_type().vec_type(8).into()),
-                    "i8x16" => Some(self.context.i8_type().vec_type(16).into()),
-                    "i8x32" => Some(self.context.i8_type().vec_type(32).into()),
-                    "i8x64" => Some(self.context.i8_type().vec_type(64).into()),
-                    "u32x4" => Some(self.context.i32_type().vec_type(4).into()), // Use i32 for u32
-                    "u32x8" => Some(self.context.i32_type().vec_type(8).into()),
-                    "u16x8" => Some(self.context.i16_type().vec_type(8).into()),
-                    "u16x16" => Some(self.context.i16_type().vec_type(16).into()),
-                    "u8x16" => Some(self.context.i8_type().vec_type(16).into()),
-                    "u8x32" => Some(self.context.i8_type().vec_type(32).into()),
-                    "mask8" => Some(self.context.i8_type().vec_type(8).into()),
-                    "mask16" => Some(self.context.i16_type().vec_type(16).into()),
-                    "mask32" => Some(self.context.i32_type().vec_type(32).into()),
-                    "mask64" => Some(self.context.i64_type().vec_type(64).into()),
-                    _ => {
-                        return Err(CompileError::codegen_error(
-                            format!("Unsupported return type: {}", type_ann.name),
-                            None,
-                        ));
-                    }
+                if type_ann.name == "()" {
+                    None // void type
+                } else {
+                    Some(self.type_annotation_to_llvm_type(type_ann)?)
                 }
             }
             None => {
@@ -5367,9 +6196,17 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // Determine parameter types
         let mut param_types = Vec::new();
-        for param in params {
-            let param_type = self.type_annotation_to_llvm_type(&param.type_annotation)?;
-            param_types.push(param_type.into());
+        
+        // Special handling for main function with CLI arguments
+        if name == "main" && params.len() == 1 && params[0].type_annotation.name == "Vec<String>" {
+            // main(args: Vec<String>) -> i32 - Generate standard C main signature
+            param_types.push(self.context.i32_type().into()); // argc
+            param_types.push(self.context.i8_type().ptr_type(AddressSpace::default()).ptr_type(AddressSpace::default()).into()); // argv
+        } else {
+            for param in params {
+                let param_type = self.type_annotation_to_llvm_type(&param.type_annotation)?;
+                param_types.push(param_type.into());
+            }
         }
 
         // Create the function type
@@ -5401,22 +6238,49 @@ impl<'ctx> CodeGenerator<'ctx> {
         let old_variables = self.variables.clone();
         self.variables.clear();
 
-        for (i, param) in params.iter().enumerate() {
-            let param_value = function.get_nth_param(i as u32).ok_or_else(|| {
-                CompileError::codegen_error(format!("Failed to get parameter {}", i), None)
+        // Special handling for main function with CLI arguments
+        if name == "main" && params.len() == 1 && params[0].type_annotation.name == "Vec<String>" {
+            // For main(args: Vec<String>) -> i32, we get argc and argv
+            let argc = function.get_nth_param(0).ok_or_else(|| {
+                CompileError::codegen_error("Failed to get argc parameter".to_string(), None)
+            })?;
+            let argv = function.get_nth_param(1).ok_or_else(|| {
+                CompileError::codegen_error("Failed to get argv parameter".to_string(), None)
             })?;
 
-            // Allocate space on the stack for the parameter
-            let alloca =
-                self.create_entry_block_alloca(function, &param.name, param_value.get_type())?;
-
-            // Store the parameter value
-            self.builder.build_store(alloca, param_value).map_err(|e| {
-                CompileError::codegen_error(format!("Failed to store parameter: {:?}", e), None)
+            // Create alloca for the Vec<String> parameter (represented as argv)
+            let argv_alloca = self.create_entry_block_alloca(function, &params[0].name, argv.get_type())?;
+            self.builder.build_store(argv_alloca, argv).map_err(|e| {
+                CompileError::codegen_error(format!("Failed to store argv: {:?}", e), None)
             })?;
 
-            // Add the variable to our map
-            self.variables.insert(param.name.clone(), alloca);
+            // Also store argc as a hidden variable
+            let argc_alloca = self.create_entry_block_alloca(function, "__argc", argc.get_type())?;
+            self.builder.build_store(argc_alloca, argc).map_err(|e| {
+                CompileError::codegen_error(format!("Failed to store argc: {:?}", e), None)
+            })?;
+
+            // Add both to variable map
+            self.variables.insert(params[0].name.clone(), argv_alloca);
+            self.variables.insert("__argc".to_string(), argc_alloca);
+        } else {
+            for (i, param) in params.iter().enumerate() {
+                let param_value = function.get_nth_param(i as u32).ok_or_else(|| {
+                    CompileError::codegen_error(format!("Failed to get parameter {}", i), None)
+                })?;
+
+                // Allocate space on the stack for the parameter
+                let alloca =
+                    self.create_entry_block_alloca(function, &param.name, param_value.get_type())?;
+
+                // Store the parameter value
+                self.builder.build_store(alloca, param_value).map_err(|e| {
+                    CompileError::codegen_error(format!("Failed to store parameter: {:?}", e), None)
+                })?;
+
+                // Add the variable to our map
+                self.variables.insert(param.name.clone(), alloca);
+            }
         }
 
         // Generate code for the function body
@@ -6101,6 +6965,17 @@ impl<'ctx> CodeGenerator<'ctx> {
         if let Some(init) = initializer {
             let init_value = self.generate_expression(init)?;
 
+            // For array literals, we need to handle them specially
+            // Array literals return pointers to arrays, but we shouldn't double-allocate
+            if let BasicValueEnum::PointerValue(ptr_val) = init_value {
+                // Check if this is pointing to an array type
+                if let inkwell::types::AnyTypeEnum::ArrayType(_) = ptr_val.get_type().get_element_type() {
+                    // For arrays, store the pointer directly instead of creating another alloca level
+                    self.variables.insert(name.to_string(), ptr_val);
+                    return Ok(());
+                }
+            }
+
             // Check that the initializer type matches the variable type
             if init_value.get_type() != var_type {
                 return Err(CompileError::codegen_error(
@@ -6175,13 +7050,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 variant,
                 args,
             } => self.generate_enum_literal(enum_name, variant, args),
-            Expr::Match { value: _, arms: _ } => {
-                // Match expressions are not yet implemented - returning error instead of placeholder
-                Err(CompileError::codegen_error(
-                    "Match expressions are not yet implemented".to_string(),
-                    None,
-                ))
-            }
+            Expr::Match { value, arms } => self.generate_match_expression(value, arms),
             Expr::Block(statements) => self.generate_block_expression(statements),
         }
     }
@@ -6406,10 +7275,18 @@ impl<'ctx> CodeGenerator<'ctx> {
     /// Generates code for a variable access.
     fn generate_variable_access(&self, name: &str) -> Result<BasicValueEnum<'ctx>> {
         if let Some(&ptr) = self.variables.get(name) {
-            let load = self.builder.build_load(ptr, name).map_err(|e| {
-                CompileError::codegen_error(format!("Failed to load variable: {:?}", e), None)
-            })?;
-            Ok(load)
+            // Check if this pointer is directly pointing to an array
+            // (arrays are stored as direct pointers, not pointer-to-pointer)
+            if let inkwell::types::AnyTypeEnum::ArrayType(_) = ptr.get_type().get_element_type() {
+                // For arrays, return the pointer directly (no load needed)
+                Ok(ptr.into())
+            } else {
+                // For regular variables, load the value
+                let load = self.builder.build_load(ptr, name).map_err(|e| {
+                    CompileError::codegen_error(format!("Failed to load variable: {:?}", e), None)
+                })?;
+                Ok(load)
+            }
         } else {
             Err(CompileError::codegen_error(
                 format!("Variable '{}' not found", name),
@@ -6705,11 +7582,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let right_value = self.generate_expression(right)?;
 
                 // Handle String concatenation (+ operator)
+                eprintln!("🔍 Checking if both operands are pointers: left={:?}, right={:?}", left_value.get_type(), right_value.get_type());
                 if let (
                     BasicValueEnum::PointerValue(left_ptr),
                     BasicValueEnum::PointerValue(right_ptr),
                 ) = (left_value, right_value)
                 {
+                    eprintln!("🔍 Both operands are pointers, checking operation: {:?}", op);
                     if matches!(op, BinaryOp::Add) {
                         // String concatenation: call string_concat function
                         if let Some(&string_concat_function) = self.functions.get("string_concat") {
@@ -6731,8 +7610,100 @@ impl<'ctx> CodeGenerator<'ctx> {
                             }
                         }
                     } else if matches!(op, BinaryOp::Equal) {
+                        eprintln!("🔍 Equal operation detected with two pointers");
                         // String comparison: call string_equals function
+                        eprintln!("🔍 Looking for string_equals function. Function count: {}", self.functions.len());
+                        eprintln!("🔍 About to check if string_equals exists in function map");
                         if let Some(&string_equals_function) = self.functions.get("string_equals") {
+                            eprintln!("✅ Found string_equals function, calling it");
+                            let result = self
+                                .builder
+                                .build_call(
+                                    string_equals_function,
+                                    &[left_ptr.into(), right_ptr.into()],
+                                    "string_equals",
+                                )
+                                .map_err(|e| {
+                                    CompileError::codegen_error(
+                                        format!("Failed to build string equals: {:?}", e),
+                                        None,
+                                    )
+                                })?;
+                            eprintln!("✅ string_equals call successful, checking return value");
+                            if let Some(return_value) = result.try_as_basic_value().left() {
+                                eprintln!("✅ string_equals returned value, returning early");
+                                return Ok(return_value);
+                            } else {
+                                eprintln!("❌ string_equals call failed to return basic value");
+                            }
+                        } else {
+                            eprintln!("❌ string_equals function not found, creating fallback implementation");
+                            // Fallback: Create string_equals function on demand
+                            let string_type = self.context.i8_type().ptr_type(AddressSpace::default());
+                            let string_equals_type = self
+                                .context
+                                .bool_type()
+                                .fn_type(&[string_type.into(), string_type.into()], false);
+                            let string_equals_function =
+                                self.module
+                                    .add_function("string_equals", string_equals_type, None);
+                            self.functions
+                                .insert("string_equals".to_string(), string_equals_function);
+
+                            // Create strcmp function if not exists
+                            let strcmp_function = if !self.functions.contains_key("strcmp") {
+                                let strcmp_func = self.module.add_function(
+                                    "strcmp",
+                                    self.context.i32_type().fn_type(&[string_type.into(), string_type.into()], false),
+                                    None,
+                                );
+                                self.functions.insert("strcmp".to_string(), strcmp_func);
+                                strcmp_func
+                            } else {
+                                *self.functions.get("strcmp").unwrap()
+                            };
+
+                            // Implement string_equals function using strcmp
+                            let string_equals_entry = self
+                                .context
+                                .append_basic_block(string_equals_function, "entry");
+                            let current_block = self.builder.get_insert_block();
+                            self.builder.position_at_end(string_equals_entry);
+
+                            let str1_param = string_equals_function.get_nth_param(0).unwrap();
+                            let str2_param = string_equals_function.get_nth_param(1).unwrap();
+
+                            let strcmp_result = self
+                                .builder
+                                .build_call(
+                                    strcmp_function,
+                                    &[str1_param.into(), str2_param.into()],
+                                    "strcmp_result",
+                                )
+                                .unwrap();
+                            let zero = self.context.i32_type().const_int(0, false);
+                            let is_equal = self
+                                .builder
+                                .build_int_compare(
+                                    IntPredicate::EQ,
+                                    strcmp_result
+                                        .try_as_basic_value()
+                                        .unwrap_left()
+                                        .into_int_value(),
+                                    zero,
+                                    "is_equal",
+                                )
+                                .unwrap();
+
+                            self.builder.build_return(Some(&is_equal)).unwrap();
+
+                            // Restore builder position
+                            if let Some(block) = current_block {
+                                self.builder.position_at_end(block);
+                            }
+
+                            // Now call the created function
+                            eprintln!("✅ Created string_equals function, calling it");
                             let result = self
                                 .builder
                                 .build_call(
@@ -7298,6 +8269,19 @@ impl<'ctx> CodeGenerator<'ctx> {
                             })?;
                             Ok(result.into())
                         }
+                        BinaryOp::Modulo => {
+                            // Implement floating-point remainder using frem instruction
+                            let result = self
+                                .builder
+                                .build_float_rem(left_float, right_float, "frem")
+                                .map_err(|e| {
+                                    CompileError::codegen_error(
+                                        format!("Failed to build float remainder: {:?}", e),
+                                        None,
+                                    )
+                                })?;
+                            Ok(result.into())
+                        }
                         // For other operations, we'll return an error for now
                         _ => Err(CompileError::codegen_error(
                             format!("Binary operation {:?} not yet implemented for floats", op),
@@ -7546,8 +8530,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                         }
                     } else {
                         // Truly mixed types (e.g., int and float)
+                        eprintln!("❌ Mixed types in binary operation: {:?}, left: {:?}, right: {:?}", op, left_value.get_type(), right_value.get_type());
                         Err(CompileError::codegen_error(
-                            "Mixed types in binary operation not yet supported".to_string(),
+                            format!("Mixed types in binary operation not yet supported: {:?} between {:?} and {:?}", op, left_value.get_type(), right_value.get_type()),
                             None,
                         ))
                     }
@@ -7602,6 +8587,23 @@ impl<'ctx> CodeGenerator<'ctx> {
                     ))
                 }
             }
+            UnaryOp::Reference => {
+                // Create a reference (pointer) to the value
+                // For now, we'll allocate the value on the stack and return the pointer
+                let current_function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let alloca = self.create_entry_block_alloca(
+                    current_function, 
+                    "ref_temp", 
+                    expr_value.get_type()
+                )?;
+                self.builder.build_store(alloca, expr_value).map_err(|e| {
+                    CompileError::codegen_error(
+                        format!("Failed to store value for reference: {:?}", e),
+                        None,
+                    )
+                })?;
+                Ok(alloca.into())
+            }
             // For other unary operations, we'll return an error for now
             _ => Err(CompileError::codegen_error(
                 format!("Unary operation {:?} not yet implemented", op),
@@ -7637,6 +8639,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             ("String", "new") => "string_new".to_string(),
                             ("String", "from") => "string_from".to_string(),
                             ("File", "open") => "file_open".to_string(),
+                            ("File", "create") => "file_create".to_string(),
                             ("File", "exists") => "file_exists".to_string(),
                             ("File", "size") => "file_size".to_string(),
                             ("File", "delete") => "file_delete".to_string(),
@@ -7873,86 +8876,102 @@ impl<'ctx> CodeGenerator<'ctx> {
                                             return Ok(return_value);
                                         }
                                         "get" => {
-                                            // vec_get returns pointer, dereference to get value
-                                            if let BasicValueEnum::PointerValue(ptr) = return_value
-                                            {
-                                                // Check if pointer is null first
-                                                let null_ptr = self
-                                                    .context
-                                                    .i8_type()
-                                                    .ptr_type(AddressSpace::default())
-                                                    .const_null();
-                                                let is_null = self.builder.build_int_compare(
-                                                IntPredicate::EQ,
-                                                ptr,
-                                                null_ptr,
-                                                "is_null"
-                                            ).map_err(|e| CompileError::codegen_error(
-                                                format!("Failed to check null pointer: {:?}", e), None))?;
+                                            // For Vec<string>, vec_get should return the string pointer directly
+                                            // For Vec<i32>, vec_get should dereference to get the integer value
+                                            // Since we don't have runtime type information, we'll assume Vec<string> 
+                                            // based on the variable name pattern or return the pointer directly
+                                            
+                                            // Check if this is likely a Vec<string> based on variable name
+                                            let is_string_vec = if let Expr::Variable(var_name) = &**base_expr {
+                                                var_name.contains("args") || var_name.contains("string") || var_name.ends_with("_args")
+                                            } else {
+                                                false
+                                            };
+                                            
+                                            if is_string_vec {
+                                                // For Vec<string>, return the pointer directly (it's already a string pointer)
+                                                return Ok(return_value);
+                                            } else {
+                                                // vec_get returns pointer, dereference to get value for integer vectors
+                                                if let BasicValueEnum::PointerValue(ptr) = return_value
+                                                {
+                                                    // Check if pointer is null first
+                                                    let null_ptr = self
+                                                        .context
+                                                        .i8_type()
+                                                        .ptr_type(AddressSpace::default())
+                                                        .const_null();
+                                                    let is_null = self.builder.build_int_compare(
+                                                    IntPredicate::EQ,
+                                                    ptr,
+                                                    null_ptr,
+                                                    "is_null"
+                                                ).map_err(|e| CompileError::codegen_error(
+                                                    format!("Failed to check null pointer: {:?}", e), None))?;
 
-                                                // Create conditional to return 0 if null, otherwise dereference
-                                                let current_function = self
-                                                    .builder
-                                                    .get_insert_block()
-                                                    .unwrap()
-                                                    .get_parent()
-                                                    .unwrap();
-                                                let then_block = self.context.append_basic_block(
-                                                    current_function,
-                                                    "null_case",
-                                                );
-                                                let else_block = self.context.append_basic_block(
-                                                    current_function,
-                                                    "valid_case",
-                                                );
-                                                let merge_block = self
-                                                    .context
-                                                    .append_basic_block(current_function, "merge");
+                                                    // Create conditional to return 0 if null, otherwise dereference
+                                                    let current_function = self
+                                                        .builder
+                                                        .get_insert_block()
+                                                        .unwrap()
+                                                        .get_parent()
+                                                        .unwrap();
+                                                    let then_block = self.context.append_basic_block(
+                                                        current_function,
+                                                        "null_case",
+                                                    );
+                                                    let else_block = self.context.append_basic_block(
+                                                        current_function,
+                                                        "valid_case",
+                                                    );
+                                                    let merge_block = self
+                                                        .context
+                                                        .append_basic_block(current_function, "merge");
 
-                                                self.builder
-                                                    .build_conditional_branch(
-                                                        is_null, then_block, else_block,
-                                                    )
-                                                    .map_err(|e| {
-                                                        CompileError::codegen_error(
-                                                            format!(
-                                                                "Failed to build conditional: {:?}",
-                                                                e
-                                                            ),
-                                                            None,
+                                                    self.builder
+                                                        .build_conditional_branch(
+                                                            is_null, then_block, else_block,
                                                         )
-                                                    })?;
+                                                        .map_err(|e| {
+                                                            CompileError::codegen_error(
+                                                                format!(
+                                                                    "Failed to build conditional: {:?}",
+                                                                    e
+                                                                ),
+                                                                None,
+                                                            )
+                                                        })?;
 
-                                                // Null case: return 0
-                                                self.builder.position_at_end(then_block);
-                                                let zero =
-                                                    self.context.i32_type().const_int(0, false);
-                                                self.builder
-                                                    .build_unconditional_branch(merge_block)
-                                                    .map_err(|e| {
-                                                        CompileError::codegen_error(
-                                                            format!(
-                                                                "Failed to build branch: {:?}",
-                                                                e
-                                                            ),
-                                                            None,
-                                                        )
-                                                    })?;
+                                                    // Null case: return 0
+                                                    self.builder.position_at_end(then_block);
+                                                    let zero =
+                                                        self.context.i32_type().const_int(0, false);
+                                                    self.builder
+                                                        .build_unconditional_branch(merge_block)
+                                                        .map_err(|e| {
+                                                            CompileError::codegen_error(
+                                                                format!(
+                                                                    "Failed to build branch: {:?}",
+                                                                    e
+                                                                ),
+                                                                None,
+                                                            )
+                                                        })?;
 
-                                                // Valid case: dereference pointer
-                                                self.builder.position_at_end(else_block);
+                                                    // Valid case: dereference pointer
+                                                    self.builder.position_at_end(else_block);
 
-                                                // Cast the i8* pointer to i32* and load the i32 value
-                                                let i32_ptr = self.builder.build_pointer_cast(
-                                                ptr,
-                                                self.context.i32_type().ptr_type(AddressSpace::default()),
-                                                "i32_ptr"
-                                            ).map_err(|e| CompileError::codegen_error(
-                                                format!("Failed to cast pointer to i32*: {:?}", e), None))?;
+                                                    // Cast the i8* pointer to i32* and load the i32 value
+                                                    let i32_ptr = self.builder.build_pointer_cast(
+                                                    ptr,
+                                                    self.context.i32_type().ptr_type(AddressSpace::default()),
+                                                    "i32_ptr"
+                                                ).map_err(|e| CompileError::codegen_error(
+                                                    format!("Failed to cast pointer to i32*: {:?}", e), None))?;
 
-                                                let value = self.builder.build_load(i32_ptr, "deref_value")
-                                                .map_err(|e| CompileError::codegen_error(
-                                                    format!("Failed to dereference pointer: {:?}", e), None))?;
+                                                    let value = self.builder.build_load(i32_ptr, "deref_value")
+                                                    .map_err(|e| CompileError::codegen_error(
+                                                        format!("Failed to dereference pointer: {:?}", e), None))?;
 
                                                 self.builder
                                                     .build_unconditional_branch(merge_block)
@@ -7986,8 +9005,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                                                 ]);
 
                                                 return Ok(phi.as_basic_value());
+                                                }
+                                                return Ok(return_value);
                                             }
-                                            return Ok(return_value);
                                         }
                                         "push" => {
                                             // vec_push returns i32 success indicator, which is fine
@@ -8121,7 +9141,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         array_expr: &Box<Expr>,
         index_expr: &Box<Expr>,
     ) -> Result<BasicValueEnum<'ctx>> {
-        // Generate the array expression - this should be a pointer to the array data
+        // Generate the array expression
         let array_value = self.generate_expression(array_expr)?;
 
         // Generate the index expression - this should be an integer
@@ -8137,42 +9157,60 @@ impl<'ctx> CodeGenerator<'ctx> {
             ));
         };
 
-        // The array should be a pointer value
-        let array_ptr = if array_value.is_pointer_value() {
-            array_value.into_pointer_value()
-        } else {
-            return Err(CompileError::codegen_error(
-                "Array expression must evaluate to a pointer".to_string(),
-                None,
-            ));
-        };
-
-        // Build GEP (Get Element Pointer) instruction for array indexing
-        // This calculates the address of array[index]
-        let element_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    array_ptr,
-                    &[self.context.i32_type().const_zero(), index_int],
-                    "array_index_gep",
-                )
+        // Check if this is a SIMD vector indexing operation
+        if array_value.is_vector_value() {
+            // For SIMD vectors, use extractelement instruction
+            let vector_value = array_value.into_vector_value();
+            
+            let extracted_element = self
+                .builder
+                .build_extract_element(vector_value, index_int, "simd_extract")
                 .map_err(|e| {
                     CompileError::codegen_error(
-                        format!("Failed to build GEP instruction: {:?}", e),
+                        format!("Failed to extract SIMD vector element: {:?}", e),
                         None,
                     )
-                })?
-        };
+                })?;
 
-        // Load the value from the calculated address
-        let loaded_value = self
-            .builder
-            .build_load(element_ptr, "array_element_load")
-            .map_err(|e| {
-                CompileError::codegen_error(format!("Failed to load array element: {:?}", e), None)
-            })?;
+            Ok(extracted_element)
+        } else {
+            // For regular arrays, use GEP instruction
+            let array_ptr = if array_value.is_pointer_value() {
+                array_value.into_pointer_value()
+            } else {
+                return Err(CompileError::codegen_error(
+                    "Array expression must evaluate to a pointer".to_string(),
+                    None,
+                ));
+            };
 
-        Ok(loaded_value)
+            // Build GEP (Get Element Pointer) instruction for array indexing
+            // This calculates the address of array[index]
+            let element_ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        array_ptr,
+                        &[self.context.i32_type().const_zero(), index_int],
+                        "array_index_gep",
+                    )
+                    .map_err(|e| {
+                        CompileError::codegen_error(
+                            format!("Failed to build GEP instruction: {:?}", e),
+                            None,
+                        )
+                    })?
+            };
+
+            // Load the value from the calculated address
+            let loaded_value = self
+                .builder
+                .build_load(element_ptr, "array_element_load")
+                .map_err(|e| {
+                    CompileError::codegen_error(format!("Failed to load array element: {:?}", e), None)
+                })?;
+
+            Ok(loaded_value)
+        }
     }
 
     /// Generates code for array slicing: array[start:end]
@@ -9126,14 +10164,120 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     }
                                 }
                             }
-                            _ => {
-                                return Err(CompileError::codegen_error(
-                                    format!(
-                                        "Reduction operation {:?} not yet implemented",
-                                        operation
-                                    ),
-                                    None,
-                                ));
+                            crate::ast::ReductionOp::And => {
+                                if let (
+                                    BasicValueEnum::IntValue(acc),
+                                    BasicValueEnum::IntValue(elem),
+                                ) = (accumulator, element)
+                                {
+                                    // Bitwise AND for integer types
+                                    self.builder
+                                        .build_and(acc, elem, "reduce_and")
+                                        .map(|v| v.into())
+                                        .map_err(|_| {
+                                            CompileError::codegen_error(
+                                                "Failed to build bitwise and".to_string(),
+                                                None,
+                                            )
+                                        })?
+                                } else {
+                                    return Err(CompileError::codegen_error(
+                                        "And reduction only supports integer types".to_string(),
+                                        None,
+                                    ));
+                                }
+                            }
+                            crate::ast::ReductionOp::Or => {
+                                if let (
+                                    BasicValueEnum::IntValue(acc),
+                                    BasicValueEnum::IntValue(elem),
+                                ) = (accumulator, element)
+                                {
+                                    // Bitwise OR for integer types
+                                    self.builder
+                                        .build_or(acc, elem, "reduce_or")
+                                        .map(|v| v.into())
+                                        .map_err(|_| {
+                                            CompileError::codegen_error(
+                                                "Failed to build bitwise or".to_string(),
+                                                None,
+                                            )
+                                        })?
+                                } else {
+                                    return Err(CompileError::codegen_error(
+                                        "Or reduction only supports integer types".to_string(),
+                                        None,
+                                    ));
+                                }
+                            }
+                            crate::ast::ReductionOp::Xor => {
+                                if let (
+                                    BasicValueEnum::IntValue(acc),
+                                    BasicValueEnum::IntValue(elem),
+                                ) = (accumulator, element)
+                                {
+                                    // Bitwise XOR for integer types
+                                    self.builder
+                                        .build_xor(acc, elem, "reduce_xor")
+                                        .map(|v| v.into())
+                                        .map_err(|_| {
+                                            CompileError::codegen_error(
+                                                "Failed to build bitwise xor".to_string(),
+                                                None,
+                                            )
+                                        })?
+                                } else {
+                                    return Err(CompileError::codegen_error(
+                                        "Xor reduction only supports integer types".to_string(),
+                                        None,
+                                    ));
+                                }
+                            }
+                            crate::ast::ReductionOp::Any => {
+                                if let (
+                                    BasicValueEnum::IntValue(acc),
+                                    BasicValueEnum::IntValue(elem),
+                                ) = (accumulator, element)
+                                {
+                                    // Any is logical OR (for boolean vectors represented as integers)
+                                    self.builder
+                                        .build_or(acc, elem, "reduce_any")
+                                        .map(|v| v.into())
+                                        .map_err(|_| {
+                                            CompileError::codegen_error(
+                                                "Failed to build logical or for any".to_string(),
+                                                None,
+                                            )
+                                        })?
+                                } else {
+                                    return Err(CompileError::codegen_error(
+                                        "Any reduction only supports integer types".to_string(),
+                                        None,
+                                    ));
+                                }
+                            }
+                            crate::ast::ReductionOp::All => {
+                                if let (
+                                    BasicValueEnum::IntValue(acc),
+                                    BasicValueEnum::IntValue(elem),
+                                ) = (accumulator, element)
+                                {
+                                    // All is logical AND (for boolean vectors represented as integers)
+                                    self.builder
+                                        .build_and(acc, elem, "reduce_all")
+                                        .map(|v| v.into())
+                                        .map_err(|_| {
+                                            CompileError::codegen_error(
+                                                "Failed to build logical and for all".to_string(),
+                                                None,
+                                            )
+                                        })?
+                                } else {
+                                    return Err(CompileError::codegen_error(
+                                        "All reduction only supports integer types".to_string(),
+                                        None,
+                                    ));
+                                }
                             }
                         };
                     }
@@ -10183,6 +11327,13 @@ impl<'ctx> CodeGenerator<'ctx> {
             "u16x16" => Ok(self.context.i16_type().vec_type(16).into()),
             "u8x16" => Ok(self.context.i8_type().vec_type(16).into()),
             "u8x32" => Ok(self.context.i8_type().vec_type(32).into()),
+            // CLI argument support - Vec<String> and Vec<string> map to char**
+            "Vec<String>" | "Vec<string>" => Ok(self
+                .context
+                .i8_type()
+                .ptr_type(AddressSpace::default())
+                .ptr_type(AddressSpace::default())
+                .into()),
             _ => {
                 // Check if it's a struct type
                 if let Some(struct_type) = self.struct_types.get(&type_annotation.name) {
@@ -10485,5 +11636,118 @@ impl<'ctx> CodeGenerator<'ctx> {
         
         eprintln!("✅ Memory metadata generation complete");
         Ok(())
+    }
+
+    /// Adds CLI runtime functions for command-line argument parsing and program execution
+    fn add_cli_runtime_functions(&mut self) {
+        // Get basic types
+        let i8_type = self.context.i8_type();
+        let i32_type = self.context.i32_type();
+        let i64_type = self.context.i64_type();
+        let void_type = self.context.void_type();
+        let string_ptr_type = i8_type.ptr_type(AddressSpace::default());
+        let opaque_ptr_type = i8_type.ptr_type(AddressSpace::default());
+        let double_ptr_type = string_ptr_type.ptr_type(AddressSpace::default());
+
+        // CLI initialization
+        // cli_init(argc: i32, argv: **i8) -> void
+        let cli_init_type = void_type.fn_type(&[i32_type.into(), double_ptr_type.into()], false);
+        let cli_init_function = self.module.add_function("cli_init", cli_init_type, None);
+        self.functions.insert("cli_init".to_string(), cli_init_function);
+
+        // Command line argument functions
+        // get_command_line_arg_count() -> i32
+        let get_arg_count_type = i32_type.fn_type(&[], false);
+        let get_arg_count_function = self.module.add_function("get_command_line_arg_count", get_arg_count_type, None);
+        self.functions.insert("get_command_line_arg_count".to_string(), get_arg_count_function);
+
+        // get_command_line_arg(index: i32) -> *i8
+        let get_arg_type = string_ptr_type.fn_type(&[i32_type.into()], false);
+        let get_arg_function = self.module.add_function("get_command_line_arg", get_arg_type, None);
+        self.functions.insert("get_command_line_arg".to_string(), get_arg_function);
+
+        // get_command_line_args() -> **i8
+        let get_args_type = double_ptr_type.fn_type(&[], false);
+        let get_args_function = self.module.add_function("get_command_line_args", get_args_type, None);
+        self.functions.insert("get_command_line_args".to_string(), get_args_function);
+
+        // Memory cleanup functions for CLI
+        // free_command_line_arg(arg: *i8) -> void
+        let free_arg_type = void_type.fn_type(&[string_ptr_type.into()], false);
+        let free_arg_function = self.module.add_function("free_command_line_arg", free_arg_type, None);
+        self.functions.insert("free_command_line_arg".to_string(), free_arg_function);
+
+        // free_command_line_args(args: **i8) -> void  
+        let free_args_type = void_type.fn_type(&[double_ptr_type.into()], false);
+        let free_args_function = self.module.add_function("free_command_line_args", free_args_type, None);
+        self.functions.insert("free_command_line_args".to_string(), free_args_function);
+
+        // process_image_with_simd(input_file: *i8, output_file: *i8, filter_type: *i8) -> i32
+        let process_image_type = i32_type.fn_type(&[string_ptr_type.into(), string_ptr_type.into(), string_ptr_type.into()], false);
+        let process_image_function = self.module.add_function("process_image_with_simd", process_image_type, None);
+        self.functions.insert("process_image_with_simd".to_string(), process_image_function);
+
+        // Time measurement functions
+        // get_time_microseconds() -> i64
+        let get_time_us_type = i64_type.fn_type(&[], false);
+        let get_time_us_function = self.module.add_function("get_time_microseconds", get_time_us_type, None);
+        self.functions.insert("get_time_microseconds".to_string(), get_time_us_function);
+
+        // get_time_milliseconds() -> i64
+        let get_time_ms_type = i64_type.fn_type(&[], false);
+        let get_time_ms_function = self.module.add_function("get_time_milliseconds", get_time_ms_type, None);
+        self.functions.insert("get_time_milliseconds".to_string(), get_time_ms_function);
+
+        // Memory usage tracking
+        // get_memory_usage() -> i64
+        let get_memory_type = i64_type.fn_type(&[], false);
+        let get_memory_function = self.module.add_function("get_memory_usage", get_memory_type, None);
+        self.functions.insert("get_memory_usage".to_string(), get_memory_function);
+
+        // File cleanup functions
+        // cleanup_test_files() -> i32
+        let cleanup_type = i32_type.fn_type(&[], false);
+        let cleanup_function = self.module.add_function("cleanup_test_files", cleanup_type, None);
+        self.functions.insert("cleanup_test_files".to_string(), cleanup_function);
+
+        // Help and program control
+        // print_help() -> void
+        let print_help_type = void_type.fn_type(&[], false);
+        let print_help_function = self.module.add_function("print_help", print_help_type, None);
+        self.functions.insert("print_help".to_string(), print_help_function);
+
+        // is_help_requested() -> i32
+        let is_help_type = i32_type.fn_type(&[], false);
+        let is_help_function = self.module.add_function("is_help_requested", is_help_type, None);
+        self.functions.insert("is_help_requested".to_string(), is_help_function);
+
+        // Program exit functions
+        // exit_with_error(message: *i8) -> void
+        let exit_error_type = void_type.fn_type(&[string_ptr_type.into()], false);
+        let exit_error_function = self.module.add_function("exit_with_error", exit_error_type, None);
+        self.functions.insert("exit_with_error".to_string(), exit_error_function);
+
+        // exit_with_success(message: *i8) -> void
+        let exit_success_type = void_type.fn_type(&[string_ptr_type.into()], false);
+        let exit_success_function = self.module.add_function("exit_with_success", exit_success_type, None);
+        self.functions.insert("exit_with_success".to_string(), exit_success_function);
+    }
+
+    /// Adds PGM file I/O functions for image processing
+    fn add_pgm_runtime_functions(&mut self) {
+        // Get basic types
+        let i8_type = self.context.i8_type();
+        let i32_type = self.context.i32_type();
+        let void_type = self.context.void_type();
+        let string_ptr_type = i8_type.ptr_type(AddressSpace::default());
+        let opaque_ptr_type = i8_type.ptr_type(AddressSpace::default());
+        let u8_ptr_type = i8_type.ptr_type(AddressSpace::default());
+
+        // PGM functions removed - these belong in application layer, not language core
+        // Applications should implement PGM parsing using core string/Vec/file I/O operations
+
+        // All PGM-related functions removed as part of architectural refactor
+
+        // PGM memory management functions also removed
     }
 }

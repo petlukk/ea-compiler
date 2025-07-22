@@ -67,6 +67,15 @@ pub mod stdlib;
 #[cfg(feature = "llvm")]
 extern crate libloading;
 
+// External CLI runtime functions
+#[cfg(feature = "llvm")]
+extern "C" {
+    fn cli_init(argc: std::os::raw::c_int, argv: *const *const std::os::raw::c_char);
+    fn get_command_line_arg_count() -> std::os::raw::c_int;
+    fn get_command_line_arg(index: std::os::raw::c_int) -> *mut std::os::raw::c_char;
+    fn string_concat(left: *const std::os::raw::c_char, right: *const std::os::raw::c_char) -> *mut std::os::raw::c_char;
+}
+
 // Re-export commonly used types
 pub use error::{CompileError, Result};
 pub use lexer::{Lexer, Position, Token, TokenKind};
@@ -459,6 +468,33 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
             execution_engine.add_global_mapping(&strlen_fn, strlen_addr);
             eprintln!("✅ Mapped strlen symbol successfully");
         }
+
+        // Map string runtime functions
+        if let Some(string_concat_fn) = codegen.get_module().get_function("string_concat") {
+            let string_concat_addr = string_concat as *const () as usize;
+            execution_engine.add_global_mapping(&string_concat_fn, string_concat_addr);
+            eprintln!("✅ Mapped string_concat symbol successfully");
+        }
+
+        // Map CLI runtime functions
+        if let Some(cli_init_fn) = codegen.get_module().get_function("cli_init") {
+            // These functions are compiled into the runtime
+            let cli_init_addr = cli_init as *const () as usize;
+            execution_engine.add_global_mapping(&cli_init_fn, cli_init_addr);
+            eprintln!("✅ Mapped cli_init symbol successfully");
+        }
+
+        if let Some(get_arg_count_fn) = codegen.get_module().get_function("get_command_line_arg_count") {
+            let get_arg_count_addr = get_command_line_arg_count as *const () as usize;
+            execution_engine.add_global_mapping(&get_arg_count_fn, get_arg_count_addr);
+            eprintln!("✅ Mapped get_command_line_arg_count symbol successfully");
+        }
+
+        if let Some(get_arg_fn) = codegen.get_module().get_function("get_command_line_arg") {
+            let get_arg_addr = get_command_line_arg as *const () as usize;
+            execution_engine.add_global_mapping(&get_arg_fn, get_arg_addr);
+            eprintln!("✅ Mapped get_command_line_arg symbol successfully");
+        }
     }
 
     // CRITICAL DEBUG: Check if we reach global mapping
@@ -518,12 +554,63 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
 
         let main_fn_info = main_fn_ref.unwrap();
         let return_type = main_fn_info.get_type().get_return_type();
+        let param_count = main_fn_info.get_type().count_param_types();
 
-        match return_type {
-            None => {
-                // Void function
-                eprintln!("🎯 Getting void main function from JIT engine...");
-                let void_result = execution_engine.get_function::<unsafe extern "C" fn()>("main");
+        // Check if this is a main function with CLI arguments (argc, argv)
+        if param_count == 2 {
+            eprintln!("🎯 Detected main function with CLI arguments (argc, argv)");
+            let cli_result = execution_engine.get_function::<unsafe extern "C" fn(i32, *const *const i8) -> i32>("main");
+            match cli_result {
+                Ok(main_fn) => {
+                    eprintln!("✅ Successfully got CLI main function from JIT");
+                    let main_fn: JitFunction<unsafe extern "C" fn(i32, *const *const i8) -> i32> = main_fn;
+                    
+                    // Create fake argc/argv for testing
+                    let argc = 3i32;
+                    let args = [
+                        b"ea-program\0".as_ptr() as *const i8,
+                        b"--input\0".as_ptr() as *const i8,
+                        b"test.pgm\0".as_ptr() as *const i8,
+                        std::ptr::null(),
+                    ];
+                    let argv = args.as_ptr();
+                    
+                    // Initialize CLI runtime with arguments
+                    eprintln!("🔧 Initializing CLI runtime with argc={}, argv={:?}", argc, argv);
+                    cli_init(argc, argv);
+                    eprintln!("✅ CLI runtime initialized successfully");
+                    
+                    eprintln!("🚀 About to execute CLI main function...");
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        eprintln!("🔄 Calling CLI main function with args...");
+                        main_fn.call(argc, argv)
+                    }));
+                    
+                    match result {
+                        Ok(exit_code) => {
+                            eprintln!("🎉 CLI JIT execution completed with exit code: {}", exit_code);
+                            Ok(exit_code)
+                        }
+                        Err(panic_info) => {
+                            eprintln!("💥 CLI JIT execution failed!");
+                            Err(CompileError::codegen_error(
+                                "JIT execution failed with CLI arguments".to_string(),
+                                None
+                            ))
+                        }
+                    }
+                }
+                Err(e) => Err(CompileError::codegen_error(
+                    format!("Failed to get CLI main function: {}", e),
+                    None,
+                ))
+            }
+        } else {
+            match return_type {
+                None => {
+                    // Void function
+                    eprintln!("🎯 Getting void main function from JIT engine...");
+                    let void_result = execution_engine.get_function::<unsafe extern "C" fn()>("main");
                 match void_result {
                     Ok(main_fn) => {
                         eprintln!("✅ Successfully got main function from JIT");
@@ -607,6 +694,7 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
             }
         }
     }
+}
 }
 
 #[cfg(test)]

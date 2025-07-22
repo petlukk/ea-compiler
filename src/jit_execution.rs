@@ -468,6 +468,225 @@ pub fn map_essential_symbols(
             symbol_table.insert("string_free".to_string(), string_free_addr);
             eprintln!("✅ Mapped string_free symbol successfully");
         }
+
+        // Map new string functions
+        extern "C" fn string_format_impl(template: *const std::ffi::c_char, value: *const std::ffi::c_char) -> *mut std::ffi::c_void {
+            if template.is_null() || value.is_null() {
+                return std::ptr::null_mut();
+            }
+            
+            let template_str = unsafe { std::ffi::CStr::from_ptr(template) };
+            let value_str = unsafe { std::ffi::CStr::from_ptr(value) };
+            
+            if let (Ok(template_rust), Ok(value_rust)) = (template_str.to_str(), value_str.to_str()) {
+                let formatted = template_rust.replace("{}", value_rust);
+                let boxed = Box::new(formatted);
+                Box::into_raw(boxed) as *mut std::ffi::c_void
+            } else {
+                std::ptr::null_mut()
+            }
+        }
+
+        extern "C" fn string_format_i32_impl(template: *const std::ffi::c_char, value: i32) -> *mut std::ffi::c_void {
+            if template.is_null() {
+                return std::ptr::null_mut();
+            }
+            
+            let template_str = unsafe { std::ffi::CStr::from_ptr(template) };
+            
+            if let Ok(template_rust) = template_str.to_str() {
+                let formatted = template_rust.replace("{}", &value.to_string());
+                let boxed = Box::new(formatted);
+                Box::into_raw(boxed) as *mut std::ffi::c_void
+            } else {
+                std::ptr::null_mut()
+            }
+        }
+
+        extern "C" fn string_format_f32_impl(template: *const std::ffi::c_char, value: f32) -> *mut std::ffi::c_void {
+            if template.is_null() {
+                return std::ptr::null_mut();
+            }
+            
+            let template_str = unsafe { std::ffi::CStr::from_ptr(template) };
+            
+            if let Ok(template_rust) = template_str.to_str() {
+                let formatted = template_rust.replace("{}", &value.to_string());
+                let boxed = Box::new(formatted);
+                Box::into_raw(boxed) as *mut std::ffi::c_void
+            } else {
+                std::ptr::null_mut()
+            }
+        }
+
+        extern "C" fn string_split_impl(str_ptr: *mut std::ffi::c_void, delimiter: *const std::ffi::c_char) -> *mut std::ffi::c_void {
+            if str_ptr.is_null() || delimiter.is_null() {
+                return std::ptr::null_mut();
+            }
+            
+            let string = unsafe { &*(str_ptr as *const String) };
+            let delimiter_str = unsafe { std::ffi::CStr::from_ptr(delimiter) };
+            
+            if let Ok(delimiter_rust) = delimiter_str.to_str() {
+                let parts: Vec<String> = string.split(delimiter_rust).map(|s| s.to_string()).collect();
+                let boxed = Box::new(parts);
+                Box::into_raw(boxed) as *mut std::ffi::c_void
+            } else {
+                std::ptr::null_mut()
+            }
+        }
+
+        extern "C" fn string_starts_with_impl(str_ptr: *mut std::ffi::c_void, prefix: *const std::ffi::c_char) -> i32 {
+            if str_ptr.is_null() || prefix.is_null() {
+                return 0;
+            }
+            
+            let string = unsafe { &*(str_ptr as *const String) };
+            let prefix_str = unsafe { std::ffi::CStr::from_ptr(prefix) };
+            
+            if let Ok(prefix_rust) = prefix_str.to_str() {
+                if string.starts_with(prefix_rust) { 1 } else { 0 }
+            } else {
+                0
+            }
+        }
+
+        extern "C" fn string_ends_with_impl(str_ptr: *mut std::ffi::c_void, suffix: *const std::ffi::c_char) -> i32 {
+            if str_ptr.is_null() || suffix.is_null() {
+                return 0;
+            }
+            
+            let string = unsafe { &*(str_ptr as *const String) };
+            let suffix_str = unsafe { std::ffi::CStr::from_ptr(suffix) };
+            
+            if let Ok(suffix_rust) = suffix_str.to_str() {
+                if string.ends_with(suffix_rust) { 1 } else { 0 }
+            } else {
+                0
+            }
+        }
+
+        extern "C" fn string_to_i32_impl(str_ptr: *mut std::ffi::c_void) -> i32 {
+            if str_ptr.is_null() {
+                return 0;
+            }
+            
+            let string = unsafe { &*(str_ptr as *const String) };
+            string.parse::<i32>().unwrap_or(0)
+        }
+
+        extern "C" fn string_to_f32_impl(str_ptr: *mut std::ffi::c_void) -> f32 {
+            if str_ptr.is_null() {
+                return 0.0;
+            }
+            
+            let string = unsafe { &*(str_ptr as *const String) };
+            string.parse::<f32>().unwrap_or(0.0)
+        }
+
+        extern "C" fn i32_to_string_impl(value: i32) -> *mut std::ffi::c_void {
+            let string = value.to_string();
+            let boxed_string = Box::new(string);
+            Box::into_raw(boxed_string) as *mut std::ffi::c_void
+        }
+
+        // Map the new string functions
+        if let Some(string_format_fn) = codegen.get_module().get_function("string_format") {
+            let string_format_addr = string_format_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_format_fn, string_format_addr);
+            symbol_table.insert("string_format".to_string(), string_format_addr);
+            eprintln!("✅ Mapped string_format symbol successfully");
+        }
+
+        if let Some(string_format_i32_fn) = codegen.get_module().get_function("string_format_i32") {
+            let string_format_i32_addr = string_format_i32_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_format_i32_fn, string_format_i32_addr);
+            symbol_table.insert("string_format_i32".to_string(), string_format_i32_addr);
+            eprintln!("✅ Mapped string_format_i32 symbol successfully");
+        }
+
+        if let Some(string_format_f32_fn) = codegen.get_module().get_function("string_format_f32") {
+            let string_format_f32_addr = string_format_f32_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_format_f32_fn, string_format_f32_addr);
+            symbol_table.insert("string_format_f32".to_string(), string_format_f32_addr);
+            eprintln!("✅ Mapped string_format_f32 symbol successfully");
+        }
+
+        if let Some(string_split_fn) = codegen.get_module().get_function("string_split") {
+            let string_split_addr = string_split_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_split_fn, string_split_addr);
+            symbol_table.insert("string_split".to_string(), string_split_addr);
+            eprintln!("✅ Mapped string_split symbol successfully");
+        }
+
+        if let Some(string_starts_with_fn) = codegen.get_module().get_function("string_starts_with") {
+            let string_starts_with_addr = string_starts_with_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_starts_with_fn, string_starts_with_addr);
+            symbol_table.insert("string_starts_with".to_string(), string_starts_with_addr);
+            eprintln!("✅ Mapped string_starts_with symbol successfully");
+        }
+
+        if let Some(string_ends_with_fn) = codegen.get_module().get_function("string_ends_with") {
+            let string_ends_with_addr = string_ends_with_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_ends_with_fn, string_ends_with_addr);
+            symbol_table.insert("string_ends_with".to_string(), string_ends_with_addr);
+            eprintln!("✅ Mapped string_ends_with symbol successfully");
+        }
+
+        if let Some(string_to_i32_fn) = codegen.get_module().get_function("string_to_i32") {
+            let string_to_i32_addr = string_to_i32_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_to_i32_fn, string_to_i32_addr);
+            symbol_table.insert("string_to_i32".to_string(), string_to_i32_addr);
+            eprintln!("✅ Mapped string_to_i32 symbol successfully");
+        }
+
+        if let Some(string_to_f32_fn) = codegen.get_module().get_function("string_to_f32") {
+            let string_to_f32_addr = string_to_f32_impl as *const () as usize;
+            execution_engine.add_global_mapping(&string_to_f32_fn, string_to_f32_addr);
+            symbol_table.insert("string_to_f32".to_string(), string_to_f32_addr);
+            eprintln!("✅ Mapped string_to_f32 symbol successfully");
+        }
+
+        if let Some(i32_to_string_fn) = codegen.get_module().get_function("i32_to_string") {
+            let i32_to_string_addr = i32_to_string_impl as *const () as usize;
+            execution_engine.add_global_mapping(&i32_to_string_fn, i32_to_string_addr);
+            symbol_table.insert("i32_to_string".to_string(), i32_to_string_addr);
+            eprintln!("✅ Mapped i32_to_string symbol successfully");
+        }
+    }
+
+    // Define Result constructor functions first (needed by file operations)
+    extern "C" fn ok_impl(value: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
+        // For now, we'll use a simple tagged union approach
+        // The Result is represented as a struct with a tag (0 for Ok, 1 for Err) and a value
+        #[repr(C)]
+        struct ResultValue {
+            tag: i32,       // 0 for Ok, 1 for Err
+            value: *mut std::ffi::c_void,
+        }
+        
+        let result = Box::new(ResultValue {
+            tag: 0, // Ok
+            value,
+        });
+        
+        Box::into_raw(result) as *mut std::ffi::c_void
+    }
+    
+    extern "C" fn err_impl(error: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
+        // Same structure as Ok, but with tag = 1
+        #[repr(C)]
+        struct ResultValue {
+            tag: i32,       // 0 for Ok, 1 for Err
+            value: *mut std::ffi::c_void,
+        }
+        
+        let result = Box::new(ResultValue {
+            tag: 1, // Err
+            value: error,
+        });
+        
+        Box::into_raw(result) as *mut std::ffi::c_void
     }
 
     // Map File runtime functions
@@ -480,7 +699,7 @@ pub fn map_essential_symbols(
             mode: *const std::ffi::c_char,
         ) -> *mut std::ffi::c_void {
             if filename.is_null() || mode.is_null() {
-                return std::ptr::null_mut();
+                return err_impl("Invalid parameters: filename or mode is null".as_ptr() as *mut std::ffi::c_void);
             }
 
             unsafe {
@@ -499,17 +718,55 @@ pub fn map_essential_symbols(
                             .create(true)
                             .append(true)
                             .open(filename_str),
-                        _ => return std::ptr::null_mut(),
+                        _ => {
+                            let error_msg = format!("Invalid file mode: {}", mode_str);
+                            let error_cstr = std::ffi::CString::new(error_msg).unwrap();
+                            let error_ptr = error_cstr.into_raw() as *mut std::ffi::c_void;
+                            return err_impl(error_ptr);
+                        }
                     };
 
                     if let Ok(file) = file_result {
                         let file_box = Box::new(file);
-                        Box::into_raw(file_box) as *mut std::ffi::c_void
+                        let file_ptr = Box::into_raw(file_box) as *mut std::ffi::c_void;
+                        ok_impl(file_ptr)
                     } else {
-                        std::ptr::null_mut()
+                        let error_msg = format!("Failed to open file: {} with mode {}", filename_str, mode_str);
+                        let error_cstr = std::ffi::CString::new(error_msg).unwrap();
+                        let error_ptr = error_cstr.into_raw() as *mut std::ffi::c_void;
+                        err_impl(error_ptr)
                     }
                 } else {
-                    std::ptr::null_mut()
+                    err_impl("Invalid parameters: filename or mode not valid UTF-8".as_ptr() as *mut std::ffi::c_void)
+                }
+            }
+        }
+
+        extern "C" fn file_create_impl(filename: *const std::ffi::c_char) -> *mut std::ffi::c_void {
+            if filename.is_null() {
+                // Return Err Result with error message
+                return err_impl("Invalid filename: null pointer".as_ptr() as *mut std::ffi::c_void);
+            }
+
+            unsafe {
+                let filename_cstr = std::ffi::CStr::from_ptr(filename);
+                if let Ok(filename_str) = filename_cstr.to_str() {
+                    // Create a new file for writing (same as "w" mode)
+                    if let Ok(file) = std::fs::File::create(filename_str) {
+                        let file_box = Box::new(file);
+                        let file_ptr = Box::into_raw(file_box) as *mut std::ffi::c_void;
+                        // Return Ok Result with file pointer
+                        ok_impl(file_ptr)
+                    } else {
+                        // Return Err Result with error message
+                        let error_msg = format!("Failed to create file: {}", filename_str);
+                        let error_cstr = std::ffi::CString::new(error_msg).unwrap();
+                        let error_ptr = error_cstr.into_raw() as *mut std::ffi::c_void;
+                        err_impl(error_ptr)
+                    }
+                } else {
+                    // Return Err Result with error message
+                    err_impl("Invalid filename: not valid UTF-8".as_ptr() as *mut std::ffi::c_void)
                 }
             }
         }
@@ -586,9 +843,9 @@ pub fn map_essential_symbols(
 
         extern "C" fn file_read_line_impl(
             file_ptr: *mut std::ffi::c_void,
-        ) -> *const std::ffi::c_char {
+        ) -> *mut std::ffi::c_void {
             if file_ptr.is_null() {
-                return b"\0".as_ptr() as *const std::ffi::c_char;
+                return err_impl("Invalid file pointer: null".as_ptr() as *mut std::ffi::c_void);
             }
 
             unsafe {
@@ -598,7 +855,10 @@ pub fn map_essential_symbols(
                 let mut line = String::new();
 
                 match reader.read_line(&mut line) {
-                    Ok(0) => b"\0".as_ptr() as *const std::ffi::c_char, // EOF
+                    Ok(0) => {
+                        // EOF - return Err with EOF message
+                        err_impl("End of file reached".as_ptr() as *mut std::ffi::c_void)
+                    }
                     Ok(_) => {
                         // Remove trailing newline
                         if line.ends_with('\n') {
@@ -606,18 +866,24 @@ pub fn map_essential_symbols(
                         }
                         let c_string = std::ffi::CString::new(line)
                             .unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
-                        c_string.into_raw()
+                        let line_ptr = c_string.into_raw() as *mut std::ffi::c_void;
+                        ok_impl(line_ptr)
                     }
-                    Err(_) => b"\0".as_ptr() as *const std::ffi::c_char,
+                    Err(e) => {
+                        let error_msg = format!("Failed to read line: {}", e);
+                        let error_cstr = std::ffi::CString::new(error_msg).unwrap();
+                        let error_ptr = error_cstr.into_raw() as *mut std::ffi::c_void;
+                        err_impl(error_ptr)
+                    }
                 }
             }
         }
 
         extern "C" fn file_read_all_impl(
             file_ptr: *mut std::ffi::c_void,
-        ) -> *const std::ffi::c_char {
+        ) -> *mut std::ffi::c_void {
             if file_ptr.is_null() {
-                return b"\0".as_ptr() as *const std::ffi::c_char;
+                return err_impl("Invalid file pointer: null".as_ptr() as *mut std::ffi::c_void);
             }
 
             unsafe {
@@ -629,9 +895,15 @@ pub fn map_essential_symbols(
                     Ok(_) => {
                         let c_string = std::ffi::CString::new(content)
                             .unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
-                        c_string.into_raw()
+                        let content_ptr = c_string.into_raw() as *mut std::ffi::c_void;
+                        ok_impl(content_ptr)
                     }
-                    Err(_) => b"\0".as_ptr() as *const std::ffi::c_char,
+                    Err(e) => {
+                        let error_msg = format!("Failed to read file: {}", e);
+                        let error_cstr = std::ffi::CString::new(error_msg).unwrap();
+                        let error_ptr = error_cstr.into_raw() as *mut std::ffi::c_void;
+                        err_impl(error_ptr)
+                    }
                 }
             }
         }
@@ -652,6 +924,14 @@ pub fn map_essential_symbols(
             execution_engine.add_global_mapping(&file_open_fn, file_open_addr);
             symbol_table.insert("file_open".to_string(), file_open_addr);
             eprintln!("✅ Mapped file_open symbol successfully");
+        }
+
+        // Map file_create
+        if let Some(file_create_fn) = codegen.get_module().get_function("file_create") {
+            let file_create_addr = file_create_impl as *const () as usize;
+            execution_engine.add_global_mapping(&file_create_fn, file_create_addr);
+            symbol_table.insert("file_create".to_string(), file_create_addr);
+            eprintln!("✅ Mapped file_create symbol successfully");
         }
 
         // Map file_exists
@@ -875,6 +1155,35 @@ pub fn map_essential_symbols(
             symbol_table.insert("HashSet_free".to_string(), hashset_free_addr);
             eprintln!("✅ Mapped HashSet_free symbol successfully");
         }
+        
+        
+        // Map Ok function
+        if let Some(ok_fn) = codegen.get_module().get_function("Ok") {
+            let ok_addr = ok_impl as *const () as usize;
+            execution_engine.add_global_mapping(&ok_fn, ok_addr);
+            symbol_table.insert("Ok".to_string(), ok_addr);
+            eprintln!("✅ Mapped Ok symbol successfully");
+        }
+        
+        // Map Err function
+        if let Some(err_fn) = codegen.get_module().get_function("Err") {
+            let err_addr = err_impl as *const () as usize;
+            execution_engine.add_global_mapping(&err_fn, err_addr);
+            symbol_table.insert("Err".to_string(), err_addr);
+            eprintln!("✅ Mapped Err symbol successfully");
+        }
+    }
+
+    // Map string_concat function - external C implementation
+    extern "C" {
+        fn string_concat(left: *const std::ffi::c_char, right: *const std::ffi::c_char) -> *mut std::ffi::c_char;
+    }
+    
+    if let Some(string_concat_fn) = codegen.get_module().get_function("string_concat") {
+        let string_concat_addr = string_concat as *const () as usize;
+        execution_engine.add_global_mapping(&string_concat_fn, string_concat_addr);
+        symbol_table.insert("string_concat".to_string(), string_concat_addr);
+        eprintln!("✅ Mapped string_concat symbol successfully");
     }
 
     eprintln!(

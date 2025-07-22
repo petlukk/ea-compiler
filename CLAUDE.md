@@ -2,8 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Please follow our DEVELOPMENT_PROCESS.md exactly. 
-Focus on creating real, working implementations that pass external validation.
+**CRITICAL**: Follow `demo/DEVELOPMENT_PROCESS.md` exactly. This process mandates:
+- No placeholder implementations - only real, working code
+- End-to-end validation programs created BEFORE implementation
+- External validation with tools like valgrind, llvm-as, ImageMagick
+- Character-exact output matching for all tests
+- Evidence-based development with concrete measurements
+
+**Parser Limitations**: The Eä parser currently has issues with:
+- Multiline array literals (must be on single lines)
+- Complex `as Type` casting expressions in method calls
+- Very long expressions (keep under ~200 characters per line)
+- Use simpler syntax for Vec operations: `test_data.push(100)` not `test_data.push(100 as u8)`
 
 ## Reporting Guidelines
 
@@ -26,9 +36,10 @@ cargo build --features=llvm
 # Build release version
 cargo build --release --features=llvm
 
-# Alternative: Use makefile
+# Alternative: Use makefile (recommended)
 make build        # Debug build
 make release      # Release build
+make help         # Show all available commands
 ```
 
 ### Testing Commands
@@ -61,11 +72,17 @@ cargo fmt
 # Run linter
 cargo clippy --all-targets --all-features -- -D warnings
 
-# Complete quality check
+# Complete quality check (recommended during development)
 make quality-check  # Runs fmt + lint + test
 
-# Comprehensive check (recommended before commits)
+# Comprehensive check (required before commits)
 make check-all     # Runs quality-check + bench + doc
+
+# Additional analysis commands
+make perf-check      # Quick performance regression check
+make memory-check    # Memory usage analysis with valgrind
+make security-audit  # Security vulnerability scan
+make coverage        # Code coverage report
 ```
 
 ### Performance and Benchmarks
@@ -449,11 +466,23 @@ cargo test --features=llvm -- --test-threads=1 --nocapture
 1. **Continuous testing**: `cargo test --features=llvm` (specific modules)
 2. **Format code**: `cargo fmt`
 3. **Check linting**: `cargo clippy --all-targets --all-features -- -D warnings`
+4. **Quick validation**: Use simple syntax (avoid complex `as Type` casts)
 
 ### Before Committing
-1. **Full quality check**: `make check-all`
+1. **MANDATORY**: `make check-all` (must pass completely)
 2. **Verify CLI works**: `./target/release/ea --test`
 3. **Test example files**: `make run-examples`
+4. **Memory safety**: `make memory-check` (if valgrind available)
+5. **Performance check**: `make perf-check`
+
+### Development Environment Setup
+```bash
+# First-time setup (Ubuntu/WSL)
+make setup           # Installs deps, creates examples, builds, tests
+
+# Alternative manual setup
+make install-deps    # Install LLVM 14 and dependencies
+make create-examples # Create sample .ea files for testing
 
 ## Advanced Features Architecture
 
@@ -543,6 +572,28 @@ cargo test --features=llvm -- --test-threads=1 --nocapture
 
 ### Development Priorities
 1. **Evidence-based development**: All claims backed by measurements
-2. **Performance validation**: Comprehensive benchmarking against competitors
+2. **Performance validation**: Comprehensive benchmarking against competitors  
 3. **Production stability**: Real-world application testing
 4. **Documentation**: Complete API and usage documentation
+
+## Recent Known Issues
+
+### Parser Syntax Limitations
+- **Array literals**: Must be on single lines (multiline arrays cause parsing errors)
+- **Type casting**: Avoid `value as Type` in function calls; use simpler alternatives
+- **Expression length**: Keep expressions under ~200 characters per line
+- **Vec operations**: Use `vec.push(100)` instead of `vec.push(100 as u8)`
+
+### Working Examples Repository  
+The root directory contains many `.ea` test files demonstrating working syntax:
+- `simple_test.ea` - Basic language features
+- `step1_validation.ea` - SIMD operations
+- `pgm_test.ea` - File I/O operations
+- `examples/` directory - Complete feature demonstrations
+
+### C Runtime Integration
+All standard library types (Vec, HashMap, String, PGM file I/O) are backed by C implementations in `src/runtime/`:
+- Functions are declared in `src/codegen/mod.rs`
+- Type compatibility is handled in `src/type_system/mod.rs`  
+- Build system compiles C files via `build.rs`
+- Use `StdVec<T>` type annotations in type system, not `Vec<T>`

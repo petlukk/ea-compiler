@@ -210,10 +210,17 @@ impl Parser {
                 let is_mutable = self.match_tokens(&[TokenKind::Mut]);
                 let type_name = self.consume_type_name("Expected parameter type".to_string())?;
 
+                // Special handling for main function with CLI arguments
+                let final_type_name = if name == "main" && param_name == "args" && type_name == "Vec<String>" {
+                    "Vec<String>".to_string() // Allow Vec<String> for CLI arguments
+                } else {
+                    type_name
+                };
+
                 let param = Parameter {
                     name: param_name,
                     type_annotation: TypeAnnotation {
-                        name: type_name,
+                        name: final_type_name,
                         is_mutable,
                     },
                 };
@@ -445,6 +452,10 @@ impl Parser {
             return self.for_statement();
         }
 
+        if self.match_tokens(&[TokenKind::Match]) {
+            return self.match_statement();
+        }
+
         self.expression_statement()
     }
 
@@ -528,9 +539,9 @@ impl Parser {
     /// Parses a for statement.
     fn for_statement(&mut self) -> Result<Stmt> {
         // Check if this is a for-in loop by looking for the pattern: identifier 'in'
-        // We can peek ahead without consuming tokens
+        // At this point, the 'For' token has already been consumed by match_tokens
 
-        // Check if the next token is an identifier
+        // Check if the current token is an identifier
         if matches!(self.peek().kind, TokenKind::Identifier(_)) {
             // Look at the token after the identifier to see if it's 'in'
             if self.current + 1 < self.tokens.len() {
@@ -540,6 +551,8 @@ impl Parser {
                         .consume_identifier("Expected variable name in for-in loop".to_string())?;
                     self.consume(TokenKind::In, "Expected 'in' keyword".to_string())?;
                     let iterable = self.expression()?;
+                    
+                    // Parse the body - should be a block statement starting with '{'
                     let body = Box::new(self.statement()?);
 
                     return Ok(Stmt::ForIn {
@@ -597,6 +610,12 @@ impl Parser {
             increment,
             body,
         })
+    }
+
+    /// Parses a match statement.
+    fn match_statement(&mut self) -> Result<Stmt> {
+        let match_expr = self.parse_match_expression()?;
+        Ok(Stmt::Expression(match_expr))
     }
 
     /// Parses an expression statement.
@@ -1126,8 +1145,9 @@ impl Parser {
                     return self.parse_function_call(name);
                 }
 
-                // Check if this is a struct literal
-                if self.check(&TokenKind::LeftBrace) {
+                // Check if this is a struct literal by looking ahead to see if we have the pattern: identifier { identifier : ...
+                // This prevents false positives in cases like "for x in arr {" where arr is not a struct
+                if self.check(&TokenKind::LeftBrace) && self.looks_like_struct_literal() {
                     return self.parse_struct_literal(name);
                 }
 
@@ -1363,6 +1383,33 @@ impl Parser {
         Ok(expr)
     }
 
+    /// Checks if the current token sequence looks like a struct literal by looking ahead
+    /// for the pattern: { identifier : (or } for empty struct)
+    fn looks_like_struct_literal(&self) -> bool {
+        if !self.check(&TokenKind::LeftBrace) {
+            return false;
+        }
+        
+        // Look ahead past the '{'
+        if self.current + 1 >= self.tokens.len() {
+            return false;
+        }
+        
+        // Check if next token after '{' is '}' (empty struct) or an identifier
+        match &self.tokens[self.current + 1].kind {
+            TokenKind::RightBrace => true, // Empty struct literal: SomeThing {}
+            TokenKind::Identifier(_) => {
+                // Check if we have identifier : pattern
+                if self.current + 2 < self.tokens.len() {
+                    matches!(self.tokens[self.current + 2].kind, TokenKind::Colon)
+                } else {
+                    false
+                }
+            }
+            _ => false, // Not a struct literal pattern
+        }
+    }
+
     /// Consumes the current token if it matches any of the given types.
     fn match_tokens(&mut self, types: &[TokenKind]) -> bool {
         for token_type in types {
@@ -1497,7 +1544,21 @@ impl Parser {
                 TokenKind::Bool => "bool",
                 TokenKind::String => "string",
                 // Standard library types
-                TokenKind::VecType => "Vec",
+                TokenKind::VecType => {
+                    // Check for generic syntax like Vec<String>
+                    if self.check(&TokenKind::Less) {
+                        self.advance(); // consume '<'
+                        
+                        // Parse the inner type
+                        let inner_type = self.consume_type_name("Expected type parameter".to_string())?;
+                        
+                        // Consume '>'
+                        self.consume(TokenKind::Greater, "Expected '>' after type parameter".to_string())?;
+                        
+                        return Ok(format!("Vec<{}>", inner_type));
+                    }
+                    "Vec"
+                },
                 TokenKind::HashMapType => "HashMap",
                 TokenKind::HashSetType => "HashSet",
                 TokenKind::StringType => "String",
@@ -1544,7 +1605,21 @@ impl Parser {
         if self.check(&TokenKind::Identifier(String::new())) {
             let token = self.advance();
             if let TokenKind::Identifier(name) = &token.kind {
-                return Ok(name.clone());
+                let type_name = name.clone();
+                
+                // Check for generic syntax like Vec<String>
+                if self.check(&TokenKind::Less) {
+                    self.advance(); // consume '<'
+                    
+                    // Parse the inner type
+                    let inner_type = self.consume_type_name("Expected type parameter".to_string())?;
+                    
+                    // Consume '>'
+                    self.consume(TokenKind::Greater, "Expected '>' after type parameter".to_string())?;
+                    
+                    return Ok(format!("{}<{}>", type_name, inner_type));
+                }
+                return Ok(type_name);
             }
         }
 
@@ -2405,6 +2480,11 @@ impl Parser {
                     return self.parse_enum_variant_pattern(name);
                 }
 
+                // Check if this is an enum variant with sub-patterns (Variant(...))
+                if self.check(&TokenKind::LeftParen) {
+                    return self.parse_variant_pattern_with_subpatterns(name);
+                }
+
                 // Otherwise, it's a variable pattern
                 return Ok(Pattern::Variable(name));
             }
@@ -2482,6 +2562,44 @@ impl Parser {
                 "Expected ')' after variant patterns".to_string(),
             )?;
         }
+
+        Ok(Pattern::EnumVariant {
+            enum_name,
+            variant: variant_name,
+            patterns: sub_patterns,
+        })
+    }
+
+    /// Parse enum variant pattern with sub-patterns: Variant(patterns...)
+    fn parse_variant_pattern_with_subpatterns(&mut self, variant_name: String) -> Result<Pattern> {
+        let mut sub_patterns = Vec::new();
+
+        self.consume(
+            TokenKind::LeftParen,
+            "Expected '(' for variant pattern".to_string(),
+        )?;
+
+        if !self.check(&TokenKind::RightParen) {
+            loop {
+                sub_patterns.push(self.parse_pattern()?);
+
+                if !self.match_tokens(&[TokenKind::Comma]) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(
+            TokenKind::RightParen,
+            "Expected ')' after variant patterns".to_string(),
+        )?;
+
+        // For patterns like Ok(value), treat as Result::Ok(value)
+        // This assumes common enum variants like Ok/Err are from Result<T,E>
+        let enum_name = match variant_name.as_str() {
+            "Ok" | "Err" => "Result".to_string(),
+            _ => "".to_string(), // Generic variant pattern
+        };
 
         Ok(Pattern::EnumVariant {
             enum_name,
