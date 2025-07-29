@@ -1,47 +1,63 @@
 // Vector addition example in Eä
-// This program demonstrates memory regions and parallel execution
+// This program demonstrates basic vector operations using current syntax
 
-// Define a memory region for our data
-mem_region data {
-    // Input vectors
-    let a: [f64; 1000];
-    let b: [f64; 1000];
+func init_vectors() -> (Vec<i32>, Vec<i32>) {
+    // Create input vectors
+    let a = Vec::new();
+    let b = Vec::new();
     
-    // Output vector
-    let mut c: [f64; 1000];
-    
-    // Initialize input vectors
-    fn init() {
-        parallel for i in 0..1000 {
-            a[i] = i as f64 * 0.5;
-            b[i] = i as f64 * 1.5;
-        }
+    // Initialize vectors with sample data
+    let i = 0;
+    while (i < 10) {
+        a.push(i * 5);        // a[i] = i * 5
+        b.push(i * 15);       // b[i] = i * 15
+        i = i + 1;
     }
     
-    // Vector addition
-    fn add_vectors() {
-        parallel for i in 0..1000 {
-            c[i] = a[i] + b[i];
-        }
-    }
-    
-    // Main function
-    pub fn main() -> f64 {
-        init();
-        add_vectors();
-        
-        // Compute sum of result vector
-        let mut sum = 0.0;
-        vectorize for &x in &c {
-            sum += x;
-        }
-        
-        sum
-    }
+    return (a, b);
 }
 
-// Entry point
-fn main() -> f64 {
-    // Execute the memory region code
-    data::main()
+func add_vectors(a: Vec<i32>, b: Vec<i32>) -> Vec<i32> {
+    let c = Vec::new();
+    
+    // Vector addition using current syntax
+    let i = 0;
+    let len = a.len();
+    while (i < len) {
+        let sum = a.get(i) + b.get(i);
+        c.push(sum);
+        i = i + 1;
+    }
+    
+    return c;
+}
+
+func compute_sum(vec: Vec<i32>) -> i32 {
+    let sum = 0;
+    let i = 0;
+    let len = vec.len();
+    
+    while (i < len) {
+        sum = sum + vec.get(i);
+        i = i + 1;
+    }
+    
+    return sum;
+}
+
+func main() -> i32 {
+    println("Vector addition example with current syntax");
+    
+    // Initialize vectors
+    let (a, b) = init_vectors();
+    
+    // Perform vector addition
+    let c = add_vectors(a, b);
+    
+    // Compute sum of result vector
+    let result = compute_sum(c);
+    
+    println("Vector addition result sum: " + i32_to_string(result));
+    
+    return result;
 }
