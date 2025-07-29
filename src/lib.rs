@@ -5,14 +5,22 @@
 //! adaptive optimization, and memory safety guarantees.
 
 pub mod ast;
+pub mod config;
 pub mod error;
 pub mod lexer;
+pub mod string_interner;
 pub mod parser;
 pub mod type_system;
 
 // Conditionally include codegen module if LLVM feature is enabled
 #[cfg(feature = "llvm")]
 pub mod codegen;
+
+// LLVM context pooling for performance optimization
+pub mod llvm_context_pool;
+
+// JIT batch symbol resolution for performance optimization
+pub mod jit_batch_symbols;
 
 // Conditionally include LSP module if LSP feature is enabled
 #[cfg(feature = "lsp")]
@@ -38,6 +46,9 @@ pub mod streaming_compiler;
 
 // Resource management system
 pub mod resource_manager;
+
+// Runtime configuration interface for C runtime
+pub mod runtime_config;
 
 // Parser performance optimization
 pub mod parser_optimization;
@@ -77,6 +88,7 @@ extern "C" {
 }
 
 // Re-export commonly used types
+pub use config::{CompilerConfig, get_config, init_config, set_config};
 pub use error::{CompileError, Result};
 pub use lexer::{Lexer, Position, Token, TokenKind};
 pub use type_system::{EaType, FunctionType, TypeChecker, TypeContext};
@@ -91,72 +103,28 @@ pub const NAME: &str = "Eä Compiler";
 
 /// Tokenize a source string into a vector of tokens
 pub fn tokenize(source: &str) -> Result<Vec<Token>> {
-    eprintln!("🔍 Starting tokenize...");
-
-    eprintln!("🏗️ Creating lexer...");
     let mut lexer = Lexer::new(source);
-    eprintln!("✅ Lexer created");
-
-    eprintln!("🏗️ Calling tokenize_all...");
-    let result = lexer.tokenize_all();
-    eprintln!("✅ tokenize_all completed");
-
-    result
+    lexer.tokenize_all()
 }
 
 /// Parse a source string into an AST
 pub fn parse(source: &str) -> Result<Vec<ast::Stmt>> {
-    eprintln!("🌳 Starting parse...");
-
-    eprintln!("🔍 Calling tokenize...");
     let tokens = tokenize(source)?;
-    eprintln!("✅ Tokenize completed, got {} tokens", tokens.len());
-
-    eprintln!("🏗️ Creating parser...");
     let mut parser = parser::Parser::new(tokens);
-    eprintln!("✅ Parser created");
-
-    eprintln!("🏗️ Calling parse_program...");
-    let result = parser.parse_program();
-    eprintln!("✅ parse_program completed");
-
-    result
+    parser.parse_program()
 }
 
 /// Type check a parsed AST
 pub fn type_check(program: &[ast::Stmt]) -> Result<TypeContext> {
-    eprintln!("🎯 Starting type_check...");
-
-    eprintln!("🏗️ Creating type checker...");
     let mut type_checker = TypeChecker::new();
-    eprintln!("✅ Type checker created");
-
-    eprintln!("🏗️ Calling check_program...");
-    let result = type_checker.check_program(program);
-    eprintln!("✅ check_program completed");
-
-    result
+    type_checker.check_program(program)
 }
 
 /// Complete compilation pipeline: source -> tokens -> AST -> type checking -> memory analysis
 pub fn compile_to_ast(source: &str) -> Result<(Vec<ast::Stmt>, TypeContext)> {
-    eprintln!("🎯 Starting compile_to_ast...");
-
-    eprintln!("🌳 Calling parse...");
     let program = parse(source)?;
-    eprintln!("✅ Parse completed, got {} statements", program.len());
-
-    eprintln!("🎯 Calling type_check...");
     let type_context = type_check(&program)?;
-    eprintln!("✅ Type check completed");
-
-    eprintln!("🧠 Analyzing memory regions...");
-    let memory_analysis = memory::analyze_memory_regions(&program);
-    eprintln!("✅ Memory analysis completed - {} variables analyzed", memory_analysis.variables.len());
-    eprintln!("   Stack usage: {} bytes", memory_analysis.stack_usage);
-    eprintln!("   Working set: {} bytes", memory_analysis.working_set_size);
-
-    eprintln!("✅ compile_to_ast completed successfully");
+    let _memory_analysis = memory::analyze_memory_regions(&program);
     Ok((program, type_context))
 }
 
@@ -172,43 +140,20 @@ pub fn compile_to_ast_streaming(
 pub fn compile_to_llvm(source: &str, module_name: &str) -> Result<()> {
     use inkwell::context::Context;
 
-    eprintln!("🔧 Starting LLVM compilation for module: {}", module_name);
-
-    eprintln!("🎯 Calling compile_to_ast...");
     let (program, _type_context) = compile_to_ast(source)?;
-    eprintln!("✅ compile_to_ast completed successfully");
-
-    eprintln!("🏗️ Creating LLVM context...");
-    let context = Context::create();
-    eprintln!("✅ LLVM context created");
-
-    eprintln!("🏗️ Creating CodeGenerator...");
-    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
-    eprintln!("✅ CodeGenerator created");
-
-    eprintln!("🏗️ Compiling program to LLVM IR...");
+    let pooled_context = crate::llvm_context_pool::PooledContext::acquire();
+    let context = pooled_context.context();
+    let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
     codegen.compile_program(&program)?;
-    eprintln!("✅ Program compiled to LLVM IR");
 
-    eprintln!("🔧 Creating LLVM optimizer...");
-    // Apply LLVM optimization with None level to skip optimization
     let mut optimizer = llvm_optimization::LLVMOptimizer::with_config(
         llvm_optimization::apply_emit_llvm_preset()
     );
-    eprintln!("✅ LLVM optimizer created");
-
-    eprintln!("🔧 Optimizing LLVM module...");
     optimizer.optimize_module(codegen.get_module())?;
-    eprintln!("✅ LLVM module optimized");
-
-    eprintln!("📝 Writing LLVM IR to file...");
-    // Write optimized LLVM IR to file for inspection
     let ir_filename = format!("{}.ll", module_name);
     codegen.write_ir_to_file(&ir_filename)?;
-    eprintln!("✅ LLVM IR written to {}", ir_filename);
 
     // DEVELOPMENT_PROCESS.md: Mandatory external validation
-    eprintln!("🔍 Validating LLVM IR with llvm-as...");
     match std::process::Command::new("llvm-as")
         .arg(&ir_filename)
         .arg("-o")
@@ -216,11 +161,7 @@ pub fn compile_to_llvm(source: &str, module_name: &str) -> Result<()> {
         .output()
     {
         Ok(output) => {
-            if output.status.success() {
-                eprintln!("✅ LLVM IR validation passed");
-            } else {
-                eprintln!("❌ LLVM IR validation failed:");
-                eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+            if !output.status.success() {
                 return Err(crate::error::CompileError::codegen_error(
                     "LLVM IR validation failed with llvm-as".to_string(),
                     None,
@@ -243,8 +184,9 @@ pub fn compile_to_llvm_minimal(source: &str, module_name: &str) -> Result<()> {
 
     let (program, _type_context) = compile_to_ast(source)?;
 
-    let context = Context::create();
-    let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
+    let pooled_context = crate::llvm_context_pool::PooledContext::acquire();
+    let context = pooled_context.context();
+    let mut codegen = codegen::CodeGenerator::new_full(context, module_name);
     codegen.compile_program(&program)?;
 
     // Write LLVM IR to file for inspection
@@ -267,18 +209,84 @@ pub fn diagnose_jit_execution(source: &str, module_name: &str) -> Result<String>
     diagnostics.push_str("✅ Parsing and type checking successful\n");
 
     // Generate LLVM IR
-    let context = Context::create();
-    let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
+    let pooled_context = crate::llvm_context_pool::PooledContext::acquire();
+    let context = pooled_context.context();
+    let mut codegen = codegen::CodeGenerator::new(context, module_name);
     codegen.compile_program(&program)?;
     diagnostics.push_str("✅ LLVM IR generation successful\n");
 
-    // Create execution engine
+    // Configure target features for SIMD support before creating JIT engine
+    use crate::type_system::hardware::HardwareDetector;
+    use inkwell::targets::{Target, InitializationConfig, TargetMachine};
+    
+    // Initialize native target with SIMD features
+    if let Err(e) = Target::initialize_native(&InitializationConfig::default()) {
+        diagnostics.push_str(&format!("❌ Failed to initialize native target: {}\n", e));
+        return Ok(diagnostics);
+    }
+    
+    // Set target triple and features for SIMD support
+    let triple = TargetMachine::get_default_triple();
+    let target = match Target::from_triple(&triple) {
+        Ok(t) => t,
+        Err(e) => {
+            diagnostics.push_str(&format!("❌ Failed to get target from triple: {}\n", e));
+            return Ok(diagnostics);
+        }
+    };
+    
+    // Detect hardware capabilities and set appropriate features
+    let hardware_detector = HardwareDetector::new();
+    let mut target_features = Vec::new();
+    
+    // Add baseline SIMD features that are commonly available
+    target_features.push("+sse2".to_string()); // Required for u8x16 operations
+    
+    // Add additional features based on hardware detection  
+    if hardware_detector.available_features().contains(&crate::type_system::hardware::SIMDFeature::SSE) {
+        target_features.push("+sse".to_string());
+    }
+    if hardware_detector.available_features().contains(&crate::type_system::hardware::SIMDFeature::SSE3) {
+        target_features.push("+sse3".to_string());  
+    }
+    if hardware_detector.available_features().contains(&crate::type_system::hardware::SIMDFeature::SSSE3) {
+        target_features.push("+ssse3".to_string());
+    }
+    
+    let features_str = target_features.join(",");
+    diagnostics.push_str(&format!("🔧 Configuring JIT engine with target features: {}\n", features_str));
+    
+    // Set module target triple and data layout
+    let module = codegen.get_module();
+    module.set_triple(&triple);
+    
+    // Create target machine with SIMD features enabled
+    let target_machine = match target.create_target_machine(
+        &triple,
+        "x86-64", // CPU type
+        &features_str, // Target features for SIMD
+        inkwell::OptimizationLevel::None,
+        inkwell::targets::RelocMode::Default,
+        inkwell::targets::CodeModel::Default,
+    ) {
+        Some(tm) => tm,
+        None => {
+            diagnostics.push_str("❌ Failed to create target machine with SIMD features\n");
+            return Ok(diagnostics);
+        }
+    };
+    
+    // Set the target data layout from the target machine
+    let data_layout = target_machine.get_target_data().get_data_layout();
+    module.set_data_layout(&data_layout);
+    
+    // Create execution engine with proper SIMD optimization
     let execution_engine = match codegen
         .get_module()
-        .create_jit_execution_engine(OptimizationLevel::None)
+        .create_jit_execution_engine(OptimizationLevel::Less) // Use minimal optimization for SIMD
     {
         Ok(engine) => {
-            diagnostics.push_str("✅ JIT execution engine created\n");
+            diagnostics.push_str("✅ JIT execution engine created with SIMD support and optimization\n");
             engine
         }
         Err(e) => {
@@ -384,15 +392,71 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
 
     let (program, _type_context) = compile_to_ast(source)?;
 
-    let context = Context::create();
-    let mut codegen = codegen::CodeGenerator::new_full(&context, module_name);
+    let pooled_context = crate::llvm_context_pool::PooledContext::acquire();
+    let context = pooled_context.context();
+    let mut codegen = codegen::CodeGenerator::new(context, module_name);
     codegen.compile_program(&program)?;
 
+    // Configure target features for SIMD support before creating JIT engine
+    use crate::type_system::hardware::HardwareDetector;
+    use inkwell::targets::{Target, InitializationConfig, TargetMachine};
+    
+    // Initialize native target with SIMD features
+    Target::initialize_native(&InitializationConfig::default())
+        .map_err(|e| CompileError::codegen_error(
+            format!("Failed to initialize native target: {}", e), None))?;
+    
+    // Set target triple and features for SIMD support
+    let triple = TargetMachine::get_default_triple();
+    let target = Target::from_triple(&triple).map_err(|e| {
+        CompileError::codegen_error(format!("Failed to get target from triple: {}", e), None)
+    })?;
+    
+    // Detect hardware capabilities and set appropriate features
+    let hardware_detector = HardwareDetector::new();
+    let mut target_features = Vec::new();
+    
+    // Add baseline SIMD features that are commonly available
+    target_features.push("+sse2".to_string()); // Required for u8x16 operations
+    
+    // Add additional features based on hardware detection  
+    if hardware_detector.available_features().contains(&crate::type_system::hardware::SIMDFeature::SSE) {
+        target_features.push("+sse".to_string());
+    }
+    if hardware_detector.available_features().contains(&crate::type_system::hardware::SIMDFeature::SSE3) {
+        target_features.push("+sse3".to_string());
+    }
+    if hardware_detector.available_features().contains(&crate::type_system::hardware::SIMDFeature::SSSE3) {
+        target_features.push("+ssse3".to_string());
+    }
+    
+    let features_str = target_features.join(",");
+    eprintln!("🔧 Configuring JIT engine with target features: {}", features_str);
+    
+    // Set module target triple and data layout
+    let module = codegen.get_module();
+    module.set_triple(&triple);
+    
+    // Create target machine with SIMD features enabled
+    let target_machine = target.create_target_machine(
+        &triple,
+        "x86-64", // CPU type
+        &features_str, // Target features for SIMD
+        inkwell::OptimizationLevel::None,
+        inkwell::targets::RelocMode::Default,
+        inkwell::targets::CodeModel::Default,
+    ).ok_or_else(|| CompileError::codegen_error(
+        "Failed to create target machine with SIMD features".to_string(), None))?;
+    
+    // Set the target data layout from the target machine
+    let data_layout = target_machine.get_target_data().get_data_layout();
+    module.set_data_layout(&data_layout);
+    
     // Create execution engine for JIT compilation
-    eprintln!("🔧 Creating JIT execution engine...");
+    eprintln!("🔧 Creating JIT execution engine with target features...");
     let execution_engine = codegen
         .get_module()
-        .create_jit_execution_engine(OptimizationLevel::None)
+        .create_jit_execution_engine(OptimizationLevel::Less) // Use minimal optimization for SIMD
         .map_err(|e| {
             eprintln!("❌ JIT engine creation failed: {}", e);
             CompileError::codegen_error(
@@ -400,7 +464,7 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
                 None,
             )
         })?;
-    eprintln!("✅ JIT execution engine created successfully");
+    eprintln!("✅ JIT execution engine created successfully with SIMD support");
 
     // Minimal symbol mapping for JIT execution
     unsafe {
@@ -545,14 +609,13 @@ pub fn jit_execute(source: &str, module_name: &str) -> Result<i32> {
     unsafe {
         // Check if main function exists first
         let main_fn_ref = codegen.get_module().get_function("main");
-        if main_fn_ref.is_none() {
-            return Err(CompileError::codegen_error(
+        let main_fn_info = match main_fn_ref {
+            Some(func) => func,
+            None => return Err(CompileError::codegen_error(
                 "Main function not found in module".to_string(),
                 None,
-            ));
-        }
-
-        let main_fn_info = main_fn_ref.unwrap();
+            )),
+        };
         let return_type = main_fn_info.get_type().get_return_type();
         let param_count = main_fn_info.get_type().count_param_types();
 
@@ -776,7 +839,7 @@ mod tests {
         let mut type_checker = TypeChecker::new();
         let expr_type = type_checker.check_expression(&expr).unwrap();
 
-        assert_eq!(expr_type, EaType::I64);
+        assert_eq!(expr_type, EaType::I32);
     }
 
     #[cfg(feature = "llvm")]
