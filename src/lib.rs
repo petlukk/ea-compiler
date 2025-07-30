@@ -7,6 +7,7 @@
 pub mod ast;
 pub mod config;
 pub mod error;
+pub mod execution_mode;
 pub mod lexer;
 pub mod string_interner;
 pub mod parser;
@@ -96,6 +97,9 @@ pub use type_system::{EaType, FunctionType, TypeChecker, TypeContext};
 // Re-export JIT cache functionality
 pub use jit_cache::{with_jit_cache, initialize_default_jit_cache, JITCacheConfig, JITCacheStats};
 pub use jit_cached::jit_execute_cached;
+
+// Re-export execution mode functionality
+pub use execution_mode::{ExecutionMode, ComplexityAnalysis, analyze_execution_complexity};
 
 /// Compiler version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -352,6 +356,105 @@ pub fn diagnose_jit_execution(source: &str, module_name: &str) -> Result<String>
     }
 
     Ok(diagnostics)
+}
+
+/// Smart execution strategy that automatically chooses between JIT and compilation
+#[cfg(feature = "llvm")]
+pub fn smart_execute(source: &str, module_name: &str) -> Result<i32> {
+    use crate::execution_mode::{analyze_execution_complexity, ExecutionMode};
+    
+    // 1. Analyze program complexity to determine execution method
+    let (program, _type_context) = compile_to_ast(source)?;
+    let analysis = analyze_execution_complexity(&program)?;
+    let execution_mode = analysis.execution_mode();
+    
+    match execution_mode {
+        ExecutionMode::JitSafe => {
+            eprintln!("⚡ JIT execution (fast) - {}", analysis.execution_reason());
+            jit_execute(source, module_name)
+        }
+        ExecutionMode::JitRisky => {
+            eprintln!("🔄 Trying JIT execution... - {}", analysis.execution_reason());
+            match jit_execute(source, module_name) {
+                Ok(result) => {
+                    eprintln!("✅ JIT execution successful");
+                    Ok(result)
+                }
+                Err(_) => {
+                    eprintln!("⚠️  JIT limitations encountered, using compiled execution...");
+                    compile_and_execute(source, module_name)
+                }
+            }
+        }
+        ExecutionMode::CompileRequired => {
+            eprintln!("🔧 Compiled execution - {}", analysis.execution_reason());
+            compile_and_execute(source, module_name)
+        }
+    }
+}
+
+/// Compile to native executable and execute
+#[cfg(feature = "llvm")]
+pub fn compile_and_execute(source: &str, module_name: &str) -> Result<i32> {
+    use std::process::Command;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+    
+    eprintln!("🔧 Compiling to LLVM IR...");
+    
+    // 1. Use the standard compilation pipeline (same as --emit-llvm)
+    let (program, _type_context) = compile_to_ast(source)?;
+    let pooled_context = crate::llvm_context_pool::PooledContext::acquire();
+    let context = pooled_context.context();
+    
+    // Use the standard new() method and disable JIT safe mode for full SIMD support
+    let mut codegen = codegen::CodeGenerator::new(context, module_name);
+    codegen.set_jit_safe_mode(false); // Enable full SIMD compilation
+    codegen.compile_program(&program)?;
+
+    let mut optimizer = llvm_optimization::LLVMOptimizer::with_config(
+        llvm_optimization::apply_emit_llvm_preset()
+    );
+    optimizer.optimize_module(codegen.get_module())?;
+    
+    // 2. Write LLVM IR to temporary file
+    let mut temp_ll_file = NamedTempFile::new()
+        .map_err(|e| crate::error::CompileError::codegen_error(
+            format!("Failed to create temporary IR file: {}", e), None))?;
+    
+    let ir_content = codegen.get_module().print_to_string().to_string();
+    temp_ll_file.write_all(ir_content.as_bytes())
+        .map_err(|e| crate::error::CompileError::codegen_error(
+            format!("Failed to write IR to temp file: {}", e), None))?;
+    
+    let ll_path = temp_ll_file.path();
+    
+    eprintln!("✅ LLVM IR generated, executing with lli...");
+    
+    // 3. Execute LLVM IR using lli (LLVM interpreter)
+    let output = Command::new("lli")
+        .arg(ll_path)
+        .output()
+        .map_err(|e| crate::error::CompileError::codegen_error(
+            format!("Failed to execute lli: {}. Make sure LLVM tools are installed.", e), None))?;
+    
+    // 4. Handle execution result
+    if output.status.success() {
+        // Print any stdout from the program
+        if !output.stdout.is_empty() {
+            print!("{}", String::from_utf8_lossy(&output.stdout));
+        }
+        // Print any stderr (but don't treat it as an error)
+        if !output.stderr.is_empty() {
+            eprint!("{}", String::from_utf8_lossy(&output.stderr));
+        }
+        eprintln!("✅ Compilation and execution completed successfully");
+        Ok(output.status.code().unwrap_or(0))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(crate::error::CompileError::codegen_error(
+            format!("Compiled program execution failed: {}", stderr), None))
+    }
 }
 
 /// JIT compile and execute a program immediately with caching

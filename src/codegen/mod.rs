@@ -158,6 +158,12 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         codegen
     }
+
+    /// Set JIT safe mode - when false, enables full SIMD support for compilation
+    pub fn set_jit_safe_mode(&mut self, safe_mode: bool) {
+        self.jit_safe_mode = safe_mode;
+    }
+
     /// Adds minimal built-in functions for JIT compatibility
     fn add_minimal_builtin_functions(&mut self) {
         // Add only the most essential functions for JIT

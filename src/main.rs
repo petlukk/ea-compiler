@@ -1,4 +1,6 @@
-use ea_compiler::{NAME, VERSION};
+use ea_compiler::{NAME, VERSION, init_config, get_config};
+#[cfg(feature = "llvm")]
+use ea_compiler::llvm_context_pool;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -14,7 +16,7 @@ use ea_compiler::llvm_optimization::{
 };
 use ea_compiler::parallel_compilation::initialize_default_parallel_compiler;
 #[cfg(feature = "llvm")]
-use ea_compiler::{compile_to_llvm, diagnose_jit_execution};
+use ea_compiler::{compile_to_llvm, diagnose_jit_execution, smart_execute};
 
 use ea_compiler::memory_profiler::{generate_memory_report, reset_profiler, set_memory_limit};
 use ea_compiler::parser_optimization;
@@ -129,17 +131,26 @@ impl Args {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize configuration from environment variables first
+    if let Err(e) = init_config() {
+        eprintln!("Failed to initialize configuration: {}", e);
+        process::exit(1);
+    }
+    let config = get_config();
+    
     let args = Args::parse();
 
     // Initialize JIT cache for better performance
     initialize_default_jit_cache();
-    println!("JIT compilation caching enabled");
+    if !args.quiet && !args.emit_llvm_only {
+        println!("JIT compilation caching enabled");
+    }
 
     // Initialize memory profiling if requested
     if args.memory_profile {
-        set_memory_limit(1024 * 1024 * 1024); // 1GB limit
+        set_memory_limit(config.memory.max_memory_limit);
         reset_profiler();
-        println!("Memory profiling enabled (1GB limit)");
+        println!("Memory profiling enabled (limit: {} bytes)", config.memory.max_memory_limit);
     }
 
     // Initialize resource limits if requested
@@ -158,7 +169,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize emit-llvm optimization (safe mode) - must be first
     if args.emit_llvm || args.emit_llvm_only {
         initialize_llvm_optimizer(apply_emit_llvm_preset());
-        println!("LLVM emit-llvm mode enabled (safe optimization)");
+        if !args.emit_llvm_only {
+            println!("LLVM emit-llvm mode enabled (safe optimization)");
+        }
     }
     // Initialize LLVM optimization if requested (only if not already initialized)
     else if args.llvm_optimization {
@@ -304,13 +317,8 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
     }
 
     // Tokenization
-    eprintln!("🔍 Starting tokenization...");
-    if verbose_mode || args.emit_tokens {
-        eprintln!("🔍 Tokenizing...");
-    }
 
     let tokens = ea_compiler::tokenize(&source)?;
-    eprintln!("✅ Tokenization completed, got {} tokens", tokens.len());
 
     if args.emit_tokens {
         println!("📋 Tokens:");
@@ -324,13 +332,7 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
     }
 
     // Parsing
-    eprintln!("🌳 Starting parsing...");
-    if verbose_mode {
-        eprintln!("🌳 Parsing...");
-    }
-
     let program = ea_compiler::parse(&source)?;
-    eprintln!("✅ Parsing completed, got {} statements", program.len());
 
     if args.emit_ast {
         println!("🌳 Abstract Syntax Tree:");
@@ -361,11 +363,9 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
     } else {
         ea_compiler::compile_to_ast(&source)?
     };
-    eprintln!("✅ Type checking completed");
 
     if verbose_mode {
-        eprintln!("✅ Type checking completed");
-        eprintln!("   Functions: {}", context.functions.len());
+            eprintln!("   Functions: {}", context.functions.len());
         eprintln!("   Variables in scope: {}", context.variables.len());
     }
 
@@ -423,14 +423,12 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
 
             eprintln!("🔧 Starting LLVM code generation...");
             compile_to_llvm(&source, output_name)?;
-            eprintln!("✅ LLVM code generation completed");
             eprintln!("📄 Generated LLVM IR: {}.ll", output_name);
         }
 
         // Handle JIT diagnostics
         if args.diagnose_jit {
             if show_diagnostics {
-                eprintln!("🔍 Diagnosing JIT execution...");
             }
 
             let output_name = args
@@ -456,7 +454,8 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
             }
         }
 
-        // Handle JIT execution
+        // Handle smart execution (JIT with fallback to compilation)
+        #[cfg(feature = "llvm")]
         if args.run {
             if show_diagnostics {
                 eprintln!("🚀 Executing program...");
@@ -473,7 +472,7 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
                         .unwrap_or("output")
                 });
 
-            match jit_execute_cached(&source, output_name) {
+            match smart_execute(&source, output_name) {
                 Ok(exit_code) => {
                     if verbose_mode {
                         eprintln!(
@@ -491,6 +490,12 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
                 }
             }
         }
+        
+        #[cfg(not(feature = "llvm"))]
+        if args.run {
+            eprintln!("❌ --run requires LLVM support. Please build with --features=llvm");
+            process::exit(1);
+        }
     }
 
     #[cfg(not(feature = "llvm"))]
@@ -507,8 +512,10 @@ fn compile_file(filename: &str, args: &Args) -> Result<(), Box<dyn std::error::E
             "✅ Compilation completed in {:.2}ms",
             elapsed.as_secs_f64() * 1000.0
         );
+        // Print context pool performance statistics in verbose mode
+        #[cfg(feature = "llvm")]
+        llvm_context_pool::print_pool_performance();
     } else if show_diagnostics {
-        eprintln!("✅ Compiled successfully");
     }
     // If emit_llvm_only, don't print any success message to keep output clean
 
