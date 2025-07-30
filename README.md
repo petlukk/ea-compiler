@@ -9,17 +9,9 @@ A native-compiling systems programming language built with Rust and LLVM backend
 
 ## What This Is
 
-Eä is a native-compiling systems programming language that generates optimized machine code via LLVM backend. Supports both static compilation to native binaries and JIT execution for development workflows. Fully implemented features:
+Eä is a native-compiling systems programming language with LLVM backend. Features smart execution strategy that automatically chooses between JIT and compilation based on program complexity.
 
-- Complete compilation pipeline (lexer, parser, type checker, code generator)
-- Full standard library with working methods (Vec::push(), HashMap::get(), etc.)
-- SIMD hardware acceleration with adaptive vectorization
-- JIT compilation to native machine code
-- Static compilation to optimized native binaries
-- Complete I/O operations and file system access
-- VS Code extension with syntax highlighting and LSP support
-
-**Current Status**: v0.2.0 - Production-ready compiler with comprehensive error handling, SIMD vector indexing, and stress-tested CLI interface, 158 tests passing.
+**Current Status**: v0.2.0 - Working compiler with Smart Execution Strategy, core language features, and comprehensive testing (158 tests passing).
 
 ## Features
 
@@ -29,21 +21,22 @@ Eä is a native-compiling systems programming language that generates optimized 
 - **Control flow**: `if/else`, `while`, `for` loops
 - **Functions**: Parameters, return values, recursion
 - **Variables**: Local variable declarations with type inference
-- **I/O operations**: `print()`, `println()`, complete file operations
-- **Working standard library**: `Vec::push()`, `HashMap::get()`, `HashSet::insert()` - all methods fully functional
-- **Type system**: Strong type checking with comprehensive error detection
+- **I/O operations**: `print()`, basic file operations
+- **Standard library**: `Vec`, `HashMap`, `HashSet` with essential methods
+- **Type system**: Strong type checking with error detection
 
 ### SIMD Hardware Acceleration
 
 - **32 SIMD vector types**: `f32x4`, `i32x8`, `u8x16`, etc. with automatic hardware detection
 - **Native vector operations**: `.+`, `.-`, `.*`, `./`, `.&`, `.|`, `.^` generate optimized CPU instructions
 - **Vector literal syntax**: `[1.0, 2.0, 3.0, 4.0]f32x4` compiles to aligned vector loads
-- **Vector indexing**: `vec[0]`, `vec[1]` with compile-time bounds checking and LLVM `extractelement` optimization
-- **Adaptive optimization**: Automatic SSE/AVX/AVX2/AVX512/NEON selection based on CPU capabilities
-- **Real performance**: Programs execute with native hardware acceleration, graceful fallback for older CPUs
+- **Vector indexing**: `vec[0]`, `vec[1]` with bounds checking
+- **Hardware optimization**: Automatic SSE/AVX/AVX2/AVX512 selection
+- **Native execution**: Hardware-accelerated SIMD instructions
 
 ### Production Features
 
+- **Smart Execution Strategy**: Automatic execution mode selection (JitSafe/JitRisky/CompileRequired) based on program complexity analysis
 - **JIT compilation**: Immediate native code generation and execution with intelligent caching
 - **Incremental compilation**: Fast recompilation with dependency tracking and circular dependency detection
 - **Parallel compilation**: Multi-threaded compilation with job queuing and performance statistics
@@ -57,11 +50,6 @@ Eä is a native-compiling systems programming language that generates optimized 
 - **Stress testing**: CLI interface validated with large files and concurrent compilation
 - **Error handling**: Comprehensive Result<T, E> types with proper error propagation and recovery
 
-### Enhanced Memory Safety
-- **Leak detection and prevention**: Comprehensive memory cleanup with valgrind validation
-- **Runtime memory management**: Fixed critical leaks in CLI and string operations  
-- **Memory profiling**: Real-time leak detection with <1MB threshold validation
-- **Production-ready cleanup**: All runtime functions properly manage memory lifecycle
 
 ## Installation
 
@@ -91,10 +79,12 @@ func main() {
 Compile and run:
 
 ```bash
-# JIT execution (compile to native code and run immediately)
-./target/release/ea --run hello.ea
+# Smart execution - automatically chooses optimal method:
+./target/release/ea --run hello.ea         # → ⚡ JIT Safe
+./target/release/ea --run fibonacci.ea     # → 🔄 JIT Risky  
+./target/release/ea --run simd_program.ea  # → 🔧 Compile Required
 
-# Compile to native binary (full pipeline)
+# Traditional compilation pipeline:
 ./target/release/ea --emit-llvm hello.ea
 llc hello.ll -o hello.s
 gcc hello.s -o hello
@@ -116,21 +106,21 @@ func fibonacci(n: i32) -> i32 {
 }
 ```
 
-### Working Standard Library
+### Standard Library Collections
 
 ```ea
 func main() {
     let numbers = Vec::new();
-    numbers.push(42);           // ✅ All methods work
+    numbers.push(42);
     numbers.push(17);
-    let length = numbers.len(); // ✅ Returns actual count
-    let value = numbers.get(0); // ✅ Retrieves elements
+    let length = numbers.len();
+    let value = numbers.get(0);
 
     let cache = HashMap::new();
-    cache.insert("key", 100);   // ✅ Complete hash operations
-    let result = cache.get("key"); // ✅ Fast lookups
+    cache.insert("key", 100);
+    let result = cache.get("key");
 
-    print("Standard library methods: all functional!");
+    print("Collections demo complete");
 }
 ```
 
@@ -209,10 +199,41 @@ func apply_brightness_filter(pixels: u8x16, brightness: i32) -> u8x16 {
 // Usage: ea --run demo/image_processor_pure_ea.ea
 ```
 
+## Smart Execution Strategy
+
+The Eä compiler features an intelligent `--run` flag that automatically chooses the optimal execution method based on program complexity analysis:
+
+### Execution Modes
+
+**⚡ JIT Safe (Simple Programs)**
+- Direct JIT execution for maximum speed
+- Used for basic programs with simple control flow
+- Message: `"⚡ JIT execution (fast) - simple program"`
+
+**🔄 JIT Risky (Medium Complexity)** 
+- Tries JIT first, falls back to compilation if needed
+- Used for programs with moderate complexity
+- Messages: `"🔄 Trying JIT execution... - medium complexity detected"` → `"✅ JIT execution successful"`
+
+**🔧 Compile Required (Complex Programs)**
+- Direct compilation to native executable
+- Used for SIMD functions, large programs, or complex control flow
+- Message: `"🔧 Compiled execution - SIMD functions detected"`
+
+### Benefits
+
+✅ **Reliability**: `--run` now works intelligently for all program types  
+✅ **Performance**: Fast JIT path for simple programs, reliable compilation for complex ones  
+✅ **User Experience**: Clear feedback about execution method and reasoning  
+✅ **Future-proof**: Automatically scales with language complexity growth
+
 ## CLI Usage
 
 ```bash
-ea --run program.ea             # JIT compile to native code and execute
+# Smart execution - automatically chooses best method:
+ea --run program.ea             # ⚡/🔄/🔧 Intelligent execution mode selection
+
+# Other compilation modes:
 ea --emit-llvm program.ea       # Generate LLVM IR for native compilation
 ea --emit-llvm-only program.ea  # Clean LLVM IR output (for piping to lli)
 ea --emit-ast program.ea        # Show parsed AST
@@ -237,15 +258,7 @@ cargo test --features=llvm -- --nocapture
 cargo bench --features=llvm
 ```
 
-**Test Coverage**: 158 tests covering all components from lexer through SIMD hardware acceleration. Includes comprehensive testing of incremental compilation, parallel compilation, memory management, and advanced optimization features. Standard library methods, SIMD operations, and file I/O all validated through integration testing.
-
-**Enhanced Validation Infrastructure**:
-- **External tool integration**: Valgrind memory checking, LLVM IR validation with llvm-as
-- **Architectural validation**: Proof programs demonstrating core language capabilities  
-- **Performance regression testing**: Automated detection of compilation and runtime regressions
-- **Memory safety validation**: Real-time leak detection with comprehensive cleanup
-
-**Stress Testing**: Complete CLI stress test suite with 15 test scenarios covering large file compilation, concurrent processing, memory usage validation, and performance benchmarking. Validates compiler stability under load with files up to 6KB and complex SIMD operations.
+**Test Coverage**: 158 tests covering lexer, parser, type system, code generation, and SIMD operations. Includes validation of core language features, standard library methods, and file I/O operations.
 
 ## Performance
 
@@ -264,12 +277,6 @@ cargo bench --features=llvm
 - **Test suite**: 158 tests complete in under 2 seconds
 - **Stress testing**: Large file compilation (6KB) completes in 155ms with 704 bytes stack usage
 
-### Real-World Capabilities
-
-- **Standard library**: 2-4x performance improvement with SIMD-accelerated collections
-- **Hardware adaptation**: Automatic SSE/AVX/AVX2 detection and optimization
-- **Cross-platform**: Consistent performance on Linux, Windows (WSL), macOS
-- **Production ready**: Suitable for real programming tasks with working standard library
 
 ### Honest Performance Comparison
 
@@ -353,60 +360,24 @@ Source Code → Lexer → Parser → Type Checker → Code Generator → LLVM IR
 - **Code Generator**: LLVM IR emission using `inkwell`
 - **Backend**: LLVM optimization and native code generation
 
-### Working Features
 
-- **Complete standard library**: All methods work (Vec::push(), HashMap::get(), HashSet::insert())
-- **SIMD hardware acceleration**: 2,277 lines of advanced SIMD fully integrated with vector indexing support
-- **Incremental compilation**: Smart dependency tracking with circular dependency detection
-- **Parallel compilation**: Multi-threaded processing with job queuing and performance monitoring
-- **Advanced memory management**: Region-based analysis, leak detection, and safety validation
-- **JIT execution**: Direct compilation to native machine code with performance profiling
-- **VS Code extension**: Complete language support with syntax highlighting
-- **File I/O**: Full file system operations with comprehensive Result<T, E> error handling
-- **Multiple compilation modes**: JIT native execution, static native binaries, LLVM IR inspection
-- **Error handling**: Comprehensive Result types with proper error propagation and recovery
-- **SIMD indexing**: Vector element access with compile-time bounds checking
-- **Stress testing**: Validated CLI performance with large files and concurrent compilation
-
-### Production Infrastructure
-
-- **Hardware detection**: Automatic CPU capability detection (37 instruction sets)
-- **Adaptive optimization**: Performance modeling with algorithm selection
-- **Incremental compilation**: Fast rebuilds with intelligent dependency tracking
-- **Parallel processing**: Multi-threaded compilation with job distribution
-- **Memory safety**: Compile-time analysis with runtime validation and leak detection
-- **Streaming capabilities**: Large file processing with optimized parser performance
-- **Cross-platform**: Linux, Windows (WSL), macOS support with consistent behavior
-
-### Production Stability
-- **Parser stability**: Infinite loop prevention with forced recovery mechanisms
-- **Memory leak fixes**: Critical runtime memory leaks resolved and validated  
-- **Enhanced error handling**: Comprehensive error recovery with graceful degradation
-- **Build system reliability**: Improved C runtime integration and compilation stability
-- **DEV_Process.md compliance**: Enhanced validation methodology following rigorous development standards
 
 ## Current Status
 
-### What Works
+### Implemented Features
 
-- **All standard library methods**: Vec::push(), HashMap::get(), HashSet::insert() - fully functional
-- **SIMD hardware acceleration**: Complete implementation with native CPU instruction generation and vector indexing
-- **File I/O**: Complete file system operations with comprehensive Result<T, E> error handling  
-- **VS Code integration**: Full language extension with syntax highlighting and LSP support
-- **JIT execution**: Native code compilation and execution with performance tracking
-- **Cross-platform**: Consistent behavior on Linux, Windows (WSL), macOS
-- **Error handling**: Production-ready error handling with Result types for all fallible operations
-- **Memory safety**: Comprehensive leak detection and cleanup with valgrind validation
-- **Demo applications**: Working image processor with SIMD acceleration in `/demo` folder
-- **Enhanced validation**: External tool integration for production-ready quality assurance
+- **Smart Execution Strategy**: Automatic execution mode selection (⚡/🔄/🔧)
+- **Core language features**: Functions, control flow, variables, type system
+- **Standard library**: Vec, HashMap, HashSet with essential methods
+- **SIMD operations**: Hardware-accelerated vector operations with indexing
+- **Compilation modes**: JIT execution, native binaries, LLVM IR generation
+- **Development tools**: VS Code extension, comprehensive testing suite
 
-### Language Features Not Yet Implemented
+### Limitations
 
-- **Generics**: Not implemented
-- **Macros**: Not implemented
-- **Traits/Interfaces**: Not implemented
-- **Module system**: Basic implementation only
-- **Package ecosystem**: No third-party package manager
+- **Advanced features**: Generics, macros, traits not yet implemented
+- **Module system**: Basic implementation
+- **Package ecosystem**: No package manager
 
 ### Platform Support
 
@@ -418,29 +389,19 @@ Source Code → Lexer → Parser → Type Checker → Code Generator → LLVM IR
 
 **Suitable For:**
 
-- Real programming tasks with working standard library
-- SIMD development and optimization (hardware-accelerated)
-- Systems programming with memory safety features
-- Learning advanced compiler techniques
-- Performance-critical applications with vector operations
-- Cross-platform development with consistent behavior
+- Learning compiler development and language design
+- SIMD programming and vector operations
+- Experimenting with language features
+- Understanding compilation pipelines
 
 **Current Capabilities:**
 
-- All standard library methods work (Vec::push(), HashMap::get(), etc.)
-- SIMD operations run with native hardware acceleration and vector indexing
-- Complete file I/O with comprehensive error handling using Result types
-- JIT execution with performance profiling and intelligent caching
-- VS Code development environment with full language support
-- 158 tests validating all functionality with additional stress testing
-- Production-ready error handling for all fallible operations
+- Core language features with type system and error handling
+- Standard library collections (Vec, HashMap, HashSet)
+- SIMD operations with hardware acceleration
+- Smart execution strategy with automatic mode selection
+- Development tools and VS Code integration
 
-**Development Focus:**
-
-- Advanced language features (generics, traits)
-- Package ecosystem development
-- Enhanced error diagnostics
-- Performance optimization and benchmarking
 
 ## Contributing
 
@@ -449,13 +410,7 @@ Source Code → Lexer → Parser → Type Checker → Code Generator → LLVM IR
 3. Format code with `cargo fmt`
 4. Check lints with `cargo clippy`
 
-Areas for contribution:
-
-- Language features and syntax
-- Standard library functions
-- Error message improvements
-- Cross-platform testing
-- Documentation and examples
+Contribution areas: Language features, standard library expansion, cross-platform testing, documentation.
 
 ## Development Environment
 
@@ -474,21 +429,6 @@ Complete language support available in `vscode-extension/`:
 - [Getting Started](docs/getting-started.md) - Development guide
 - [CLAUDE.md](CLAUDE.md) - Complete development reference
 
-### Stress Testing
-
-Run comprehensive CLI stress tests:
-
-```bash
-./stress_test.sh    # Full CLI stress test suite
-```
-
-**Stress Test Coverage:**
-- Large file compilation (6KB source files)
-- Multiple CLI modes (AST, tokens, LLVM IR, JIT execution)
-- Concurrent compilation testing
-- Memory usage validation
-- Performance benchmarking
-- Error handling validation
 
 ## License
 
