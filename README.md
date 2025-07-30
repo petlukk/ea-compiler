@@ -152,10 +152,10 @@ func file_operations() {
         Ok(file) => {
             File::write(file, "Hello, World!");
             File::close(file);
-            println("File created successfully!");
+            print("File created successfully!");
         }
         Err(error) => {
-            println("Failed to create file");
+            print("Failed to create file");
         }
     }
     
