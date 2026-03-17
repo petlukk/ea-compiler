@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+dist/
+build/
+*.egg-info/
+.eggs/
+src/ea/bin/ea
+src/ea/bin/ea.exe
+__eacache__/
+.venv/

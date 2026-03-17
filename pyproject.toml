@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ea-compiler"
+version = "1.7.0"
+description = "Ea SIMD kernel compiler for Python"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.21"]
+license = "MIT"
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ea = ["bin/ea", "bin/ea.exe", "py.typed"]
