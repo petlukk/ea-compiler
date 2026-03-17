@@ -1,0 +1,27 @@
+name: CI
+on: [push, pull_request]
+
+env:
+  EA_VERSION: "v1.7.0"
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download ea binary
+        run: |
+          curl -fsSL "https://github.com/petlukk/eacompute/releases/download/$EA_VERSION/ea-linux-x86_64.tar.gz" | tar xz
+          chmod +x ea
+          mkdir -p src/ea/bin
+          cp ea src/ea/bin/ea
+
+      - name: Install package
+        run: pip install -e ".[test]"
+
+      - name: Run tests
+        run: pytest tests/ -v

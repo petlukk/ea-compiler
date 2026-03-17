@@ -1,0 +1,146 @@
+name: Publish to PyPI
+on:
+  push:
+    tags: ["ea-compiler-v*"]
+  workflow_dispatch:
+
+env:
+  EA_VERSION: "v1.7.0"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-linux-x86_64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download ea binary
+        run: |
+          curl -fsSL "https://github.com/petlukk/eacompute/releases/download/$EA_VERSION/ea-linux-x86_64.tar.gz" | tar xz
+          chmod +x ea
+          mkdir -p src/ea/bin
+          cp ea src/ea/bin/ea
+
+      - name: Build wheel
+        run: |
+          pip install build wheel
+          python -m build --wheel
+
+      - name: Retag wheel
+        run: |
+          pip install wheel
+          cd dist
+          for f in *.whl; do
+            python -m wheel tags --remove --platform-tag manylinux_2_17_x86_64 "$f"
+          done
+
+      - name: Test wheel
+        run: |
+          python -m venv /tmp/test-venv
+          /tmp/test-venv/bin/pip install dist/*.whl
+          /tmp/test-venv/bin/python -c "import ea; print(ea.__version__); print(ea.compiler_version())"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-linux-x86_64
+          path: dist/*.whl
+
+  build-linux-aarch64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download ea binary
+        run: |
+          curl -fsSL "https://github.com/petlukk/eacompute/releases/download/$EA_VERSION/ea-linux-aarch64.tar.gz" | tar xz
+          chmod +x ea
+          mkdir -p src/ea/bin
+          cp ea src/ea/bin/ea
+
+      - name: Build wheel
+        run: |
+          pip install build wheel
+          python -m build --wheel
+
+      - name: Retag wheel
+        run: |
+          pip install wheel
+          cd dist
+          for f in *.whl; do
+            python -m wheel tags --remove --platform-tag manylinux_2_17_aarch64 "$f"
+          done
+
+      - name: Test wheel
+        run: |
+          python -m venv /tmp/test-venv
+          /tmp/test-venv/bin/pip install dist/*.whl
+          /tmp/test-venv/bin/python -c "import ea; print(ea.__version__); print(ea.compiler_version())"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-linux-aarch64
+          path: dist/*.whl
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download ea binary
+        shell: bash
+        run: |
+          curl -fsSL "https://github.com/petlukk/eacompute/releases/download/$EA_VERSION/ea-windows-x86_64.zip" -o ea.zip
+          unzip ea.zip
+          mkdir -p src/ea/bin
+          cp ea.exe src/ea/bin/ea.exe
+
+      - name: Build wheel
+        run: |
+          pip install build wheel
+          python -m build --wheel
+
+      - name: Retag wheel
+        run: |
+          pip install wheel
+          cd dist
+          Get-ChildItem *.whl | ForEach-Object {
+            python -m wheel tags --remove --platform-tag win_amd64 $_.Name
+          }
+
+      - name: Test wheel
+        run: |
+          python -m venv C:\test-venv
+          C:\test-venv\Scripts\pip install (Get-ChildItem dist\*.whl)
+          C:\test-venv\Scripts\python -c "import ea; print(ea.__version__); print(ea.compiler_version())"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-windows
+          path: dist/*.whl
+
+  publish:
+    needs: [build-linux-x86_64, build-linux-aarch64, build-windows]
+    runs-on: ubuntu-24.04
+    environment: pypi
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: wheels
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: wheels/
