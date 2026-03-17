@@ -1,6 +1,6 @@
 # ea-compiler
 
-Python package wrapping the Ea SIMD kernel compiler. Provides `ea.load("kernel.ea")` which compiles, caches, and returns callable kernels via ctypes.
+Python package wrapping the Eä compute kernel compiler. Provides `ea.load("kernel.ea")` which compiles, caches, and returns callable kernels via ctypes.
 
 ## Install
 
