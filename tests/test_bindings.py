@@ -76,3 +76,17 @@ def test_length_collapsing_not_without_pointer():
     from ea._bindings import _detect_collapsed
     args = [{"name": "factor", "type": "f32"}, {"name": "n", "type": "i32"}]
     assert _detect_collapsed(args) == [False, False]
+
+
+def test_build_kernel_module_creates_callable(tmp_path):
+    json_path = tmp_path / "mock.ea.json"
+    json_path.write_text(json.dumps(SAMPLE_METADATA))
+    from unittest.mock import patch, MagicMock
+    mock_cdll = MagicMock()
+    with patch("ea._bindings.ctypes.CDLL", return_value=mock_cdll):
+        from ea._bindings import _build_kernel_module
+        so_path = tmp_path / "scale.so"
+        so_path.touch()
+        mod = _build_kernel_module(json_path, so_path)
+        assert hasattr(mod, "scale")
+        assert callable(mod.scale)
