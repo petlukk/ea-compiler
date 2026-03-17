@@ -5,10 +5,38 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ea-compiler"
 version = "1.8.0"
-description = "Ea SIMD kernel compiler for Python"
+description = "Eä compute kernel compiler for Python — write SIMD kernels, call from NumPy"
+readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ["numpy>=1.21"]
 license = "MIT"
+authors = [
+    {name = "Peter Lukka", email = "peter.lukka@gmail.com"},
+]
+keywords = ["simd", "compiler", "kernel", "numpy", "performance", "avx2", "neon"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Compilers",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/petlukk/eacompute"
+Documentation = "https://petlukk.github.io/eacompute/"
+Repository = "https://github.com/petlukk/ea-compiler"
+Issues = "https://github.com/petlukk/eacompute/issues"
 
 [project.optional-dependencies]
 test = ["pytest"]
