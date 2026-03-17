@@ -1,0 +1,9 @@
+export func dot(a: *f32, b: *f32, n: i32) -> f32 {
+    let mut sum: f32 = 0.0
+    let mut i: i32 = 0
+    while i < n {
+        sum = sum + a[i] * b[i]
+        i = i + 1
+    }
+    return sum
+}
