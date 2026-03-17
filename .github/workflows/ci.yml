@@ -2,7 +2,7 @@ name: CI
 on: [push, pull_request]
 
 env:
-  EA_VERSION: "v1.7.0"
+  EA_VERSION: "v1.8.0"
 
 jobs:
   test:
