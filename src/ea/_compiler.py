@@ -76,6 +76,26 @@ def compile(path, *, emit_asm=False, emit_llvm=False, target="native",
         return source.with_suffix(".o")
 
 
+_MACHINE_MAP = {
+    "x86_64": "x86-64",
+    "AMD64": "x86-64",
+    "aarch64": "generic",
+    "ARM64": "generic",
+}
+
+
 def _resolve_target() -> str:
     """Resolve 'native' to a concrete CPU name for cache keying."""
-    raise NotImplementedError
+    try:
+        result = subprocess.run(
+            [str(_ea_binary()), "--print-target"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            name = result.stdout.strip()
+            if name:
+                return name
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    machine = platform.machine()
+    return _MACHINE_MAP.get(machine, machine.lower() or "unknown")
