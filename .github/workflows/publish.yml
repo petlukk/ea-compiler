@@ -23,9 +23,9 @@ jobs:
       - name: Download ea binary
         run: |
           curl -fsSL "https://github.com/petlukk/eacompute/releases/download/$EA_VERSION/ea-linux-x86_64.tar.gz" | tar xz
-          chmod +x ea
+          chmod +x ea-linux-x86_64/ea
           mkdir -p src/ea/bin
-          cp ea src/ea/bin/ea
+          cp ea-linux-x86_64/ea src/ea/bin/ea
 
       - name: Build wheel
         run: |
@@ -62,9 +62,9 @@ jobs:
       - name: Download ea binary
         run: |
           curl -fsSL "https://github.com/petlukk/eacompute/releases/download/$EA_VERSION/ea-linux-aarch64.tar.gz" | tar xz
-          chmod +x ea
+          chmod +x ea-linux-aarch64/ea
           mkdir -p src/ea/bin
-          cp ea src/ea/bin/ea
+          cp ea-linux-aarch64/ea src/ea/bin/ea
 
       - name: Build wheel
         run: |
@@ -104,7 +104,7 @@ jobs:
           curl -fsSL "https://github.com/petlukk/eacompute/releases/download/$EA_VERSION/ea-windows-x86_64.zip" -o ea.zip
           unzip ea.zip
           mkdir -p src/ea/bin
-          cp ea.exe src/ea/bin/ea.exe
+          cp ea-windows-x86_64/ea.exe src/ea/bin/ea.exe
 
       - name: Build wheel
         run: |

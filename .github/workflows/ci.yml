@@ -16,9 +16,9 @@ jobs:
       - name: Download ea binary
         run: |
           curl -fsSL "https://github.com/petlukk/eacompute/releases/download/$EA_VERSION/ea-linux-x86_64.tar.gz" | tar xz
-          chmod +x ea
+          chmod +x ea-linux-x86_64/ea
           mkdir -p src/ea/bin
-          cp ea src/ea/bin/ea
+          cp ea-linux-x86_64/ea src/ea/bin/ea
 
       - name: Install package
         run: pip install -e ".[test]"
