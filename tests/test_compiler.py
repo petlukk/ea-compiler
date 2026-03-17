@@ -11,3 +11,9 @@ def test_compiler_version_parses_output():
          patch("ea._compiler.subprocess.run", return_value=mock_result):
         from ea._compiler import compiler_version
         assert compiler_version() == "1.7.0"
+
+
+def test_compile_file_not_found():
+    from ea._compiler import compile
+    with pytest.raises(FileNotFoundError):
+        compile("nonexistent.ea")

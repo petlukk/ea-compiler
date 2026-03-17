@@ -33,7 +33,47 @@ def compiler_version() -> str:
 def compile(path, *, emit_asm=False, emit_llvm=False, target="native",
             opt_level=3, avx512=False, lib=True):
     """Compile an .ea file. Returns path to output artifact."""
-    raise NotImplementedError
+    import sys
+    from ea._bindings import CompileError
+
+    source = Path(path).resolve()
+    if not source.exists():
+        raise FileNotFoundError(f"Ea source file not found: {source}")
+
+    cmd = [str(_ea_binary()), str(source)]
+    if lib:
+        cmd.append("--lib")
+    if emit_asm:
+        cmd.append("--emit-asm")
+    if emit_llvm:
+        cmd.append("--emit-llvm")
+    if target != "native":
+        cmd.append(f"--target={target}")
+    cmd.append(f"--opt-level={opt_level}")
+    if avx512:
+        cmd.append("--avx512")
+
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=60,
+        cwd=str(source.parent),
+    )
+    if result.returncode != 0:
+        raise CompileError(
+            f"Compilation failed: {source.name}",
+            stderr=result.stderr,
+            exit_code=result.returncode,
+        )
+
+    stem = source.stem
+    if emit_asm:
+        return source.with_suffix(".s")
+    elif emit_llvm:
+        return source.with_suffix(".ll")
+    elif lib:
+        ext = ".dll" if sys.platform == "win32" else ".so"
+        return source.parent / f"{stem}{ext}"
+    else:
+        return source.with_suffix(".o")
 
 
 def _resolve_target() -> str:
