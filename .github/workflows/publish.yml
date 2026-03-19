@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 env:
-  EA_VERSION: "v1.8.0"
+  EA_VERSION: "v1.10.0"
 
 permissions:
   id-token: write

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ea-compiler"
-version = "1.8.0"
+version = "1.10.0"
 description = "Eä compute kernel compiler for Python — write SIMD kernels, call from NumPy"
 readme = "README.md"
 requires-python = ">=3.9"
